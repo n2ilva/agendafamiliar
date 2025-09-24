@@ -27,8 +27,10 @@ export default function LoginScreen({ navigation }) {
     androidClientId: GOOGLE_CLIENT_IDS.ANDROID,
     iosClientId: GOOGLE_CLIENT_IDS.IOS,
     webClientId: GOOGLE_CLIENT_IDS.WEB,
-    scopes: ['profile', 'email'],
-    responseType: 'token',
+    // Pedimos o id_token (necessário para autenticação com Firebase).
+    // Também mantemos escopos de profile/email.
+    scopes: ['profile', 'email', 'openid'],
+    responseType: 'id_token',
     additionalParameters: {
       access_type: 'offline',
       prompt: 'consent',
@@ -54,7 +56,14 @@ export default function LoginScreen({ navigation }) {
     if (response?.type === 'success') {
       const { authentication } = response;
       console.log('Autenticação bem-sucedida!', authentication);
-      fetchUserInfo(authentication.accessToken, authentication);
+      // Se recebemos um idToken (JWT) vamos decodificar e usar os dados
+      // diretamente (contém email, name, picture). Caso contrário, usamos
+      // o accessToken como fallback para buscar no endpoint do Google.
+      if (authentication?.idToken) {
+        fetchUserInfo(authentication.idToken, authentication, /* isIdToken */ true);
+      } else {
+        fetchUserInfo(authentication.accessToken, authentication, /* isIdToken */ false);
+      }
     } else if (response?.type === 'error') {
       console.error('Erro na autenticação:', response.error);
       setIsLoading(false);
@@ -88,29 +97,81 @@ export default function LoginScreen({ navigation }) {
     };
   }, [response, isLoading]);
 
-  const fetchUserInfo = async (token, credentials) => {
+  // token: pode ser um accessToken (string) ou um idToken (JWT string)
+  // isIdToken: quando true, token é um idToken (JWT) e será decodificado
+  const fetchUserInfo = async (token, credentials, isIdToken = false) => {
     try {
       setIsLoading(true);
+      let userInfo = null;
 
-      // Timeout de 10 segundos para a requisição
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      if (isIdToken && token) {
+        // Decodifica o JWT (idToken) para obter os dados do usuário
+        try {
+          const parseJwt = (jwt) => {
+            const parts = jwt.split('.');
+            if (parts.length < 2) return null;
+            const payload = parts[1];
+            // base64url -> base64
+            const b64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+            // Polifill para atob/Buffer
+            let jsonPayload = '';
+            try {
+              if (typeof atob === 'function') {
+                jsonPayload = decodeURIComponent(
+                  Array.prototype.map
+                    .call(atob(b64), (c) => '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2))
+                    .join('')
+                );
+              } else if (typeof Buffer !== 'undefined') {
+                jsonPayload = Buffer.from(b64, 'base64').toString('utf8');
+              } else {
+                // último recurso: retornar null
+                return null;
+              }
+              return JSON.parse(jsonPayload);
+            } catch (e) {
+              console.warn('Falha ao decodificar idToken:', e);
+              return null;
+            }
+          };
 
-      const response = await fetch('https://www.googleapis.com/userinfo/v2/me', {
-        headers: { Authorization: `Bearer ${token}` },
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        throw new Error(`Erro HTTP: ${response.status}`);
+          const payload = parseJwt(token);
+          if (payload) {
+            userInfo = {
+              id: payload.sub || payload.user_id || null,
+              email: payload.email || null,
+              name: payload.name || payload.given_name || null,
+              picture: payload.picture || null
+            };
+          }
+        } catch (e) {
+          console.warn('Erro ao extrair dados do idToken:', e);
+        }
       }
 
-      const userInfo = await response.json();
+      // Fallback: se não obtivemos userInfo a partir do idToken, tente o endpoint com accessToken
+      if (!userInfo) {
+        // Timeout de 10 segundos para a requisição
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+        const resp = await fetch('https://www.googleapis.com/userinfo/v2/me', {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!resp.ok) {
+          throw new Error(`Erro HTTP: ${resp.status}`);
+        }
+
+        const data = await resp.json();
+        userInfo = data;
+      }
 
       // Validação básica dos dados do usuário
-      if (!userInfo.id || !userInfo.email) {
+      if (!userInfo || !userInfo.id || !userInfo.email) {
         throw new Error('Dados do usuário incompletos');
       }
 
