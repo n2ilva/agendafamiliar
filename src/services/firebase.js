@@ -1,5 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import {
+  initializeAuth,
+  getReactNativePersistence,
   getAuth,
   signInWithCredential,
   GoogleAuthProvider,
@@ -19,11 +21,26 @@ import {
   getDocs
 } from 'firebase/firestore';
 import { firebaseConfig } from '../config/firebase';
+import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
 
 class FirebaseService {
   constructor() {
     this.app = initializeApp(firebaseConfig);
-    this.auth = getAuth(this.app);
+    // Inicializa o Auth para React Native com persistência usando AsyncStorage
+    try {
+      this.auth = initializeAuth(this.app, {
+        persistence: getReactNativePersistence(ReactNativeAsyncStorage)
+      });
+    } catch (e) {
+      // Caso initializeAuth falhe por algum motivo, fallback para getAuth (persistência não garantida)
+      console.warn('initializeAuth falhou, fazendo fallback para getAuth:', e);
+      try {
+        this.auth = getAuth(this.app);
+      } catch (err) {
+        console.error('Falha ao inicializar getAuth como fallback:', err);
+        this.auth = null;
+      }
+    }
     this.db = getFirestore(this.app);
     this.currentUser = null;
 

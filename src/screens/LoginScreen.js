@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
 import * as Google from 'expo-auth-session/providers/google';
 import { useAuth } from '../contexts/AuthContext';
+import { GOOGLE_CLIENT_IDS } from '../config/googleAuth';
 
 WebBrowser.maybeCompleteAuthSession();
 
