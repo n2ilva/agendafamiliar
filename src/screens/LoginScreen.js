@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, StatusBar, Platform } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, StatusBar, Platform, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
@@ -9,7 +9,20 @@ import { USER_TYPES } from '../constants/userTypes';
 
 WebBrowser.maybeCompleteAuthSession();
 
+// Função helper para timeout
+const withTimeout = (promise, timeoutMs) => {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('TIMEOUT')), timeoutMs)
+    )
+  ]);
+};
+
 export default function LoginScreen({ navigation }) {
+  const [isLoading, setIsLoading] = useState(false);
+  const [isGoogleConfigured, setIsGoogleConfigured] = useState(true);
+
   const [request, response, promptAsync] = Google.useAuthRequest({
     androidClientId: GOOGLE_CLIENT_IDS.ANDROID,
     iosClientId: GOOGLE_CLIENT_IDS.IOS,
@@ -22,46 +35,155 @@ export default function LoginScreen({ navigation }) {
     },
   });
 
+  // Verifica se as configurações do Google estão disponíveis
   useEffect(() => {
+    const checkGoogleConfig = () => {
+      const hasAndroidId = GOOGLE_CLIENT_IDS.ANDROID && GOOGLE_CLIENT_IDS.ANDROID !== 'your-android-client-id';
+      const hasIosId = GOOGLE_CLIENT_IDS.IOS && GOOGLE_CLIENT_IDS.IOS !== 'your-ios-client-id';
+      const hasWebId = GOOGLE_CLIENT_IDS.WEB && GOOGLE_CLIENT_IDS.WEB !== 'your-web-client-id';
+
+      setIsGoogleConfigured(hasAndroidId || hasIosId || hasWebId);
+    };
+
+    checkGoogleConfig();
+  }, []);
+
+  useEffect(() => {
+    let timeoutId;
+
     if (response?.type === 'success') {
       const { authentication } = response;
       console.log('Autenticação bem-sucedida!', authentication);
       fetchUserInfo(authentication.accessToken, authentication);
     } else if (response?.type === 'error') {
       console.error('Erro na autenticação:', response.error);
-      alert('Erro na autenticação. Tente novamente.');
+      setIsLoading(false);
+      Alert.alert(
+        'Erro na Autenticação',
+        'Não foi possível fazer login com o Google. Verifique sua conexão com a internet e tente novamente.',
+        [{ text: 'OK' }]
+      );
+    } else if (response?.type === 'cancel') {
+      setIsLoading(false);
+      console.log('Autenticação cancelada pelo usuário');
     }
-  }, [response]);
+
+    // Timeout de segurança para casos onde a resposta não chega
+    if (isLoading && !response) {
+      timeoutId = setTimeout(() => {
+        console.warn('Timeout aguardando resposta da autenticação');
+        setIsLoading(false);
+        Alert.alert(
+          'Timeout',
+          'A autenticação está demorando mais que o esperado. Tente novamente.',
+          [{ text: 'OK' }]
+        );
+      }, 45000); // 45 segundos
+    }
+
+    return () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    };
+  }, [response, isLoading]);
 
   const fetchUserInfo = async (token, credentials) => {
     try {
+      setIsLoading(true);
+
+      // Timeout de 10 segundos para a requisição
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+
       const response = await fetch('https://www.googleapis.com/userinfo/v2/me', {
         headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`Erro HTTP: ${response.status}`);
+      }
+
       const userInfo = await response.json();
-      console.log('Informações do usuário:', userInfo);
+
+      // Validação básica dos dados do usuário
+      if (!userInfo.id || !userInfo.email) {
+        throw new Error('Dados do usuário incompletos');
+      }
+
+      console.log('Informações do usuário obtidas com sucesso');
+      setIsLoading(false);
+
       navigation.navigate('UserTypeSelection', {
         user: userInfo,
         googleCredentials: credentials
       });
     } catch (error) {
       console.error('Erro ao buscar informações do usuário:', error);
-      alert('Erro ao obter informações do usuário. Tente novamente.');
+      setIsLoading(false);
+
+      if (error.name === 'AbortError') {
+        Alert.alert(
+          'Timeout',
+          'A solicitação demorou muito para responder. Verifique sua conexão com a internet e tente novamente.',
+          [{ text: 'OK' }]
+        );
+      } else {
+        Alert.alert(
+          'Erro',
+          'Não foi possível obter suas informações do Google. Tente novamente.',
+          [{ text: 'OK' }]
+        );
+      }
     }
   };
 
   const handleGoogleLogin = async () => {
+    if (!isGoogleConfigured) {
+      Alert.alert(
+        'Configuração Incompleta',
+        'O login com Google não está configurado corretamente. Entre em contato com o suporte.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
     try {
-      const result = await promptAsync();
-      if (result.type === 'success') {
-        console.log('Login com Google iniciado');
-      } else if (result.type === 'error') {
+      setIsLoading(true);
+
+      // Timeout de 30 segundos para o processo de autenticação
+      const result = await withTimeout(promptAsync(), 30000);
+
+      if (result.type === 'error') {
         console.error('Erro no prompt:', result.error);
-        alert('Erro ao iniciar autenticação. Verifique sua conexão.');
+        setIsLoading(false);
+        Alert.alert(
+          'Erro',
+          'Não foi possível iniciar a autenticação. Verifique sua conexão com a internet.',
+          [{ text: 'OK' }]
+        );
       }
+      // O useEffect tratará o sucesso
     } catch (error) {
       console.error('Erro ao tentar login:', error);
-      alert('Erro inesperado. Tente novamente.');
+      setIsLoading(false);
+
+      if (error.message === 'TIMEOUT') {
+        Alert.alert(
+          'Timeout',
+          'A autenticação demorou muito para responder. Verifique sua conexão com a internet e tente novamente.',
+          [{ text: 'OK' }]
+        );
+      } else {
+        Alert.alert(
+          'Erro Inesperado',
+          'Ocorreu um erro inesperado. Tente novamente.',
+          [{ text: 'OK' }]
+        );
+      }
     }
   };
 
@@ -79,15 +201,25 @@ export default function LoginScreen({ navigation }) {
         <Text style={styles.subtitle}>Tarefas compartilhadas, vida organizada.</Text>
 
         <TouchableOpacity
-          style={[styles.button, styles.googleButton]}
+          style={[styles.button, styles.googleButton, (isLoading || !request) && styles.buttonDisabled]}
           onPress={handleGoogleLogin}
-          disabled={!request}
+          disabled={isLoading || !request || !isGoogleConfigured}
         >
-          <Ionicons name="logo-google" size={24} color="#fff" />
-          <Text style={styles.buttonText}>Entrar com Google</Text>
+          {isLoading ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Ionicons name="logo-google" size={24} color="#fff" />
+          )}
+          <Text style={styles.buttonText}>
+            {isLoading ? 'Conectando...' : 'Entrar com Google'}
+          </Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={[styles.button, styles.guestButton]} onPress={handleGuestLogin}>
+        <TouchableOpacity
+          style={[styles.button, styles.guestButton, isLoading && styles.buttonDisabled]}
+          onPress={handleGuestLogin}
+          disabled={isLoading}
+        >
           <Ionicons name="person-outline" size={24} color="#333" />
           <Text style={[styles.buttonText, { color: '#333' }]}>Entrar como Convidado</Text>
         </TouchableOpacity>
@@ -159,6 +291,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderWidth: 1,
     borderColor: '#ddd',
+  },
+  buttonDisabled: {
+    opacity: 0.6,
   },
   buttonText: {
     marginLeft: 10,

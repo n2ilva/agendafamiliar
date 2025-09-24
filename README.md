@@ -1,4 +1,13 @@
-# � Agenda Familiar
+# 📱 Agenda Fa### 🔐 Autenticação e Usuários
+- **Login Google**: Integração completa com Google OAuth 2.0 + Firebase Authentication
+- **Sincronização na Nuvem**: Backup automático e recuperação de dados
+- **Tipos de Usuário**:
+  - 👑 **Administrador**: Controle total do sistema + gerenciamento familiar
+  - 👤 **Usuário Comum**: Criar e gerenciar tarefas + sincronização
+  - 🧒 **Dependente**: Tarefas com sistema de aprovação + dados na nuvem
+  - 👤 **Convidado**: Apenas dados locais (sem sincronização)
+- **Persistência de Sessão**: Login mantido entre sessões
+Um aplicativo de gerenciamento de tarefas familiares desenvolvido em React Native com Expo, permitindo que famílias organizem e compartilhem tarefas de forma colaborativa com sincronização na nuvem via Firebase. Agenda Familiar
 
 Um aplicativo de gerenciamento de tarefas familiares desenvolvido em React Native com Expo, permitindo que famílias organizem e compartilhem tarefas de forma colaborativa.
 
@@ -32,6 +41,13 @@ Um aplicativo de gerenciamento de tarefas familiares desenvolvido em React Nativ
 - **Aprovação de Tarefas**: Tarefas de crianças precisam ser aprovadas por adultos
 - **Tela de Aprovações**: Interface dedicada para revisar tarefas concluídas
 - **Controle Parental**: Supervisão total das atividades das crianças
+
+### ☁️ Sincronização na Nuvem (Firebase)
+- **Upload Automático**: Dados sincronizados após login
+- **Download Manual**: Recuperação de dados da nuvem
+- **Sincronização Bidirecional**: Merge inteligente de dados locais e remotos
+- **Backup Familiar**: Dados compartilhados entre membros da família
+- **Armazenamento Híbrido**: AsyncStorage local + Firestore na nuvem
 
 ### 📅 Modal de Data/Hora Customizado
 - **Calendário Visual**: Interface de calendário completa e navegável
@@ -79,6 +95,7 @@ Um aplicativo de gerenciamento de tarefas familiares desenvolvido em React Nativ
 
 ### Armazenamento
 - **AsyncStorage** 2.2.0
+- **Firebase Firestore** 10.12.2
 
 ### Data/Hora
 - **React Native Community DateTimePicker** 8.4.4
@@ -99,6 +116,7 @@ agenda-familiar/
 │   │   ├── TaskItem.js
 │   │   └── TaskModal.js
 │   ├── config/              # Configurações
+│   │   ├── firebase.js      # 🆕 Configuração Firebase
 │   │   └── googleAuth.js
 │   ├── constants/           # Constantes do app
 │   │   ├── categories.js
@@ -116,7 +134,9 @@ agenda-familiar/
 │   │   ├── LoginScreen.js
 │   │   └── UserTypeSelectionScreen.js
 │   ├── services/            # Serviços e APIs
-│   │   └── storage.js
+│   │   ├── firebase.js      # 🆕 Serviço Firebase
+│   │   ├── storage.js
+│   │   └── sync.js          # 🆕 Serviço de sincronização
 │   └── utils/               # Utilitários
 │       └── dateUtils.js     # 🆕 Formatação de datas
 ├── .env                     # Variáveis de ambiente
@@ -174,12 +194,43 @@ RCT_METRO_PORT=8081
 ### Configuração do Google Auth
 Configure as credenciais do Google no arquivo `src/config/googleAuth.js`
 
+### Configuração do Firebase
+Para habilitar a sincronização na nuvem:
+
+1. **Criar projeto no Firebase**:
+   - Acesse [Firebase Console](https://console.firebase.google.com/)
+   - Crie um novo projeto ou selecione um existente
+
+2. **Configurar Authentication**:
+   - Ative o provedor **Google** em Authentication → Sign-in method
+   - Configure o OAuth consent screen
+
+3. **Configurar Firestore Database**:
+   - Crie um banco de dados Firestore
+   - Escolha "Iniciar no modo de teste" para desenvolvimento
+
+4. **Obter configurações**:
+   - Vá para Configurações do projeto → Geral → Seus apps
+   - Adicione um app Web e copie as configurações
+
+5. **Variáveis de ambiente**:
+   ```env
+   # Firebase Configuration
+   EXPO_PUBLIC_FIREBASE_API_KEY=sua-api-key
+   EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN=seu-projeto.firebaseapp.com
+   EXPO_PUBLIC_FIREBASE_PROJECT_ID=seu-project-id
+   EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET=seu-projeto.appspot.com
+   EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=123456789
+   EXPO_PUBLIC_FIREBASE_APP_ID=seu-app-id
+   ```
+
 ## 📱 Como Usar
 
 ### 1. Login e Configuração Inicial
 1. Abra o app e faça login com sua conta Google
-2. Selecione seu tipo de usuário (Administrador/Usuário/Criança)
+2. Selecione seu tipo de usuário (Administrador/Usuário/Dependente)
 3. Crie uma família nova ou entre em uma existente com a chave
+4. **Seus dados serão automaticamente sincronizados na nuvem**
 
 ### 2. Gerenciar Família
 1. Acesse **Configurações** → **Família**
@@ -187,6 +238,12 @@ Configure as credenciais do Google no arquivo `src/config/googleAuth.js`
    - Ver chave da família
    - Adicionar/remover membros
    - Gerenciar permissões
+
+### 3. Sincronização na Nuvem
+1. Acesse **Configurações** → **Sincronização na Nuvem**
+2. **Enviar para Nuvem**: Upload dos dados locais
+3. **Baixar da Nuvem**: Download e mesclagem com dados locais
+4. **Status**: Visualize o status da última sincronização
 
 ### 3. Criar Tarefas
 1. Toque no botão **+** na tela principal
@@ -226,11 +283,11 @@ Configure as credenciais do Google no arquivo `src/config/googleAuth.js`
 ## 🔄 Funcionalidades Futuras Planejadas
 
 - [ ] Notificações push para lembretes
-- [ ] Sincronização online (Firebase/Supabase)
+- [x] ~~Sincronização online (Firebase/Supabase)~~ ✅ **Implementado**
 - [ ] Temas escuro/claro
 - [ ] Estatísticas e relatórios avançados
 - [ ] Sistema de recompensas para crianças
-- [ ] Backup/restore automático na nuvem
+- [ ] Sincronização em tempo real
 - [ ] Chat familiar
 - [ ] Localização geográfica para tarefas
 

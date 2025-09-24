@@ -83,27 +83,86 @@ class FirebaseService {
     }
   }
 
-  // Sincronização de tarefas
+  // Sincronização de tarefas - Estratégia melhorada
   async syncTasks(userId, tasks) {
     try {
-      const tasksCollectionRef = collection(this.db, 'users', userId, 'tasks');
-      // Primeiro, limpa as tarefas antigas
-      const existingTasks = await getDocs(tasksCollectionRef);
-      const deletePromises = existingTasks.docs.map(doc => doc.ref.delete());
-      await Promise.all(deletePromises);
+      if (!Array.isArray(tasks)) {
+        throw new Error('Tasks deve ser um array');
+      }
 
-      // Adiciona as novas tarefas
-      const addPromises = tasks.map(task =>
-        setDoc(doc(tasksCollectionRef, task.id), {
+      const tasksCollectionRef = collection(this.db, 'users', userId, 'tasks');
+      const batch = [];
+
+      // Cria um mapa das tarefas locais para comparação
+      const localTasksMap = new Map(tasks.map(task => [task.id, task]));
+
+      // Busca tarefas existentes no Firebase
+      const existingTasks = await getDocs(tasksCollectionRef);
+      const existingTasksMap = new Map();
+
+      existingTasks.docs.forEach(doc => {
+        existingTasksMap.set(doc.id, { id: doc.id, ...doc.data() });
+      });
+
+      // Identifica tarefas para adicionar/atualizar/deletar
+      const toAdd = [];
+      const toUpdate = [];
+      const toDelete = [];
+
+      // Tarefas locais que não existem no Firebase
+      localTasksMap.forEach((task, taskId) => {
+        if (!existingTasksMap.has(taskId)) {
+          toAdd.push(task);
+        } else {
+          // Verifica se precisa atualizar
+          const existing = existingTasksMap.get(taskId);
+          if (this.hasTaskChanged(task, existing)) {
+            toUpdate.push(task);
+          }
+        }
+      });
+
+      // Tarefas que existem no Firebase mas não localmente
+      existingTasksMap.forEach((task, taskId) => {
+        if (!localTasksMap.has(taskId)) {
+          toDelete.push(taskId);
+        }
+      });
+
+      // Executa operações em lote
+      const operations = [];
+
+      toAdd.forEach(task => {
+        operations.push(setDoc(doc(tasksCollectionRef, task.id), {
           ...task,
           syncedAt: new Date().toISOString()
-        })
-      );
-      await Promise.all(addPromises);
+        }));
+      });
+
+      toUpdate.forEach(task => {
+        operations.push(updateDoc(doc(tasksCollectionRef, task.id), {
+          ...task,
+          syncedAt: new Date().toISOString()
+        }));
+      });
+
+      toDelete.forEach(taskId => {
+        operations.push(deleteDoc(doc(tasksCollectionRef, taskId)));
+      });
+
+      await Promise.all(operations);
+
+      console.log(`Sincronização de tarefas: +${toAdd.length} -${toDelete.length} ~${toUpdate.length}`);
     } catch (error) {
       console.error('Erro ao sincronizar tarefas:', error);
       throw error;
     }
+  }
+
+  // Método auxiliar para verificar se tarefa mudou
+  hasTaskChanged(localTask, remoteTask) {
+    const fieldsToCompare = ['title', 'description', 'completed', 'priority', 'dueDate', 'category'];
+    return fieldsToCompare.some(field => localTask[field] !== remoteTask[field]);
   }
 
   async getTasks(userId) {
@@ -120,27 +179,86 @@ class FirebaseService {
     }
   }
 
-  // Sincronização de histórico
+  // Sincronização de histórico - Estratégia melhorada
   async syncHistory(userId, history) {
     try {
-      const historyCollectionRef = collection(this.db, 'users', userId, 'history');
-      // Primeiro, limpa o histórico antigo
-      const existingHistory = await getDocs(historyCollectionRef);
-      const deletePromises = existingHistory.docs.map(doc => doc.ref.delete());
-      await Promise.all(deletePromises);
+      if (!Array.isArray(history)) {
+        throw new Error('History deve ser um array');
+      }
 
-      // Adiciona o novo histórico
-      const addPromises = history.map(item =>
-        setDoc(doc(historyCollectionRef, item.id), {
+      const historyCollectionRef = collection(this.db, 'users', userId, 'history');
+      const batch = [];
+
+      // Cria um mapa do histórico local para comparação
+      const localHistoryMap = new Map(history.map(item => [item.id, item]));
+
+      // Busca histórico existente no Firebase
+      const existingHistory = await getDocs(historyCollectionRef);
+      const existingHistoryMap = new Map();
+
+      existingHistory.docs.forEach(doc => {
+        existingHistoryMap.set(doc.id, { id: doc.id, ...doc.data() });
+      });
+
+      // Identifica itens para adicionar/atualizar/deletar
+      const toAdd = [];
+      const toUpdate = [];
+      const toDelete = [];
+
+      // Itens locais que não existem no Firebase
+      localHistoryMap.forEach((item, itemId) => {
+        if (!existingHistoryMap.has(itemId)) {
+          toAdd.push(item);
+        } else {
+          // Verifica se precisa atualizar
+          const existing = existingHistoryMap.get(itemId);
+          if (this.hasHistoryChanged(item, existing)) {
+            toUpdate.push(item);
+          }
+        }
+      });
+
+      // Itens que existem no Firebase mas não localmente
+      existingHistoryMap.forEach((item, itemId) => {
+        if (!localHistoryMap.has(itemId)) {
+          toDelete.push(itemId);
+        }
+      });
+
+      // Executa operações em lote
+      const operations = [];
+
+      toAdd.forEach(item => {
+        operations.push(setDoc(doc(historyCollectionRef, item.id), {
           ...item,
           syncedAt: new Date().toISOString()
-        })
-      );
-      await Promise.all(addPromises);
+        }));
+      });
+
+      toUpdate.forEach(item => {
+        operations.push(updateDoc(doc(historyCollectionRef, item.id), {
+          ...item,
+          syncedAt: new Date().toISOString()
+        }));
+      });
+
+      toDelete.forEach(itemId => {
+        operations.push(deleteDoc(doc(historyCollectionRef, itemId)));
+      });
+
+      await Promise.all(operations);
+
+      console.log(`Sincronização de histórico: +${toAdd.length} -${toDelete.length} ~${toUpdate.length}`);
     } catch (error) {
       console.error('Erro ao sincronizar histórico:', error);
       throw error;
     }
+  }
+
+  // Método auxiliar para verificar se item do histórico mudou
+  hasHistoryChanged(localItem, remoteItem) {
+    const fieldsToCompare = ['action', 'taskId', 'timestamp', 'details'];
+    return fieldsToCompare.some(field => localItem[field] !== remoteItem[field]);
   }
 
   async getHistory(userId) {
@@ -334,6 +452,65 @@ class FirebaseService {
       };
     } catch (error) {
       console.error('Erro durante download:', error);
+      throw error;
+    }
+  }
+
+  // Validação de dados de entrada
+  validateTaskData(task) {
+    if (!task || typeof task !== 'object') {
+      throw new Error('Task deve ser um objeto válido');
+    }
+    if (!task.id || typeof task.id !== 'string') {
+      throw new Error('Task deve ter um ID válido');
+    }
+    if (!task.title || typeof task.title !== 'string') {
+      throw new Error('Task deve ter um título válido');
+    }
+    return true;
+  }
+
+  validateHistoryData(historyItem) {
+    if (!historyItem || typeof historyItem !== 'object') {
+      throw new Error('History item deve ser um objeto válido');
+    }
+    if (!historyItem.id || typeof historyItem.id !== 'string') {
+      throw new Error('History item deve ter um ID válido');
+    }
+    if (!historyItem.action || typeof historyItem.action !== 'string') {
+      throw new Error('History item deve ter uma ação válida');
+    }
+    return true;
+  }
+
+  // Método melhorado para salvar tarefa
+  async saveTask(userId, task) {
+    try {
+      this.validateTaskData(task);
+      const taskRef = doc(this.db, 'users', userId, 'tasks', task.id);
+      await setDoc(taskRef, {
+        ...task,
+        syncedAt: new Date().toISOString()
+      });
+      console.log('Tarefa salva com sucesso:', task.id);
+    } catch (error) {
+      console.error('Erro ao salvar tarefa:', error);
+      throw error;
+    }
+  }
+
+  // Método melhorado para salvar item do histórico
+  async saveHistoryItem(userId, historyItem) {
+    try {
+      this.validateHistoryData(historyItem);
+      const historyRef = doc(this.db, 'users', userId, 'history', historyItem.id);
+      await setDoc(historyRef, {
+        ...item,
+        syncedAt: new Date().toISOString()
+      });
+      console.log('Item do histórico salvo com sucesso:', historyItem.id);
+    } catch (error) {
+      console.error('Erro ao salvar item do histórico:', error);
       throw error;
     }
   }

@@ -6,7 +6,11 @@
     "start": "expo start --port 8081",
     "android": "expo start --android --port 8081",
     "ios": "expo start --ios --port 8081",
-    "web": "expo start --web --port 8081"
+    "web": "expo start --web --port 8081",
+    "firebase": "firebase",
+    "firebase:login": "firebase login",
+    "firebase:init": "firebase init",
+    "firebase:deploy": "firebase deploy"
   },
   "dependencies": {
     "@expo/metro-runtime": "^6.1.2",
@@ -30,5 +34,8 @@
     "react-native-screens": "^4.16.0",
     "react-native-web": "~0.21.0"
   },
-  "private": true
+  "private": true,
+  "devDependencies": {
+    "firebase-tools": "^14.17.0"
+  }
 }

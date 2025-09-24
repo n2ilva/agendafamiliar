@@ -59,46 +59,92 @@ class SyncService {
   // Sincronização completa (upload para Firebase)
   async syncToCloud(userId, localData, familyData = null) {
     try {
+      // Validação de entrada
+      if (!userId || typeof userId !== 'string') {
+        throw new Error('ID do usuário é obrigatório');
+      }
+      if (!localData || typeof localData !== 'object') {
+        throw new Error('Dados locais são obrigatórios');
+      }
+
       if (!this.isUserLoggedInFirebase()) {
         throw new Error('Usuário não está logado no Firebase');
       }
 
       await this.setSyncStatus('uploading');
 
+      console.log(`Iniciando upload para usuário ${userId}...`);
+
+      const startTime = Date.now();
       await firebaseService.uploadAllData(userId, localData, familyData);
+      const duration = Date.now() - startTime;
 
       await this.setLastSync();
       await this.setSyncStatus('completed');
 
-      console.log('Sincronização para nuvem concluída!');
+      console.log(`Sincronização para nuvem concluída em ${duration}ms!`);
       return true;
     } catch (error) {
       await this.setSyncStatus('error');
       console.error('Erro na sincronização para nuvem:', error);
-      throw error;
+
+      // Classifica o tipo de erro
+      if (error.message.includes('network') || error.message.includes('timeout')) {
+        throw new Error('Erro de conectividade. Verifique sua conexão com a internet.');
+      } else if (error.message.includes('permission') || error.message.includes('auth')) {
+        throw new Error('Erro de autenticação. Faça login novamente.');
+      } else {
+        throw error;
+      }
     }
   }
 
   // Sincronização completa (download do Firebase)
   async syncFromCloud(userId) {
     try {
+      // Validação de entrada
+      if (!userId || typeof userId !== 'string') {
+        throw new Error('ID do usuário é obrigatório');
+      }
+
       if (!this.isUserLoggedInFirebase()) {
         throw new Error('Usuário não está logado no Firebase');
       }
 
       await this.setSyncStatus('downloading');
 
+      console.log(`Iniciando download para usuário ${userId}...`);
+
+      const startTime = Date.now();
       const cloudData = await firebaseService.downloadAllData(userId);
+      const duration = Date.now() - startTime;
+
+      // Validação dos dados baixados
+      if (!cloudData || typeof cloudData !== 'object') {
+        throw new Error('Dados inválidos recebidos da nuvem');
+      }
 
       await this.setLastSync();
       await this.setSyncStatus('completed');
 
-      console.log('Sincronização da nuvem concluída!');
+      console.log(`Sincronização da nuvem concluída em ${duration}ms!`);
+      console.log(`Dados baixados: ${cloudData.tasks?.length || 0} tarefas, ${cloudData.history?.length || 0} itens de histórico`);
+
       return cloudData;
     } catch (error) {
       await this.setSyncStatus('error');
       console.error('Erro na sincronização da nuvem:', error);
-      throw error;
+
+      // Classifica o tipo de erro
+      if (error.message.includes('network') || error.message.includes('timeout')) {
+        throw new Error('Erro de conectividade. Verifique sua conexão com a internet.');
+      } else if (error.message.includes('permission') || error.message.includes('auth')) {
+        throw new Error('Erro de autenticação. Faça login novamente.');
+      } else if (error.message.includes('not found') || error.message.includes('não encontrado')) {
+        throw new Error('Dados não encontrados na nuvem. Você pode precisar fazer upload primeiro.');
+      } else {
+        throw error;
+      }
     }
   }
 

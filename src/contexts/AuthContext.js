@@ -48,6 +48,17 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (userData, selectedUserType = USER_TYPES.CONVIDADO, googleCredential = null) => {
     try {
+      // Validação de entrada
+      if (!userData || typeof userData !== 'object') {
+        throw new Error('Dados do usuário são obrigatórios');
+      }
+      if (!userData.id || !userData.email) {
+        throw new Error('ID e email do usuário são obrigatórios');
+      }
+      if (!Object.values(USER_TYPES).includes(selectedUserType)) {
+        throw new Error('Tipo de usuário inválido');
+      }
+
       setUser(userData);
       setUserType(selectedUserType);
 
@@ -87,6 +98,9 @@ export const AuthProvider = ({ children }) => {
       return true;
     } catch (error) {
       console.error('Erro no login:', error);
+      // Limpa estado em caso de erro
+      setUser(null);
+      setUserType(null);
       return false;
     }
   };
@@ -99,19 +113,21 @@ export const AuthProvider = ({ children }) => {
         console.log('Logout do Firebase realizado');
       }
 
-      // Se for convidado, limpa todos os dados
-      if (userType === USER_TYPES.CONVIDADO) {
-        await saveData([], [], null, null);
-      } else {
-        // Para outros tipos, mantém as tarefas mas remove dados do usuário
-        const currentData = await loadData();
-        await saveData(currentData.tasks || [], currentData.history || [], null, null);
-      }
+      // Limpa todos os dados do usuário
+      await saveData([], [], null, null);
 
+      // Limpa estado da família
+      setFamily(null);
       setUser(null);
       setUserType(null);
+
+      console.log('Logout realizado com sucesso');
     } catch (error) {
       console.error('Erro no logout:', error);
+      // Mesmo com erro, limpa o estado local
+      setUser(null);
+      setUserType(null);
+      setFamily(null);
     }
   };
 
