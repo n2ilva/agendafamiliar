@@ -43,7 +43,8 @@ export default function UserTypeSelectionScreen({ navigation, route }) {
         const success = await login(user, selectedType, googleCredentials);
 
         if (success) {
-          navigation.navigate('Home', { user, userType: selectedType });
+          // Navegação será feita automaticamente pelo AppNavigator baseado no estado
+          console.log('Login realizado com sucesso, AppNavigator fará a navegação');
         } else {
           alert('Erro ao fazer login. Tente novamente.');
         }

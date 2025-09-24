@@ -1,6 +1,13 @@
 // Sistema de categorias com cores, ícones e configurações
 export const DEFAULT_CATEGORIES = [
   {
+    id: 'todos',
+    name: 'Todos',
+    icon: 'apps',
+    color: '#6C757D',
+    textColor: '#fff'
+  },
+  {
     id: 'trabalho',
     name: 'Trabalho',
     icon: 'briefcase',

@@ -2,13 +2,19 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { formatDateTime } from '../utils/dateUtils';
+import { getCategoryById } from '../constants/categories';
 
 export default function TaskItem({ task, onEdit, onDelete, onConclude }) {
+  const category = getCategoryById(task.category);
   return (
     <View style={styles.card}>
       <View style={styles.cardHeader}>
         <Text style={styles.title}>{task.title}</Text>
-        <Text style={styles.category}>{task.category}</Text>
+        {category && (
+          <View style={[styles.categoryPill, { backgroundColor: category.color }]}>
+            <Text style={[styles.categoryPillText, { color: category.textColor }]}>{category.name}</Text>
+          </View>
+        )}
       </View>
       <Text style={styles.description}>{task.description}</Text>
       <View style={styles.cardFooter}>
@@ -133,5 +139,16 @@ const styles = StyleSheet.create({
     marginLeft: 5,
     fontSize: 12,
     fontWeight: '500',
+  },
+  categoryPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+    marginLeft: 8,
+  },
+  categoryPillText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
 });

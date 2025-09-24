@@ -4,8 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
 import * as Google from 'expo-auth-session/providers/google';
-import { GOOGLE_CLIENT_IDS } from '../config/googleAuth';
-import { USER_TYPES } from '../constants/userTypes';
+import { useAuth } from '../contexts/AuthContext';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -20,6 +19,7 @@ const withTimeout = (promise, timeoutMs) => {
 };
 
 export default function LoginScreen({ navigation }) {
+  const { login } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleConfigured, setIsGoogleConfigured] = useState(true);
 
@@ -117,6 +117,7 @@ export default function LoginScreen({ navigation }) {
       console.log('Informações do usuário obtidas com sucesso');
       setIsLoading(false);
 
+      // Navega para seleção de tipo de usuário com os dados obtidos
       navigation.navigate('UserTypeSelection', {
         user: userInfo,
         googleCredentials: credentials
@@ -190,7 +191,7 @@ export default function LoginScreen({ navigation }) {
   const handleGuestLogin = () => {
     console.log('Botão Convidado pressionado');
     const guestUser = { name: 'Convidado', picture: null, email: 'guest@local' };
-    navigation.navigate('Home', { user: guestUser, userType: USER_TYPES.CONVIDADO });
+    login(guestUser, USER_TYPES.CONVIDADO);
   };
 
   return (

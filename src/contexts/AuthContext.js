@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { USER_TYPES, hasPermission, canEditTask } from '../constants/userTypes';
-import { saveData, loadData, saveFamilyData, loadFamilyData } from '../services/storage';
+import { saveData, loadData, saveFamilyData, loadFamilyData, saveGoogleCredential, loadGoogleCredential, removeGoogleCredential } from '../services/storage';
 import { createFamily, addMemberToFamily, isFamilyMember, isFamilyAdmin } from '../constants/family';
 import firebaseService from '../services/firebase';
 import syncService from '../services/sync';
@@ -39,6 +39,23 @@ export const AuthProvider = ({ children }) => {
           setFamily(familyData);
         }
       }
+      // Tentar reautenticação silenciosa se houver credencial do Google armazenada
+      try {
+        const storedCredential = await loadGoogleCredential();
+        if (storedCredential) {
+          // tentamos reautenticar no Firebase, mas não falharemos caso dê erro
+          try {
+            await firebaseService.signInWithGoogle(storedCredential);
+            console.log('Reautenticação silenciosa bem-sucedida');
+          } catch (reauthErr) {
+            console.warn('Falha na reautenticação silenciosa:', reauthErr);
+            // Se falhar, removemos a credencial para evitar loops
+            await removeGoogleCredential();
+          }
+        }
+      } catch (e) {
+        console.warn('Erro ao tentar reautenticação silenciosa:', e);
+      }
     } catch (error) {
       console.error('Erro ao carregar dados do usuário:', error);
     } finally {
@@ -63,16 +80,22 @@ export const AuthProvider = ({ children }) => {
       setUserType(selectedUserType);
 
       // Se tiver credenciais do Google, faz login no Firebase
-      if (googleCredential && selectedUserType !== USER_TYPES.CONVIDADO) {
+      // Permitir migração automática mesmo para convidados que entram via Google
+      if (googleCredential) {
         try {
           await firebaseService.signInWithGoogle(googleCredential);
           console.log('Login no Firebase realizado com sucesso');
+
+          // Salva credencial para reautenticação silenciosa futura
+          try { await saveGoogleCredential(googleCredential); } catch (e) { console.warn('Não foi possível salvar googleCredential:', e); }
 
           // Carrega dados locais atuais
           const currentData = await loadData();
           const familyData = await loadFamilyData();
 
           // Faz sincronização automática após login
+          // Nota: atualmente o backend de sync espera um userId válido. Garantimos
+          // que o ID e email existam no `userData` previamente.
           await syncService.autoSyncAfterLogin(userData.id, {
             user: userData,
             userType: selectedUserType,
@@ -112,6 +135,9 @@ export const AuthProvider = ({ children }) => {
         await firebaseService.signOut();
         console.log('Logout do Firebase realizado');
       }
+
+      // Remove credencial do Google armazenada
+      try { await removeGoogleCredential(); } catch (e) { console.warn('Erro ao remover google credential:', e); }
 
       // Limpa todos os dados do usuário
       await saveData([], [], null, null);

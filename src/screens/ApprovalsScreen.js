@@ -5,12 +5,16 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { USER_TYPES, TASK_STATUS } from '../constants/userTypes';
 import { saveData, loadData } from '../services/storage';
+import { useAutoSync } from '../hooks/useAutoSync';
 
 export default function ApprovalsScreen({ navigation }) {
-  const { user, userType, isAdmin } = useAuth();
+  const { user, userType, isAdmin, family } = useAuth();
   const [pendingTasks, setPendingTasks] = useState([]);
   const [allTasks, setAllTasks] = useState([]);
   const [history, setHistory] = useState([]);
+
+  // Hook para sincronização automática
+  const { autoSync } = useAutoSync();
 
   useEffect(() => {
     loadPendingApprovals();
@@ -72,6 +76,19 @@ export default function ApprovalsScreen({ navigation }) {
       setAllTasks(updatedTasks);
       setHistory(newHistory);
       
+      // Sincronização imediata após aprovar tarefa
+      try {
+        const localData = { 
+          tasks: updatedTasks, 
+          history: newHistory, 
+          user, 
+          userType 
+        };
+        await autoSync(localData, family);
+      } catch (syncError) {
+        console.warn('Erro na sincronização após aprovar tarefa:', syncError);
+      }
+      
       Alert.alert("Sucesso", "Tarefa aprovada com sucesso!");
     } catch (error) {
       console.error('Erro ao aprovar tarefa:', error);
@@ -101,6 +118,19 @@ export default function ApprovalsScreen({ navigation }) {
       
       setPendingTasks(pendingTasks.filter(t => t.id !== task.id));
       setAllTasks(updatedTasks);
+      
+      // Sincronização imediata após rejeitar tarefa
+      try {
+        const localData = { 
+          tasks: updatedTasks, 
+          history, 
+          user, 
+          userType 
+        };
+        await autoSync(localData, family);
+      } catch (syncError) {
+        console.warn('Erro na sincronização após rejeitar tarefa:', syncError);
+      }
       
       Alert.alert("Rejeitado", "A tarefa foi rejeitada e voltou para pendente.");
     } catch (error) {

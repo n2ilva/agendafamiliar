@@ -8,6 +8,7 @@ const FAMILY_KEY = '@AgendaFamiliar:family';
 const CUSTOM_CATEGORIES_KEY = '@AgendaFamiliar:customCategories';
 const FAMILY_TASKS_KEY = '@AgendaFamiliar:familyTasks';
 const FAMILY_HISTORY_KEY = '@AgendaFamiliar:familyHistory';
+const GOOGLE_CREDENTIAL_KEY = '@AgendaFamiliar:googleCredential';
 
 export const saveData = async (tasks, history, user = null, userType = null) => {
   try {
@@ -127,5 +128,34 @@ export const loadFamilyHistory = async (familyId) => {
   } catch (e) {
     console.error("Failed to load family history.", e);
     return [];
+  }
+};
+
+// Funções para salvar/recuperar credencial do Google (para reautenticação silenciosa)
+export const saveGoogleCredential = async (credential) => {
+  try {
+    if (!credential) return;
+    const json = JSON.stringify(credential);
+    await AsyncStorage.setItem(GOOGLE_CREDENTIAL_KEY, json);
+  } catch (e) {
+    console.error('Failed to save google credential.', e);
+  }
+};
+
+export const loadGoogleCredential = async () => {
+  try {
+    const json = await AsyncStorage.getItem(GOOGLE_CREDENTIAL_KEY);
+    return json != null ? JSON.parse(json) : null;
+  } catch (e) {
+    console.error('Failed to load google credential.', e);
+    return null;
+  }
+};
+
+export const removeGoogleCredential = async () => {
+  try {
+    await AsyncStorage.removeItem(GOOGLE_CREDENTIAL_KEY);
+  } catch (e) {
+    console.error('Failed to remove google credential.', e);
   }
 };
