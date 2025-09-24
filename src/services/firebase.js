@@ -12,6 +12,7 @@ import {
   setDoc,
   getDoc,
   updateDoc,
+  deleteDoc,
   collection,
   query,
   where,
@@ -29,6 +30,35 @@ class FirebaseService {
     // Monitora mudanças no estado de autenticação
     onAuthStateChanged(this.auth, (user) => {
       this.currentUser = user;
+    });
+  }
+
+  // Aguarda o estado de autenticação ser conhecido (ou até timeout)
+  // Retorna o usuário atual (pode ser null) quando resolvido
+  waitForCurrentUser(timeoutMs = 3000) {
+    // Se já temos um usuário conhecido, retorna imediatamente
+    if (this.currentUser) return Promise.resolve(this.currentUser);
+
+    return new Promise((resolve) => {
+      let resolved = false;
+
+      const unsub = onAuthStateChanged(this.auth, (user) => {
+        if (!resolved) {
+          resolved = true;
+          try { unsub(); } catch (e) {}
+          this.currentUser = user;
+          resolve(user);
+        }
+      });
+
+      // Fallback por timeout: resolve com o estado atual (possivelmente null)
+      setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          try { unsub(); } catch (e) {}
+          resolve(this.currentUser);
+        }
+      }, timeoutMs);
     });
   }
 
@@ -89,19 +119,17 @@ class FirebaseService {
       if (!Array.isArray(tasks)) {
         throw new Error('Tasks deve ser um array');
       }
-
       const tasksCollectionRef = collection(this.db, 'users', userId, 'tasks');
-      const batch = [];
 
-      // Cria um mapa das tarefas locais para comparação
-      const localTasksMap = new Map(tasks.map(task => [task.id, task]));
+      // Cria um mapa das tarefas locais para comparação (coerciona IDs para string)
+      const localTasksMap = new Map(tasks.map(task => [String(task.id), { ...task, id: String(task.id) }]));
 
       // Busca tarefas existentes no Firebase
       const existingTasks = await getDocs(tasksCollectionRef);
       const existingTasksMap = new Map();
 
-      existingTasks.docs.forEach(doc => {
-        existingTasksMap.set(doc.id, { id: doc.id, ...doc.data() });
+      existingTasks.docs.forEach(docSnap => {
+        existingTasksMap.set(String(docSnap.id), { id: String(docSnap.id), ...docSnap.data() });
       });
 
       // Identifica tarefas para adicionar/atualizar/deletar
@@ -133,26 +161,26 @@ class FirebaseService {
       const operations = [];
 
       toAdd.forEach(task => {
-        operations.push(setDoc(doc(tasksCollectionRef, task.id), {
+        operations.push(setDoc(doc(tasksCollectionRef, String(task.id)), {
           ...task,
           syncedAt: new Date().toISOString()
         }));
       });
 
       toUpdate.forEach(task => {
-        operations.push(updateDoc(doc(tasksCollectionRef, task.id), {
+        operations.push(updateDoc(doc(tasksCollectionRef, String(task.id)), {
           ...task,
           syncedAt: new Date().toISOString()
         }));
       });
 
       toDelete.forEach(taskId => {
-        operations.push(deleteDoc(doc(tasksCollectionRef, taskId)));
+        operations.push(deleteDoc(doc(tasksCollectionRef, String(taskId))));
       });
 
       await Promise.all(operations);
 
-      console.log(`Sincronização de tarefas: +${toAdd.length} -${toDelete.length} ~${toUpdate.length}`);
+        // sincronização de tarefas realizada
     } catch (error) {
       console.error('Erro ao sincronizar tarefas:', error);
       throw error;
@@ -185,19 +213,17 @@ class FirebaseService {
       if (!Array.isArray(history)) {
         throw new Error('History deve ser um array');
       }
-
       const historyCollectionRef = collection(this.db, 'users', userId, 'history');
-      const batch = [];
 
-      // Cria um mapa do histórico local para comparação
-      const localHistoryMap = new Map(history.map(item => [item.id, item]));
+      // Cria um mapa do histórico local para comparação (coerciona IDs para string)
+      const localHistoryMap = new Map(history.map(item => [String(item.id), { ...item, id: String(item.id) }]));
 
       // Busca histórico existente no Firebase
       const existingHistory = await getDocs(historyCollectionRef);
       const existingHistoryMap = new Map();
 
-      existingHistory.docs.forEach(doc => {
-        existingHistoryMap.set(doc.id, { id: doc.id, ...doc.data() });
+      existingHistory.docs.forEach(docSnap => {
+        existingHistoryMap.set(String(docSnap.id), { id: String(docSnap.id), ...docSnap.data() });
       });
 
       // Identifica itens para adicionar/atualizar/deletar
@@ -229,26 +255,26 @@ class FirebaseService {
       const operations = [];
 
       toAdd.forEach(item => {
-        operations.push(setDoc(doc(historyCollectionRef, item.id), {
+        operations.push(setDoc(doc(historyCollectionRef, String(item.id)), {
           ...item,
           syncedAt: new Date().toISOString()
         }));
       });
 
       toUpdate.forEach(item => {
-        operations.push(updateDoc(doc(historyCollectionRef, item.id), {
+        operations.push(updateDoc(doc(historyCollectionRef, String(item.id)), {
           ...item,
           syncedAt: new Date().toISOString()
         }));
       });
 
       toDelete.forEach(itemId => {
-        operations.push(deleteDoc(doc(historyCollectionRef, itemId)));
+        operations.push(deleteDoc(doc(historyCollectionRef, String(itemId))));
       });
 
       await Promise.all(operations);
 
-      console.log(`Sincronização de histórico: +${toAdd.length} -${toDelete.length} ~${toUpdate.length}`);
+        // sincronização de histórico realizada
     } catch (error) {
       console.error('Erro ao sincronizar histórico:', error);
       throw error;
@@ -377,7 +403,7 @@ class FirebaseService {
   // Método para sincronização completa (upload)
   async uploadAllData(userId, localData, familyData = null) {
     try {
-      console.log('Iniciando upload de dados para Firebase...');
+      // iniciando upload de dados para Firebase
 
       // Sincroniza dados do usuário
       if (localData.user) {
@@ -412,7 +438,7 @@ class FirebaseService {
         }
       }
 
-      console.log('Upload concluído com sucesso!');
+      // upload concluído com sucesso
     } catch (error) {
       console.error('Erro durante upload:', error);
       throw error;
@@ -422,7 +448,7 @@ class FirebaseService {
   // Método para sincronização completa (download)
   async downloadAllData(userId) {
     try {
-      console.log('Iniciando download de dados do Firebase...');
+      // iniciando download de dados do Firebase
 
       const userData = await this.getUserData(userId);
       const tasks = await this.getTasks(userId);
@@ -442,7 +468,7 @@ class FirebaseService {
         }
       }
 
-      console.log('Download concluído com sucesso!');
+      // download concluído com sucesso
       return {
         user: userData?.user || null,
         userType: userData?.userType || null,
@@ -461,7 +487,7 @@ class FirebaseService {
     if (!task || typeof task !== 'object') {
       throw new Error('Task deve ser um objeto válido');
     }
-    if (!task.id || typeof task.id !== 'string') {
+    if (!task.id || (typeof task.id !== 'string' && typeof task.id !== 'number')) {
       throw new Error('Task deve ter um ID válido');
     }
     if (!task.title || typeof task.title !== 'string') {
@@ -487,12 +513,12 @@ class FirebaseService {
   async saveTask(userId, task) {
     try {
       this.validateTaskData(task);
-      const taskRef = doc(this.db, 'users', userId, 'tasks', task.id);
+      const taskRef = doc(this.db, 'users', userId, 'tasks', String(task.id));
       await setDoc(taskRef, {
         ...task,
         syncedAt: new Date().toISOString()
       });
-      console.log('Tarefa salva com sucesso:', task.id);
+        // tarefa salva com sucesso
     } catch (error) {
       console.error('Erro ao salvar tarefa:', error);
       throw error;
@@ -503,12 +529,12 @@ class FirebaseService {
   async saveHistoryItem(userId, historyItem) {
     try {
       this.validateHistoryData(historyItem);
-      const historyRef = doc(this.db, 'users', userId, 'history', historyItem.id);
+      const historyRef = doc(this.db, 'users', userId, 'history', String(historyItem.id));
       await setDoc(historyRef, {
-        ...item,
+        ...historyItem,
         syncedAt: new Date().toISOString()
       });
-      console.log('Item do histórico salvo com sucesso:', historyItem.id);
+        // item do histórico salvo com sucesso
     } catch (error) {
       console.error('Erro ao salvar item do histórico:', error);
       throw error;

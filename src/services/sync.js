@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import firebaseService from './firebase';
+import { loadGoogleCredential, removeGoogleCredential } from './storage';
 
 const SYNC_STATUS_KEY = '@AgendaFamiliar:syncStatus';
 const LAST_SYNC_KEY = '@AgendaFamiliar:lastSync';
@@ -12,6 +13,18 @@ class SyncService {
   // Verifica se o usuário está logado no Firebase
   isUserLoggedInFirebase() {
     return firebaseService.getCurrentUser() !== null;
+  }
+
+  // Garante que o estado de autenticação do Firebase foi pelo menos consultado
+  // Retorna o usuário atual (pode ser null) após aguardar um curto período
+  async ensureFirebaseUserAvailable(timeoutMs = 3000) {
+    try {
+      const user = await firebaseService.waitForCurrentUser(timeoutMs);
+      return user;
+    } catch (error) {
+      console.warn('Erro ao aguardar estado de autenticação do Firebase:', error);
+      return null;
+    }
   }
 
   // Salva status de sincronização
@@ -67,22 +80,27 @@ class SyncService {
         throw new Error('Dados locais são obrigatórios');
       }
 
-      if (!this.isUserLoggedInFirebase()) {
+      // Aguarda o estado do Firebase para evitar falso-negativo em onAuthStateChanged
+      const fbUser = await this.ensureFirebaseUserAvailable();
+      if (!fbUser) {
         throw new Error('Usuário não está logado no Firebase');
       }
 
       await this.setSyncStatus('uploading');
 
-      console.log(`Iniciando upload para usuário ${userId}...`);
+  // iniciando upload
 
       const startTime = Date.now();
-      await firebaseService.uploadAllData(userId, localData, familyData);
+      // Faz tentativa de upload com retries caso ocorram erros de autenticação
+      await this.attemptWithAuthRetry(async () => {
+        await firebaseService.uploadAllData(userId, localData, familyData);
+      });
       const duration = Date.now() - startTime;
 
       await this.setLastSync();
       await this.setSyncStatus('completed');
 
-      console.log(`Sincronização para nuvem concluída em ${duration}ms!`);
+  // sincronização para nuvem concluída
       return true;
     } catch (error) {
       await this.setSyncStatus('error');
@@ -107,16 +125,20 @@ class SyncService {
         throw new Error('ID do usuário é obrigatório');
       }
 
-      if (!this.isUserLoggedInFirebase()) {
+      const fbUser = await this.ensureFirebaseUserAvailable();
+      if (!fbUser) {
         throw new Error('Usuário não está logado no Firebase');
       }
 
       await this.setSyncStatus('downloading');
 
-      console.log(`Iniciando download para usuário ${userId}...`);
+  // iniciando download
 
       const startTime = Date.now();
-      const cloudData = await firebaseService.downloadAllData(userId);
+      let cloudData = null;
+      await this.attemptWithAuthRetry(async () => {
+        cloudData = await firebaseService.downloadAllData(userId);
+      });
       const duration = Date.now() - startTime;
 
       // Validação dos dados baixados
@@ -127,8 +149,7 @@ class SyncService {
       await this.setLastSync();
       await this.setSyncStatus('completed');
 
-      console.log(`Sincronização da nuvem concluída em ${duration}ms!`);
-      console.log(`Dados baixados: ${cloudData.tasks?.length || 0} tarefas, ${cloudData.history?.length || 0} itens de histórico`);
+  // sincronização da nuvem concluída
 
       return cloudData;
     } catch (error) {
@@ -151,17 +172,17 @@ class SyncService {
   // Sincronização bidirecional (merge de dados)
   async syncBidirectional(userId, localData, familyData = null) {
     try {
-      if (!this.isUserLoggedInFirebase()) {
-        console.log('Usuário não logado no Firebase, pulando sincronização');
-        return localData;
-      }
+      const fbUser = await this.ensureFirebaseUserAvailable();
+      if (!fbUser) return localData;
 
       await this.setSyncStatus('syncing');
 
-      // Tenta fazer download dos dados da nuvem
-      let cloudData;
+      // Tenta fazer download dos dados da nuvem (com retries/auth reattempt se necessário)
+      let cloudData = null;
       try {
-        cloudData = await firebaseService.downloadAllData(userId);
+        await this.attemptWithAuthRetry(async () => {
+          cloudData = await firebaseService.downloadAllData(userId);
+        });
       } catch (downloadError) {
         console.warn('Erro ao fazer download, usando apenas dados locais:', downloadError);
         cloudData = null;
@@ -178,12 +199,14 @@ class SyncService {
       };
 
       // Upload dos dados mesclados
-      await firebaseService.uploadAllData(userId, mergedData, mergedData.family);
+      await this.attemptWithAuthRetry(async () => {
+        await firebaseService.uploadAllData(userId, mergedData, mergedData.family);
+      });
 
       await this.setLastSync();
       await this.setSyncStatus('completed');
 
-      console.log('Sincronização bidirecional concluída!');
+  // sincronização bidirecional concluída
       return mergedData;
     } catch (error) {
       await this.setSyncStatus('error');
@@ -191,6 +214,60 @@ class SyncService {
       // Em caso de erro, retorna dados locais
       return localData;
     }
+  }
+
+  // Helper para tentar uma operação e, em caso de erro de autenticação,
+  // tentar reautenticar silenciosamente usando credencial do Google armazenada
+  // e refazer a operação com backoff. Lança o erro final se não for resolvido.
+  async attemptWithAuthRetry(operationFn, maxAttempts = 3) {
+    let attempt = 0;
+    let lastError = null;
+
+    while (attempt < maxAttempts) {
+      try {
+        await operationFn();
+        return;
+      } catch (error) {
+        lastError = error;
+        const msg = (error && error.message) ? error.message.toLowerCase() : '';
+
+        // Se for erro de autenticação/permissão, tentamos reautenticar
+        if (msg.includes('auth') || msg.includes('permission') || msg.includes('authentication')) {
+          attempt += 1;
+          console.warn(`Erro de autenticação detectado durante sync (tentativa ${attempt}/${maxAttempts}):`, error);
+
+          // Tenta reautenticação silenciosa usando credencial Google salva
+          try {
+            const credential = await loadGoogleCredential();
+            if (credential) {
+              try {
+                await firebaseService.signInWithGoogle(credential);
+                // reautenticação silenciosa bem-sucedida
+              } catch (reauthErr) {
+                console.warn('Reautenticação silenciosa falhou:', reauthErr);
+                // Se falhar reautenticação, removemos credencial para evitar loops
+                try { await removeGoogleCredential(); } catch (e) { /* ignore */ }
+              }
+            } else {
+              // nenhuma credencial do Google armazenada para reautenticação
+            }
+          } catch (e) {
+            console.warn('Erro ao tentar reautenticação silenciosa:', e);
+          }
+
+          // Aguarda antes de tentar novamente (backoff exponencial)
+          const backoffMs = 1000 * Math.pow(3, attempt - 1);
+          await new Promise(res => setTimeout(res, backoffMs));
+          continue; // próxima tentativa
+        }
+
+        // Se não for erro de autenticação, interrompe e repassa
+        throw error;
+      }
+    }
+
+    // Exauriu tentativas
+    throw lastError;
   }
 
   // Método para sincronização automática (chamado após login)
@@ -203,10 +280,7 @@ class SyncService {
 
       // Se não sincronizou nas últimas 24 horas, faz upload
       if (hoursSinceLastSync > 24) {
-        console.log('Fazendo sincronização automática após login...');
         await this.syncToCloud(userId, localData, familyData);
-      } else {
-        console.log('Sincronização recente encontrada, pulando upload automático');
       }
     } catch (error) {
       console.warn('Erro na sincronização automática:', error);

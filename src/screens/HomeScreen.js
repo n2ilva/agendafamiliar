@@ -6,6 +6,9 @@ import TaskItem from '../components/TaskItem';
 import TaskModal from '../components/TaskModal';
 import AddCategoryModal from '../components/AddCategoryModal';
 import JoinFamilyModal from '../components/JoinFamilyModal';
+import CreateFamilyModal from '../components/CreateFamilyModal';
+import ManageFamilyModal from '../components/ManageFamilyModal';
+import { useAutoSync } from '../hooks/useAutoSync';
 import { saveData, loadData, saveFamilyTasks, loadFamilyTasks, saveFamilyHistory, loadFamilyHistory } from '../services/storage';
 import { useAuth } from '../contexts/AuthContext';
 import { USER_TYPES, TASK_STATUS } from '../constants/userTypes';
@@ -32,15 +35,20 @@ export default function HomeScreen({ route, navigation }) {
   const currentUserType = userType || routeUserType;
 
   const [activeDateFilter, setActiveDateFilter] = useState('hoje');
-  const [activeCategoryFilter, setActiveCategoryFilter] = useState('trabalho'); // Usando ID da categoria
+  const [activeCategoryFilter, setActiveCategoryFilter] = useState('todos'); // Usando ID da categoria - padrão 'Todos'
   const [modalVisible, setModalVisible] = useState(false);
   const [addCategoryModalVisible, setAddCategoryModalVisible] = useState(false);
   const [joinFamilyModalVisible, setJoinFamilyModalVisible] = useState(false);
+  const [createFamilyModalVisible, setCreateFamilyModalVisible] = useState(false);
+  const [manageFamilyModalVisible, setManageFamilyModalVisible] = useState(false);
   const [selectedTask, setSelectedTask] = useState(null);
   const [tasks, setTasks] = useState([]);
   const [history, setHistory] = useState([]);
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
   const [showDropdownMenu, setShowDropdownMenu] = useState(false);
+
+  // Hook para sincronização automática
+  const { autoSync, useChangeSync, useFocusSync } = useAutoSync();
 
   useEffect(() => {
     // Faz login se não estiver logado
@@ -138,6 +146,19 @@ export default function HomeScreen({ route, navigation }) {
     saveCurrentData();
   }, [tasks, history, family, isFamilyMemberUser]);
 
+  // Sincronização automática baseada em mudanças nos dados
+  useChangeSync(
+    { tasks, history, user: currentUser, userType: currentUserType },
+    family,
+    10000 // 10 segundos de debounce
+  );
+
+  // Sincronização automática quando o app volta ao foco
+  useFocusSync(
+    { tasks, history, user: currentUser, userType: currentUserType },
+    family
+  );
+
   // Função auxiliar para exibir o tipo de usuário
   const getUserTypeLabel = (type) => {
     switch(type) {
@@ -146,6 +167,28 @@ export default function HomeScreen({ route, navigation }) {
       case USER_TYPES.CONVIDADO: return 'Convidado';
       default: return 'Usuário';
     }
+  };
+
+  // Helper de confirmação cross-platform (usará window.confirm no web e Alert.alert no mobile)
+  const confirmAction = (title, message, confirmText = 'OK', cancelText = 'Cancelar') => {
+    if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
+      // window.confirm retorna booleano
+      const confirmed = window.confirm(message || title);
+      return Promise.resolve(confirmed);
+    }
+
+    // Mobile: usa Alert.alert com callbacks
+    return new Promise((resolve) => {
+      Alert.alert(
+        title,
+        message,
+        [
+          { text: cancelText, style: 'cancel', onPress: () => resolve(false) },
+          { text: confirmText, style: 'default', onPress: () => resolve(true) }
+        ],
+        { cancelable: true }
+      );
+    });
   };
 
   const handleAddTask = () => {
@@ -171,12 +214,13 @@ export default function HomeScreen({ route, navigation }) {
     setModalVisible(true);
   };
 
-  const handleDeleteTask = (taskId) => {
+  const handleDeleteTask = async (taskId) => {
+    // debug logs removed
     const task = tasks.find(t => t.id === taskId);
     
     // Verifica permissão para deletar usando currentUserType e currentUser
-    const userIdentifier = currentUser?.email || currentUser?.name;
-    const canDelete = currentUserType === USER_TYPES.ADMIN || task?.createdBy === userIdentifier;
+  const userIdentifier = currentUser?.email || currentUser?.name;
+  const canDelete = isAdmin() || task?.createdBy === userIdentifier;
     
     if (!canDelete) {
       Alert.alert(
@@ -185,19 +229,24 @@ export default function HomeScreen({ route, navigation }) {
         [{ text: "OK" }]
       );
       return;
-    }    Alert.alert(
-      "Apagar Tarefa",
-      "Você tem certeza que deseja apagar esta tarefa?",
-      [
-        { text: "Cancelar", style: "cancel" },
-        { text: "Apagar", style: "destructive", onPress: () => {
-          setTasks(tasks.filter(task => task.id !== taskId));
-        }}
-      ]
-    );
+    }
+    // Cross-platform confirmation
+    const confirmedDelete = await confirmAction('Apagar Tarefa', 'Você tem certeza que deseja apagar esta tarefa?', 'Apagar', 'Cancelar');
+    if (!confirmedDelete) return;
+    const newTasks = tasks.filter(task => String(task.id) !== String(taskId));
+    setTasks(newTasks);
+
+    // Sincronização imediata após deletar tarefa
+    try {
+      const localData = { tasks: newTasks, history, user: currentUser, userType: currentUserType };
+      await autoSync(localData, family);
+    } catch (error) {
+      console.warn('Erro na sincronização após deletar tarefa:', error);
+    }
   };
 
-  const handleConcludeTask = (task) => {
+  const handleConcludeTask = async (task) => {
+    // debug logs removed
     // Verifica permissão para concluir
     if (!canUserEditTask(task.createdBy) && !isAdmin()) {
       Alert.alert(
@@ -208,31 +257,39 @@ export default function HomeScreen({ route, navigation }) {
       return;
     }
 
-    const canCompleteDirectly = currentUserType === USER_TYPES.ADMIN || currentUserType === USER_TYPES.CONVIDADO;
+  const canCompleteDirectly = isAdmin() || isConvidado();
     
     if (canCompleteDirectly) {
       // Admin e convidado podem concluir diretamente
-      Alert.alert(
-        "Concluir Tarefa",
-        "Deseja marcar esta tarefa como concluída?",
-        [
-          { text: "Cancelar", style: "cancel" },
-          { text: "Concluir", style: "default", onPress: () => {
-            const newHistoryItem = {
-              ...task,
-              completedBy: currentUser?.email || currentUser?.name,
-              completedByName: currentUser?.name,
-              completionDate: new Date().toISOString(),
-              approved: true,
-              approvedBy: currentUser?.email || currentUser?.name,
-              approvedByName: currentUser?.name,
-              status: TASK_STATUS.COMPLETED
-            };
-            setHistory([...history, newHistoryItem]);
-            setTasks(tasks.filter(t => t.id !== task.id));
-          }}
-        ]
-      );
+      const confirmedConclude = await confirmAction('Concluir Tarefa', 'Deseja marcar esta tarefa como concluída?', 'Concluir', 'Cancelar');
+      if (!confirmedConclude) return;
+      const newHistoryItem = {
+        ...task,
+        completedBy: currentUser?.email || currentUser?.name,
+        completedByName: currentUser?.name,
+        completionDate: new Date().toISOString(),
+        approved: true,
+        approvedBy: currentUser?.email || currentUser?.name,
+        approvedByName: currentUser?.name,
+        status: TASK_STATUS.COMPLETED
+      };
+      const newHistory = [...history, newHistoryItem];
+      const newTasks = tasks.filter(t => String(t.id) !== String(task.id));
+      setHistory(newHistory);
+      setTasks(newTasks);
+
+      // Sincronização imediata após concluir tarefa
+      try {
+        const localData = { 
+          tasks: newTasks, 
+          history: newHistory, 
+          user: currentUser, 
+          userType: currentUserType 
+        };
+        await autoSync(localData, family);
+      } catch (error) {
+        console.warn('Erro na sincronização após concluir tarefa:', error);
+      }
     } else {
       // Dependente precisa de aprovação
       Alert.alert(
@@ -240,7 +297,7 @@ export default function HomeScreen({ route, navigation }) {
         "Esta tarefa será enviada para aprovação do administrador.",
         [
           { text: "Cancelar", style: "cancel" },
-          { text: "Enviar", style: "default", onPress: () => {
+          { text: "Enviar", style: "default", onPress: async () => {
             const updatedTask = {
               ...task,
               status: TASK_STATUS.AWAITING_APPROVAL,
@@ -249,25 +306,39 @@ export default function HomeScreen({ route, navigation }) {
               completionDate: new Date().toISOString(),
               approved: false
             };
-            setTasks(tasks.map(t => t.id === task.id ? updatedTask : t));
+            setTasks(tasks.map(t => String(t.id) === String(task.id) ? updatedTask : t));
             
             Alert.alert(
               "Enviado!",
               "Sua solicitação de aprovação foi enviada para o administrador.",
               [{ text: "OK" }]
             );
+            
+            // Sincronização imediata após solicitar aprovação
+            try {
+              const updatedTasks = tasks.map(t => String(t.id) === String(task.id) ? updatedTask : t);
+              const localData = { 
+                tasks: updatedTasks, 
+                history, 
+                user: currentUser, 
+                userType: currentUserType 
+              };
+              await autoSync(localData, family);
+            } catch (error) {
+              console.warn('Erro na sincronização após solicitar aprovação:', error);
+            }
           }}
         ]
       );
     }
   };
 
-  const handleSaveTask = (task) => {
-    if (task.id) {
+  const handleSaveTask = async (task) => {
+  if (task.id) {
       // Editar - verifica permissão usando currentUserType e currentUser
       const existingTask = tasks.find(t => t.id === task.id);
       const userIdentifier = currentUser?.email || currentUser?.name;
-      const canEdit = currentUserType === USER_TYPES.ADMIN || existingTask?.createdBy === userIdentifier;
+  const canEdit = isAdmin() || existingTask?.createdBy === userIdentifier;
       
       if (!canEdit) {
         Alert.alert(
@@ -282,7 +353,8 @@ export default function HomeScreen({ route, navigation }) {
         ...task,
         status: task.status || TASK_STATUS.PENDING
       };
-      setTasks(tasks.map(t => t.id === task.id ? updatedTask : t));
+      const newTasks = tasks.map(t => String(t.id) === String(task.id) ? updatedTask : t);
+      setTasks(newTasks);
     } else {
       // Adicionar nova tarefa
       const newTask = {
@@ -293,7 +365,16 @@ export default function HomeScreen({ route, navigation }) {
         assignedTo: currentUser?.email || currentUser?.name, // Por padrão, atribui a si mesmo
         status: TASK_STATUS.PENDING
       };
-      setTasks([...tasks, newTask]);
+      const newTasks = [...tasks, newTask];
+      setTasks(newTasks);
+    }
+
+    // Sincronização imediata após salvar tarefa
+    try {
+      const localData = { tasks: (typeof newTasks !== 'undefined' ? newTasks : tasks), history, user: currentUser, userType: currentUserType };
+      await autoSync(localData, family);
+    } catch (error) {
+      console.warn('Erro na sincronização após salvar tarefa:', error);
     }
   };
 
@@ -309,11 +390,25 @@ export default function HomeScreen({ route, navigation }) {
     }
   };
 
-  const handleSaveCategory = (newCategory) => {
+  const handleSaveCategory = async (newCategory) => {
     const updatedCategories = [...categories, newCategory];
     setCategories(updatedCategories);
     // TODO: Salvar categorias no AsyncStorage
     setActiveCategoryFilter(newCategory.id);
+    
+    // Sincronização imediata após salvar categoria
+    try {
+      const localData = { 
+        tasks, 
+        history, 
+        user: currentUser, 
+        userType: currentUserType,
+        categories: updatedCategories 
+      };
+      await autoSync(localData, family);
+    } catch (error) {
+      console.warn('Erro na sincronização após salvar categoria:', error);
+    }
   };
 
   const filteredTasks = tasks.filter(task => {
@@ -333,7 +428,7 @@ export default function HomeScreen({ route, navigation }) {
       (activeDateFilter === 'hoje' && isToday) || 
       (activeDateFilter === 'próximas' && isUpcoming);
       
-    const categoryFilterMatch = task.category === activeCategoryFilter;
+  const categoryFilterMatch = activeCategoryFilter === 'todos' ? true : task.category === activeCategoryFilter;
 
     return dateFilterMatch && categoryFilterMatch;
   });
@@ -450,17 +545,41 @@ export default function HomeScreen({ route, navigation }) {
             <Ionicons name="settings-outline" size={20} color="#333" />
             <Text style={styles.dropdownText}>Configurações</Text>
           </TouchableOpacity>
-          {isAdmin() && !isFamilyMemberUser() && (
-            <TouchableOpacity 
+          {isFamilyAdminUser() && (
+            <TouchableOpacity
               style={styles.dropdownItem}
               onPress={() => {
                 setShowDropdownMenu(false);
-                setJoinFamilyModalVisible(true);
+                setManageFamilyModalVisible(true);
               }}
             >
-              <Ionicons name="people-outline" size={20} color="#007AFF" />
-              <Text style={[styles.dropdownText, { color: '#007AFF' }]}>Entrar na Família</Text>
+              <Ionicons name="settings" size={20} color="#007AFF" />
+              <Text style={[styles.dropdownText, { color: '#007AFF' }]}>Gerenciar Família</Text>
             </TouchableOpacity>
+          )}
+          {isAdmin() && !isFamilyMemberUser() && (
+            <>
+              <TouchableOpacity
+                style={styles.dropdownItem}
+                onPress={() => {
+                  setShowDropdownMenu(false);
+                  setCreateFamilyModalVisible(true);
+                }}
+              >
+                <Ionicons name="home-outline" size={20} color="#007AFF" />
+                <Text style={[styles.dropdownText, { color: '#007AFF' }]}>Criar Família</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.dropdownItem}
+                onPress={() => {
+                  setShowDropdownMenu(false);
+                  setJoinFamilyModalVisible(true);
+                }}
+              >
+                <Ionicons name="people-outline" size={20} color="#007AFF" />
+                <Text style={[styles.dropdownText, { color: '#007AFF' }]}>Entrar na Família</Text>
+              </TouchableOpacity>
+            </>
           )}
           <TouchableOpacity 
             style={styles.dropdownItem}
@@ -602,6 +721,16 @@ export default function HomeScreen({ route, navigation }) {
       <JoinFamilyModal
         visible={joinFamilyModalVisible}
         onClose={() => setJoinFamilyModalVisible(false)}
+      />
+      
+      <CreateFamilyModal
+        visible={createFamilyModalVisible}
+        onClose={() => setCreateFamilyModalVisible(false)}
+      />
+      
+      <ManageFamilyModal
+        visible={manageFamilyModalVisible}
+        onClose={() => setManageFamilyModalVisible(false)}
       />
     </SafeAreaView>
   );

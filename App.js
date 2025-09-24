@@ -5,7 +5,6 @@ import { AuthProvider } from './src/contexts/AuthContext';
 import AppNavigator from './src/navigation/AppNavigator';
 
 export default function App() {
-  console.log('App.js renderizando...');
   return (
     <SafeAreaProvider>
       <AuthProvider>
