@@ -36,6 +36,7 @@
   },
   "private": true,
   "devDependencies": {
-    "firebase-tools": "^14.17.0"
+    "firebase-tools": "^14.17.0",
+    "@react-native-community/cli": "latest"
   }
 }
