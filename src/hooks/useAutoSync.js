@@ -1,4 +1,5 @@
 import { useEffect, useCallback } from 'react';
+import { AppState } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import syncService from '../services/sync';
 import firebaseService from '../services/firebase';
@@ -63,11 +64,32 @@ export const useAutoSync = () => {
         autoSync(localData, familyData);
       };
 
-      // Para React Native, podemos usar AppState
-      // Para web, podemos usar window focus events
-      if (typeof window !== 'undefined') {
+      // Para React Native, usamos AppState; para web, usamos window focus events.
+      // Protegemos contra ambientes onde `window` existe mas `addEventListener` não é função.
+      if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
         window.addEventListener('focus', handleFocus);
         return () => window.removeEventListener('focus', handleFocus);
+      } else {
+        // Fallback para React Native: escuta mudanças no AppState e chama sync quando voltar a 'active'
+        const subscription = AppState.addEventListener('change', (nextState) => {
+          if (nextState === 'active') {
+            handleFocus();
+          }
+        });
+
+        return () => {
+          try {
+            // API moderna retorna subscription com remove()
+            if (subscription && typeof subscription.remove === 'function') {
+              subscription.remove();
+            } else if (typeof AppState.removeEventListener === 'function') {
+              // API antiga
+              AppState.removeEventListener('change', handleFocus);
+            }
+          } catch (e) {
+            // Não bloquear
+          }
+        };
       }
     }, [user, localData, familyData, autoSync]);
   };
