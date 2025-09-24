@@ -25,7 +25,7 @@
       "edgeToEdgeEnabled": true
     },
     "web": {
-      "favicon": "./assets/fivecon.ico"
+      "favicon": "./assets/fivecon.svg"
     },
     "plugins": [],
     "extra": {
