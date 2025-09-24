@@ -253,7 +253,10 @@ export default function LoginScreen({ navigation }) {
 
   const handleGuestLogin = () => {
     console.log('Botão Convidado pressionado');
-    const guestUser = { name: 'Convidado', picture: null, email: 'guest@local' };
+    // Gerar um id e email únicos para o usuário convidado para satisfazer
+    // validações de `AuthContext.login` (exige id e email).
+    const uniqueId = `guest_${Date.now()}`;
+    const guestUser = { id: uniqueId, name: 'Convidado', picture: null, email: `${uniqueId}@local` };
     login(guestUser, USER_TYPES.CONVIDADO);
   };
 
