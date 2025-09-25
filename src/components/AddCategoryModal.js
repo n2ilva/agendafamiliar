@@ -93,7 +93,7 @@ export default function AddCategoryModal({ visible, onClose, onSave }) {
             <Text style={styles.sectionSubtitle}>Arraste para ver mais ícones →</Text>
             <ScrollView 
               horizontal 
-              showsHorizontalScrollIndicator={true} 
+              showsHorizontalScrollIndicator={false} 
               style={styles.iconScrollContainer}
               contentContainerStyle={styles.iconContainer}
             >
