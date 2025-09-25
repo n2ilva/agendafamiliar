@@ -27,55 +27,87 @@ const InformacoesScreen = ({ navigation }) => {
 
       <ScrollView style={styles.content}>
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>📱 Como Usar o App</Text>
+          <Text style={styles.sectionTitle}>📱 Como Funciona o Agenda Familiar</Text>
           <View style={styles.infoSection}>
-            <Text style={styles.infoTitle}>✨ Principais Funcionalidades:</Text>
-            
+            <Text style={styles.infoTitle}>✨ O que você pode fazer no app:</Text>
+
             <View style={styles.infoItem}>
               <Ionicons name="people" size={18} color="#007AFF" style={styles.infoIcon} />
               <View style={styles.infoText}>
-                <Text style={styles.infoItemTitle}>Sistema de Família</Text>
-                <Text style={styles.infoItemDesc}>Conecte sua família usando a chave única de 8 caracteres. Todos os membros veem e podem gerenciar as mesmas tarefas.</Text>
+                <Text style={styles.infoItemTitle}>👨‍👩‍👧‍👦 Sistema Familiar Colaborativo</Text>
+                <Text style={styles.infoItemDesc}>Conecte toda sua família usando uma chave única de 8 caracteres. Todos os membros veem as mesmas tarefas em tempo real e podem contribuir para a organização da casa.</Text>
               </View>
             </View>
 
             <View style={styles.infoItem}>
-              <Ionicons name="checkbox" size={18} color="#28a745" style={styles.infoIcon} />
+              <Ionicons name="create" size={18} color="#28a745" style={styles.infoIcon} />
               <View style={styles.infoText}>
-                <Text style={styles.infoItemTitle}>Gerenciar Tarefas</Text>
-                <Text style={styles.infoItemDesc}>Crie, edite e organize tarefas com categorias, datas/horários e repetições. Marque como concluída ao finalizar.</Text>
+                <Text style={styles.infoItemTitle}>📝 Criar Tarefas Personalizadas</Text>
+                <Text style={styles.infoItemDesc}>Adicione tarefas com título, descrição detalhada, categoria colorida, data/hora específica e configurações de repetição (diária, semanal ou nunca).</Text>
               </View>
             </View>
 
             <View style={styles.infoItem}>
               <Ionicons name="calendar" size={18} color="#fd7e14" style={styles.infoIcon} />
               <View style={styles.infoText}>
-                <Text style={styles.infoItemTitle}>Calendário Inteligente</Text>
-                <Text style={styles.infoItemDesc}>Use o calendário visual para agendar tarefas com data e hora específicas. Interface fácil de usar.</Text>
+                <Text style={styles.infoItemTitle}>📅 Agendamento Inteligente</Text>
+                <Text style={styles.infoItemDesc}>Use o calendário integrado para agendar tarefas em datas específicas. Configure lembretes automáticos e veja todas as tarefas organizadas cronologicamente.</Text>
               </View>
             </View>
 
             <View style={styles.infoItem}>
-              <Ionicons name="checkmark-done" size={18} color="#6f42c1" style={styles.infoIcon} />
+              <Ionicons name="notifications" size={18} color="#dc3545" style={styles.infoIcon} />
               <View style={styles.infoText}>
-                <Text style={styles.infoItemTitle}>Aprovação para Crianças</Text>
-                <Text style={styles.infoItemDesc}>Tarefas de crianças precisam ser aprovadas por adultos. Acesse "Aprovações" para revisar.</Text>
+                <Text style={styles.infoItemTitle}>🔔 Notificações Automáticas</Text>
+                <Text style={styles.infoItemDesc}>Receba lembretes quando tarefas estiverem próximas do vencimento. Notificações especiais para tarefas atrasadas e aprovações pendentes.</Text>
               </View>
             </View>
 
             <View style={styles.infoItem}>
-              <Ionicons name="time" size={18} color="#dc3545" style={styles.infoIcon} />
+              <Ionicons name="filter" size={18} color="#6f42c1" style={styles.infoIcon} />
               <View style={styles.infoText}>
-                <Text style={styles.infoItemTitle}>Histórico Completo</Text>
-                <Text style={styles.infoItemDesc}>Veja todas as tarefas concluídas com data, hora e quem completou. Histórico sempre disponível.</Text>
+                <Text style={styles.infoItemTitle}>🔍 Filtros e Organização</Text>
+                <Text style={styles.infoItemDesc}>Filtre tarefas por status (pendentes, concluídas, atrasadas), categoria ou membro da família. Visualize apenas o que importa no momento.</Text>
+              </View>
+            </View>
+
+            <View style={styles.infoItem}>
+              <Ionicons name="checkmark-done" size={18} color="#20c997" style={styles.infoIcon} />
+              <View style={styles.infoText}>
+                <Text style={styles.infoItemTitle}>✅ Sistema de Aprovação</Text>
+                <Text style={styles.infoItemDesc}>Crianças podem marcar tarefas como concluídas, mas precisam da aprovação de adultos. Administradores revisam e validam as atividades realizadas.</Text>
+              </View>
+            </View>
+
+            <View style={styles.infoItem}>
+              <Ionicons name="time" size={18} color="#e83e8c" style={styles.infoIcon} />
+              <View style={styles.infoText}>
+                <Text style={styles.infoItemTitle}>📊 Histórico Completo</Text>
+                <Text style={styles.infoItemDesc}>Acompanhe todas as tarefas já realizadas com data, hora e quem executou. Perfeito para acompanhar o progresso e responsabilidades.</Text>
+              </View>
+            </View>
+
+            <View style={styles.infoItem}>
+              <Ionicons name="stats-chart" size={18} color="#17a2b8" style={styles.infoIcon} />
+              <View style={styles.infoText}>
+                <Text style={styles.infoItemTitle}>📈 Barra de Progresso Visual</Text>
+                <Text style={styles.infoItemDesc}>Veja o progresso geral das tarefas com uma barra intuitiva que mostra quantas foram concluídas, quantas estão pendentes e aguardando aprovação.</Text>
+              </View>
+            </View>
+
+            <View style={styles.infoItem}>
+              <Ionicons name="sync" size={18} color="#ffc107" style={styles.infoIcon} />
+              <View style={styles.infoText}>
+                <Text style={styles.infoItemTitle}>🔄 Sincronização Automática</Text>
+                <Text style={styles.infoItemDesc}>Todas as mudanças são sincronizadas automaticamente entre todos os dispositivos da família. Funciona offline e sincroniza quando conectar.</Text>
               </View>
             </View>
 
             <View style={styles.tipBox}>
               <Ionicons name="bulb" size={20} color="#ffc107" />
               <Text style={styles.tipText}>
-                <Text style={styles.tipTitle}>Dica: </Text>
-                Administradores podem gerenciar membros da família e aprovar tarefas. Use categorias coloridas para organizar melhor suas atividades!
+                <Text style={styles.tipTitle}>💡 Dicas de Uso: </Text>
+                Use categorias coloridas para organizar tarefas por tipo (casa, escola, lazer). Configure repetições para tarefas diárias como "arrumar o quarto" ou "escovar os dentes". Administradores podem gerenciar membros e aprovar atividades das crianças!
               </Text>
             </View>
           </View>
@@ -111,7 +143,124 @@ const InformacoesScreen = ({ navigation }) => {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>🚀 Como Começar</Text>
+          <Text style={styles.sectionTitle}>� Funcionalidades Avançadas</Text>
+          <View style={styles.infoSection}>
+            <View style={styles.featureGroup}>
+              <Text style={styles.featureGroupTitle}>📋 Gerenciamento de Tarefas</Text>
+
+              <View style={styles.subFeature}>
+                <Ionicons name="add-circle" size={16} color="#007AFF" style={styles.subIcon} />
+                <Text style={styles.subFeatureText}>
+                  <Text style={styles.subFeatureTitle}>Criar Tarefa: </Text>
+                  Toque no botão "+" para adicionar título, descrição, categoria, data/hora e repetição
+                </Text>
+              </View>
+
+              <View style={styles.subFeature}>
+                <Ionicons name="pencil" size={16} color="#28a745" style={styles.subIcon} />
+                <Text style={styles.subFeatureText}>
+                  <Text style={styles.subFeatureTitle}>Editar: </Text>
+                  Pressione e segure uma tarefa para editar ou excluir
+                </Text>
+              </View>
+
+              <View style={styles.subFeature}>
+                <Ionicons name="checkmark-circle" size={16} color="#20c997" style={styles.subIcon} />
+                <Text style={styles.subFeatureText}>
+                  <Text style={styles.subFeatureTitle}>Concluir: </Text>
+                  Marque o checkbox para completar. Crianças precisam de aprovação
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.featureGroup}>
+              <Text style={styles.featureGroupTitle}>👥 Gerenciamento Familiar</Text>
+
+              <View style={styles.subFeature}>
+                <Ionicons name="person-add" size={16} color="#fd7e14" style={styles.subIcon} />
+                <Text style={styles.subFeatureText}>
+                  <Text style={styles.subFeatureTitle}>Criar Família: </Text>
+                  Como administrador, crie uma nova família com chave única
+                </Text>
+              </View>
+
+              <View style={styles.subFeature}>
+                <Ionicons name="enter" size={16} color="#6f42c1" style={styles.subIcon} />
+                <Text style={styles.subFeatureText}>
+                  <Text style={styles.subFeatureTitle}>Entrar na Família: </Text>
+                  Use a chave de 8 caracteres para se juntar a uma família existente
+                </Text>
+              </View>
+
+              <View style={styles.subFeature}>
+                <Ionicons name="settings" size={16} color="#dc3545" style={styles.subIcon} />
+                <Text style={styles.subFeatureText}>
+                  <Text style={styles.subFeatureTitle}>Gerenciar Membros: </Text>
+                  Administradores podem remover membros ou alterar permissões
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.featureGroup}>
+              <Text style={styles.featureGroupTitle}>🔔 Sistema de Notificações</Text>
+
+              <View style={styles.subFeature}>
+                <Ionicons name="alarm" size={16} color="#e83e8c" style={styles.subIcon} />
+                <Text style={styles.subFeatureText}>
+                  <Text style={styles.subFeatureTitle}>Lembretes: </Text>
+                  Notificações automáticas antes do vencimento das tarefas
+                </Text>
+              </View>
+
+              <View style={styles.subFeature}>
+                <Ionicons name="warning" size={16} color="#ffc107" style={styles.subIcon} />
+                <Text style={styles.subFeatureText}>
+                  <Text style={styles.subFeatureTitle}>Tarefas Atrasadas: </Text>
+                  Alertas especiais para tarefas que passaram do prazo
+                </Text>
+              </View>
+
+              <View style={styles.subFeature}>
+                <Ionicons name="shield-checkmark" size={16} color="#17a2b8" style={styles.subIcon} />
+                <Text style={styles.subFeatureText}>
+                  <Text style={styles.subFeatureTitle}>Aprovações Pendentes: </Text>
+                  Notificações para administradores sobre tarefas aguardando validação
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.featureGroup}>
+              <Text style={styles.featureGroupTitle}>📊 Acompanhamento e Relatórios</Text>
+
+              <View style={styles.subFeature}>
+                <Ionicons name="bar-chart" size={16} color="#007AFF" style={styles.subIcon} />
+                <Text style={styles.subFeatureText}>
+                  <Text style={styles.subFeatureTitle}>Barra de Progresso: </Text>
+                  Visualize o progresso geral com estatísticas visuais intuitivas
+                </Text>
+              </View>
+
+              <View style={styles.subFeature}>
+                <Ionicons name="filter" size={16} color="#28a745" style={styles.subIcon} />
+                <Text style={styles.subFeatureText}>
+                  <Text style={styles.subFeatureTitle}>Filtros Avançados: </Text>
+                  Filtre por status, categoria, membro ou data para focar no que importa
+                </Text>
+              </View>
+
+              <View style={styles.subFeature}>
+                <Ionicons name="document-text" size={16} color="#fd7e14" style={styles.subIcon} />
+                <Text style={styles.subFeatureText}>
+                  <Text style={styles.subFeatureTitle}>Histórico Detalhado: </Text>
+                  Veja quem fez o quê e quando, com registros completos de todas as atividades
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>�🚀 Como Começar</Text>
           <View style={styles.infoSection}>
             <View style={styles.stepItem}>
               <View style={styles.stepNumber}>
@@ -144,17 +293,30 @@ const InformacoesScreen = ({ navigation }) => {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>ℹ️ Sobre o App</Text>
+          <Text style={styles.sectionTitle}>ℹ️ Sobre o Agenda Familiar</Text>
           <View style={styles.aboutSection}>
             <Text style={styles.aboutText}>
-              <Text style={styles.appName}>Agenda Familiar</Text> foi desenvolvida para ajudar famílias a se organizarem melhor, 
-              compartilhando tarefas e responsabilidades de forma colaborativa.
+              <Text style={styles.appName}>Agenda Familiar</Text> é um aplicativo completo para organização familiar que transforma a gestão de tarefas domésticas em uma experiência colaborativa e divertida.
             </Text>
+
             <Text style={styles.aboutText}>
-              Desenvolvido com React Native e Expo, o app funciona em iOS, Android e Web, 
-              mantendo todos sincronizados com as mesmas informações.
+              Desenvolvido com as tecnologias mais modernas - React Native e Expo - o app funciona perfeitamente em iOS, Android e Web, mantendo todos os membros da família sincronizados em tempo real através do Firebase.
             </Text>
-            <Text style={styles.versionText}>Versão 1.0 - Setembro 2025</Text>
+
+            <Text style={styles.aboutText}>
+              Seja para organizar tarefas diárias como "arrumar o quarto" ou "fazer o dever de casa", planejar eventos especiais da família, ou simplesmente manter todos na mesma página, o Agenda Familiar oferece todas as ferramentas necessárias para uma casa mais organizada e harmoniosa.
+            </Text>
+
+            <View style={styles.techStack}>
+              <Text style={styles.techTitle}>🛠️ Tecnologias Utilizadas:</Text>
+              <Text style={styles.techItem}>• React Native & Expo (Interface multiplataforma)</Text>
+              <Text style={styles.techItem}>• Firebase (Autenticação e banco de dados em tempo real)</Text>
+              <Text style={styles.techItem}>• AsyncStorage (Armazenamento local offline)</Text>
+              <Text style={styles.techItem}>• Expo Notifications (Sistema de notificações)</Text>
+              <Text style={styles.techItem}>• Google OAuth (Login seguro)</Text>
+            </View>
+
+            <Text style={styles.versionText}>Versão 1.0 - Outubro 2025</Text>
           </View>
         </View>
       </ScrollView>
@@ -312,6 +474,57 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 10,
     fontStyle: 'italic',
+  },
+  featureGroup: {
+    marginBottom: 20,
+  },
+  featureGroupTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#007AFF',
+    marginBottom: 10,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  subFeature: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 8,
+    marginLeft: 10,
+  },
+  subIcon: {
+    marginRight: 8,
+    marginTop: 2,
+  },
+  subFeatureText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#555',
+    lineHeight: 18,
+  },
+  subFeatureTitle: {
+    fontWeight: '600',
+    color: '#333',
+  },
+  techStack: {
+    marginTop: 15,
+    padding: 15,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: '#007AFF',
+  },
+  techTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#007AFF',
+    marginBottom: 8,
+  },
+  techItem: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 4,
+    lineHeight: 16,
   },
 });
 
