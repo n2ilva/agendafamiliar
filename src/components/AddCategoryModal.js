@@ -90,7 +90,13 @@ export default function AddCategoryModal({ visible, onClose, onSave }) {
           {/* Seleção de ícone */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Escolher Ícone</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.iconContainer}>
+            <Text style={styles.sectionSubtitle}>Arraste para ver mais ícones →</Text>
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={true} 
+              style={styles.iconScrollContainer}
+              contentContainerStyle={styles.iconContainer}
+            >
               {AVAILABLE_ICONS.map(iconName => (
                 <TouchableOpacity
                   key={iconName}
@@ -185,6 +191,12 @@ const styles = StyleSheet.create({
     color: '#333',
     marginBottom: 12,
   },
+  sectionSubtitle: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 8,
+    fontStyle: 'italic',
+  },
   categoryPreview: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -209,8 +221,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     backgroundColor: '#fff',
   },
+  iconScrollContainer: {
+    maxHeight: 60,
+  },
   iconContainer: {
     flexDirection: 'row',
+    paddingVertical: 8,
   },
   iconOption: {
     width: 48,
