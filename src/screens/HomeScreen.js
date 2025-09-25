@@ -206,9 +206,17 @@ export default function HomeScreen({ route, navigation }) {
     return null; // Sem destaque quando filtro é "todos"
   };
 
+  // Função para obter a cor da categoria de uma tarefa específica
+  const getTaskCategoryColor = (task) => {
+    const category = getCategoryById(task.category);
+    return category ? category.color : null;
+  };
+
   // Função para determinar se uma tarefa deve ser destacada
   const shouldHighlightTask = (task) => {
-    if (activeCategoryFilter === 'todos') return false;
+    if (activeCategoryFilter === 'todos') {
+      return true; // Sempre destacar quando filtro é "todos" para mostrar cores individuais
+    }
     return task.category === activeCategoryFilter;
   };
   const scheduleNotificationsForTasks = async (taskList) => {
@@ -777,13 +785,13 @@ export default function HomeScreen({ route, navigation }) {
         <View style={styles.taskList}>
           {filteredTasks.length > 0 ? (
             filteredTasks.map(task => (
-              <TaskItem 
-                key={task.id} 
-                task={task} 
+              <TaskItem
+                key={task.id}
+                task={task}
                 onEdit={() => handleEditTask(task)}
                 onDelete={() => handleDeleteTask(task.id)}
                 onConclude={() => handleConcludeTask(task)}
-                highlightColor={shouldHighlightTask(task) ? getActiveFilterColor() : null}
+                highlightColor={shouldHighlightTask(task) ? (activeCategoryFilter === 'todos' ? getTaskCategoryColor(task) : getActiveFilterColor()) : null}
               />
             ))
           ) : (
