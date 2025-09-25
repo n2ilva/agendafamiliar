@@ -12,7 +12,7 @@ import { useAutoSync } from '../hooks/useAutoSync';
 import { saveData, loadData, saveFamilyTasks, loadFamilyTasks, saveFamilyHistory, loadFamilyHistory } from '../services/storage';
 import { useAuth } from '../contexts/AuthContext';
 import { USER_TYPES, TASK_STATUS } from '../constants/userTypes';
-import { DEFAULT_CATEGORIES, getCategoryByName } from '../constants/categories';
+import { DEFAULT_CATEGORIES, getCategoryById } from '../constants/categories';
 import { scheduleTaskDueNotification, scheduleTaskReminderNotification, cancelAllNotifications, requestNotificationPermission } from '../services/notifications';
 
 export default function HomeScreen({ route, navigation }) {
@@ -197,7 +197,20 @@ export default function HomeScreen({ route, navigation }) {
     });
   };
 
-  // Função para agendar notificações de tarefas pendentes
+  // Função para obter a cor do filtro ativo
+  const getActiveFilterColor = () => {
+    if (activeCategoryFilter !== 'todos') {
+      const category = getCategoryById(activeCategoryFilter);
+      return category ? category.color : null;
+    }
+    return null; // Sem destaque quando filtro é "todos"
+  };
+
+  // Função para determinar se uma tarefa deve ser destacada
+  const shouldHighlightTask = (task) => {
+    if (activeCategoryFilter === 'todos') return false;
+    return task.category === activeCategoryFilter;
+  };
   const scheduleNotificationsForTasks = async (taskList) => {
     try {
       // Cancela todas as notificações existentes primeiro
@@ -770,6 +783,7 @@ export default function HomeScreen({ route, navigation }) {
                 onEdit={() => handleEditTask(task)}
                 onDelete={() => handleDeleteTask(task.id)}
                 onConclude={() => handleConcludeTask(task)}
+                highlightColor={shouldHighlightTask(task) ? getActiveFilterColor() : null}
               />
             ))
           ) : (

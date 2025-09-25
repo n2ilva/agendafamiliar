@@ -4,10 +4,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { formatDateTime } from '../utils/dateUtils';
 import { getCategoryById } from '../constants/categories';
 
-export default function TaskItem({ task, onEdit, onDelete, onConclude }) {
+export default function TaskItem({ task, onEdit, onDelete, onConclude, highlightColor }) {
   const category = getCategoryById(task.category);
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, highlightColor && { shadowColor: highlightColor, borderColor: highlightColor, borderWidth: 2 }]}>
       <View style={styles.cardHeader}>
         <Text style={styles.title}>{task.title}</Text>
         {category && (
