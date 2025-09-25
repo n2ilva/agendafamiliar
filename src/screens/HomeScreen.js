@@ -224,6 +224,44 @@ export default function HomeScreen({ route, navigation }) {
   const handleClearFilters = () => {
     setActiveCategoryFilter('todos');
   };
+
+  // Função para excluir uma categoria
+  const handleDeleteCategory = (categoryId) => {
+    // Não permitir excluir a categoria padrão "Todos"
+    if (categoryId === 'todos') return;
+    
+    Alert.alert(
+      "Excluir categoria",
+      "Tem certeza que deseja excluir esta categoria? Todas as tarefas desta categoria serão movidas para 'Todos'.",
+      [
+        { text: "Cancelar", style: "cancel" },
+        { 
+          text: "Excluir", 
+          style: "destructive",
+          onPress: () => {
+            // Mover tarefas desta categoria para 'todos'
+            const updatedTasks = tasks.map(task => 
+              task.category === categoryId ? { ...task, category: 'todos' } : task
+            );
+            setTasks(updatedTasks);
+            
+            // Remover categoria da lista
+            const updatedCategories = categories.filter(cat => cat.id !== categoryId);
+            setCategories(updatedCategories);
+            
+            // Se a categoria ativa foi excluída, voltar para 'todos'
+            if (activeCategoryFilter === categoryId) {
+              setActiveCategoryFilter('todos');
+            }
+            
+            // Salvar mudanças
+            saveData({ tasks: updatedTasks, history });
+            saveFamilyTasks(updatedTasks);
+          }
+        }
+      ]
+    );
+  };
   const scheduleNotificationsForTasks = async (taskList) => {
     try {
       // Cancela todas as notificações existentes primeiro
@@ -760,6 +798,8 @@ export default function HomeScreen({ route, navigation }) {
                 { backgroundColor: activeCategoryFilter === category.id ? category.color : '#e9ecef' }
               ]}
               onPress={() => setActiveCategoryFilter(category.id)}
+              onLongPress={() => handleDeleteCategory(category.id)}
+              delayLongPress={500}
             >
               <Ionicons 
                 name={category.icon} 
