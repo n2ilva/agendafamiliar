@@ -6,13 +6,45 @@ import { getCategoryById } from '../constants/categories';
 
 export default function TaskItem({ task, onEdit, onDelete, onConclude, highlightColor }) {
   const category = getCategoryById(task.category);
+
+  // Verificar se a tarefa está vencida
+  const isOverdue = task.dueDate && new Date(task.dueDate) <= new Date();
+
+  // Função para formatar informação de repetição
+  const getRepeatInfo = () => {
+    if (!task.repeat || task.repeat === 'never') {
+      return 'Não repete';
+    }
+    
+    if (task.repeat === 'daily') {
+      return 'Todos os dias';
+    }
+    
+    if (task.repeat === 'weekly') {
+      if (task.repeatDays && task.repeatDays.length > 0) {
+        const dayNames = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+        const selectedDays = task.repeatDays.map(day => dayNames[day]).join(', ');
+        return `Semanal: ${selectedDays}`;
+      }
+      return 'Semanal';
+    }
+    
+    return 'Não repete';
+  };
+
   return (
-    <View style={[styles.card, highlightColor && { shadowColor: highlightColor, borderColor: highlightColor, borderWidth: 2 }]}>
+    <View style={[styles.card, highlightColor && { shadowColor: highlightColor, borderColor: highlightColor, borderWidth: 2 }, isOverdue && styles.overdueCard]}>
       <View style={styles.cardHeader}>
         <Text style={styles.title}>{task.title}</Text>
         {category && (
           <View style={[styles.categoryPill, { backgroundColor: category.color }]}>
             <Text style={[styles.categoryPillText, { color: category.textColor }]}>{category.name}</Text>
+          </View>
+        )}
+        {isOverdue && (
+          <View style={styles.overdueBadge}>
+            <Ionicons name="alert-circle" size={16} color="#FF3B30" />
+            <Text style={styles.overdueBadgeText}>VENCIDA</Text>
           </View>
         )}
       </View>
@@ -26,6 +58,10 @@ export default function TaskItem({ task, onEdit, onDelete, onConclude, highlight
           <Ionicons name="time-outline" size={14} color="#666" />
           <Text style={styles.dateText}>{formatDateTime(task.dueDate)}</Text>
         </View>
+      </View>
+      <View style={styles.repeatInfo}>
+        <Ionicons name="repeat-outline" size={14} color="#666" />
+        <Text style={styles.repeatText}>{getRepeatInfo()}</Text>
       </View>
       <View style={styles.actions}>
         <TouchableOpacity style={[styles.actionButton, styles.concludeButton]} onPress={onConclude}>
@@ -150,5 +186,37 @@ const styles = StyleSheet.create({
   categoryPillText: {
     fontSize: 12,
     fontWeight: '600',
+  },
+  repeatInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  repeatText: {
+    marginLeft: 5,
+    fontSize: 12,
+    color: '#666',
+    fontStyle: 'italic',
+  },
+  overdueCard: {
+    borderColor: '#FF3B30',
+    borderWidth: 1,
+  },
+  overdueBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF5F5',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#FF3B30',
+    marginLeft: 8,
+  },
+  overdueBadgeText: {
+    color: '#FF3B30',
+    fontSize: 10,
+    fontWeight: 'bold',
+    marginLeft: 4,
   },
 });

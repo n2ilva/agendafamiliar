@@ -13,7 +13,7 @@ import { saveData, loadData, saveFamilyTasks, loadFamilyTasks, saveFamilyHistory
 import { useAuth } from '../contexts/AuthContext';
 import { USER_TYPES, TASK_STATUS } from '../constants/userTypes';
 import { DEFAULT_CATEGORIES, getCategoryById } from '../constants/categories';
-import { scheduleTaskDueNotification, scheduleTaskReminderNotification, cancelAllNotifications, requestNotificationPermission } from '../services/notifications';
+import { scheduleTaskDueNotification, scheduleTaskReminderNotification, cancelAllNotifications, requestNotificationPermission, scheduleTaskOverdueNotification } from '../services/notifications';
 
 export default function HomeScreen({ route, navigation }) {
   const { user: routeUser, userType: routeUserType } = route.params || {};
@@ -165,6 +165,21 @@ export default function HomeScreen({ route, navigation }) {
     family
   );
 
+  // Verificar tarefas vencidas periodicamente e agendar notificações
+  useEffect(() => {
+    const checkOverdueTasks = () => {
+      scheduleOverdueNotifications();
+    };
+
+    // Verifica imediatamente
+    checkOverdueTasks();
+
+    // Verifica a cada 5 minutos
+    const interval = setInterval(checkOverdueTasks, 5 * 60 * 1000);
+
+    return () => clearInterval(interval);
+  }, [tasks]);
+
   // Função auxiliar para exibir o tipo de usuário
   const getUserTypeLabel = (type) => {
     switch(type) {
@@ -220,50 +235,26 @@ export default function HomeScreen({ route, navigation }) {
     return task.category === activeCategoryFilter;
   };
 
-  // Função para excluir uma categoria
-  const handleDeleteCategory = (categoryId) => {
-    // Não permitir excluir a categoria padrão "Todos"
-    if (categoryId === 'todos') return;
-
-    const confirmDelete = () => {
-      // Mover tarefas desta categoria para 'todos'
-      const updatedTasks = tasks.map(task =>
-        task.category === categoryId ? { ...task, category: 'todos' } : task
+  // Função para agendar notificações de vencimento
+  const scheduleOverdueNotifications = async () => {
+    try {
+      const now = new Date();
+      
+      // Filtra tarefas pendentes que estão vencidas
+      const overdueTasks = tasks.filter(task => 
+        task.status === TASK_STATUS.PENDING && 
+        task.dueDate && 
+        new Date(task.dueDate) <= now
       );
-      setTasks(updatedTasks);
 
-      // Remover categoria da lista
-      const updatedCategories = categories.filter(cat => cat.id !== categoryId);
-      setCategories(updatedCategories);
-
-      // Se a categoria ativa foi excluída, voltar para 'todos'
-      if (activeCategoryFilter === categoryId) {
-        setActiveCategoryFilter('todos');
+      // Agenda notificações de vencimento para tarefas que ainda não foram notificadas
+      for (const task of overdueTasks) {
+        // Verifica se já foi notificada (pode adicionar uma propriedade notifiedOverdue se necessário)
+        // Por enquanto, agenda uma notificação imediata para tarefas vencidas
+        await scheduleTaskOverdueNotification(task);
       }
-
-      // Salvar mudanças
-      saveData({ tasks: updatedTasks, history });
-      saveFamilyTasks(updatedTasks);
-    };
-
-    // Usar confirmação apropriada para cada plataforma
-    if (Platform.OS === 'web') {
-      if (window.confirm("Tem certeza que deseja excluir esta categoria? Todas as tarefas desta categoria serão movidas para 'Todos'.")) {
-        confirmDelete();
-      }
-    } else {
-      Alert.alert(
-        "Excluir categoria",
-        "Tem certeza que deseja excluir esta categoria? Todas as tarefas desta categoria serão movidas para 'Todos'.",
-        [
-          { text: "Cancelar", style: "cancel" },
-          {
-            text: "Excluir",
-            style: "destructive",
-            onPress: confirmDelete
-          }
-        ]
-      );
+    } catch (error) {
+      console.warn('Erro ao agendar notificações de vencimento:', error);
     }
   };
   const scheduleNotificationsForTasks = async (taskList) => {
@@ -559,20 +550,17 @@ export default function HomeScreen({ route, navigation }) {
     if (!task.dueDate) return false; // Ignora tarefas sem data
 
     const taskDate = new Date(task.dueDate);
-    const today = new Date();
+    const now = new Date();
 
-    // Zera as horas para comparar apenas as datas
-    taskDate.setHours(0, 0, 0, 0);
-    today.setHours(0, 0, 0, 0);
-
-    const isToday = taskDate.getTime() === today.getTime();
-    const isUpcoming = taskDate.getTime() > today.getTime();
+    const isToday = taskDate.toDateString() === now.toDateString();
+    const isUpcoming = taskDate > now;
+    const isOverdue = taskDate <= now; // Tarefa vencida se data/hora é menor ou igual ao agora
 
     const dateFilterMatch = 
-      (activeDateFilter === 'hoje' && isToday) || 
+      (activeDateFilter === 'hoje' && (isToday || (activeDateFilter === 'hoje' && isOverdue))) || 
       (activeDateFilter === 'próximas' && isUpcoming);
       
-  const categoryFilterMatch = activeCategoryFilter === 'todos' ? true : task.category === activeCategoryFilter;
+    const categoryFilterMatch = activeCategoryFilter === 'todos' ? true : task.category === activeCategoryFilter;
 
     return dateFilterMatch && categoryFilterMatch;
   });

@@ -82,6 +82,21 @@ export async function scheduleTaskReminderNotification(task, secondsBefore = 360
   });
 }
 
-export async function cancelAllNotifications() {
-  await Notifications.cancelAllScheduledNotificationsAsync();
+export async function scheduleTaskOverdueNotification(task) {
+  if (!task?.title) return;
+
+  // Agenda notificação imediata para tarefa vencida
+  await Notifications.scheduleNotificationAsync({
+    content: {
+      title: '🚨 Tarefa Vencida!',
+      body: `"${task.title}" está vencida! ${task.description ? task.description.substring(0, 50) + '...' : ''}`,
+      sound: true,
+      priority: Notifications.AndroidNotificationPriority.HIGH,
+      data: {
+        taskId: task.id,
+        type: 'task_overdue'
+      }
+    },
+    trigger: null, // Notificação imediata
+  });
 }
