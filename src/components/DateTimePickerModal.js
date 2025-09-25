@@ -95,6 +95,24 @@ const DateTimePickerModal = ({ visible, onClose, onSave, initialDate, initialTim
     return times;
   };
 
+  // Função para gerar horas (0-23)
+  const generateHours = () => {
+    const hours = [];
+    for (let i = 0; i < 24; i++) {
+      hours.push(i);
+    }
+    return hours;
+  };
+
+  // Função para gerar minutos (0-59)
+  const generateMinutes = () => {
+    const minutes = [];
+    for (let i = 0; i < 60; i++) {
+      minutes.push(i);
+    }
+    return minutes;
+  };
+
   const handleSave = () => {
     // Combinar data e hora
     const combined = new Date(selectedDate);
@@ -159,31 +177,90 @@ const DateTimePickerModal = ({ visible, onClose, onSave, initialDate, initialTim
   const renderTimePicker = () => (
     <View style={styles.timeContainer}>
       <Text style={styles.timeLabel}>Selecione o horário:</Text>
-      <ScrollView style={styles.timeScrollView} showsVerticalScrollIndicator={false}>
-        {generateTimeOptions().map((time, index) => (
-          <TouchableOpacity
-            key={index}
-            style={[
-              styles.timeOption,
-              selectedTime.getHours() === time.value.getHours() &&
-              selectedTime.getMinutes() === time.value.getMinutes() &&
-              styles.timeOptionSelected,
-            ]}
-            onPress={() => setSelectedTime(time.value)}
+      
+      {/* Seletor de Hora e Minuto */}
+      <View style={styles.timeSelectorContainer}>
+        {/* Seletor de Hora */}
+        <View style={styles.timeColumn}>
+          <Text style={styles.timeColumnLabel}>Hora</Text>
+          <ScrollView 
+            style={styles.timeScrollView} 
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.timeScrollContent}
           >
-            <Text
-              style={[
-                styles.timeOptionText,
-                selectedTime.getHours() === time.value.getHours() &&
-                selectedTime.getMinutes() === time.value.getMinutes() &&
-                styles.timeOptionTextSelected,
-              ]}
-            >
-              {time.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+            {generateHours().map((hour) => (
+              <TouchableOpacity
+                key={hour}
+                style={[
+                  styles.timeOption,
+                  selectedTime.getHours() === hour && styles.timeOptionSelected,
+                ]}
+                onPress={() => {
+                  const newTime = new Date(selectedTime);
+                  newTime.setHours(hour);
+                  setSelectedTime(newTime);
+                }}
+              >
+                <Text
+                  style={[
+                    styles.timeOptionText,
+                    selectedTime.getHours() === hour && styles.timeOptionTextSelected,
+                  ]}
+                >
+                  {hour.toString().padStart(2, '0')}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+
+        <View style={styles.timeSeparator}>
+          <Text style={styles.timeSeparatorText}>:</Text>
+        </View>
+
+        {/* Seletor de Minuto */}
+        <View style={styles.timeColumn}>
+          <Text style={styles.timeColumnLabel}>Minuto</Text>
+          <ScrollView 
+            style={styles.timeScrollView} 
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.timeScrollContent}
+          >
+            {generateMinutes().map((minute) => (
+              <TouchableOpacity
+                key={minute}
+                style={[
+                  styles.timeOption,
+                  selectedTime.getMinutes() === minute && styles.timeOptionSelected,
+                ]}
+                onPress={() => {
+                  const newTime = new Date(selectedTime);
+                  newTime.setMinutes(minute);
+                  setSelectedTime(newTime);
+                }}
+              >
+                <Text
+                  style={[
+                    styles.timeOptionText,
+                    selectedTime.getMinutes() === minute && styles.timeOptionTextSelected,
+                  ]}
+                >
+                  {minute.toString().padStart(2, '0')}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      </View>
+
+      {/* Preview do horário selecionado */}
+      <View style={styles.timePreview}>
+        <Text style={styles.timePreviewLabel}>Horário selecionado:</Text>
+        <Text style={styles.timePreviewValue}>
+          {selectedTime.getHours().toString().padStart(2, '0')}:
+          {selectedTime.getMinutes().toString().padStart(2, '0')}
+        </Text>
+      </View>
     </View>
   );
 
@@ -359,7 +436,7 @@ const styles = StyleSheet.create({
   },
   timeContainer: {
     padding: 20,
-    maxHeight: 300,
+    maxHeight: 400,
   },
   timeLabel: {
     fontSize: 16,
@@ -367,14 +444,46 @@ const styles = StyleSheet.create({
     marginBottom: 15,
     color: '#333',
   },
+  timeSelectorContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  timeColumn: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  timeColumnLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#666',
+    marginBottom: 10,
+  },
   timeScrollView: {
-    maxHeight: 200,
+    height: 150,
+    width: 60,
+  },
+  timeScrollContent: {
+    alignItems: 'center',
+  },
+  timeSeparator: {
+    marginHorizontal: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  timeSeparatorText: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#333',
   },
   timeOption: {
-    paddingVertical: 12,
-    paddingHorizontal: 20,
+    width: 50,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
     borderRadius: 8,
-    marginBottom: 5,
+    marginVertical: 2,
   },
   timeOptionSelected: {
     backgroundColor: '#007AFF',
@@ -382,11 +491,27 @@ const styles = StyleSheet.create({
   timeOptionText: {
     fontSize: 16,
     color: '#333',
-    textAlign: 'center',
+    fontWeight: '500',
   },
   timeOptionTextSelected: {
     color: 'white',
     fontWeight: '600',
+  },
+  timePreview: {
+    alignItems: 'center',
+    paddingTop: 15,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+  },
+  timePreviewLabel: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 5,
+  },
+  timePreviewValue: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#007AFF',
   },
 });
 
