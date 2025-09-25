@@ -728,16 +728,34 @@ export default function HomeScreen({ route, navigation }) {
 
       {/* Progress Bar */}
       <View style={styles.progressContainer}>
-        <View style={styles.progressInfo}>
-          <Text style={styles.progressText}>
-            {progressData.completed}/{progressData.total} concluídas
+        <View style={styles.progressHeader}>
+          <View style={styles.progressStats}>
+            <View style={styles.progressStat}>
+              <Ionicons name="checkmark-circle" size={20} color="#34C759" />
+              <Text style={styles.progressStatText}>
+                {progressData.completed} concluídas
+              </Text>
+            </View>
+            <View style={styles.progressStat}>
+              <Ionicons name="time-outline" size={20} color="#007AFF" />
+              <Text style={styles.progressStatText}>
+                {progressData.pending} pendentes
+              </Text>
+            </View>
+            {progressData.awaitingApproval > 0 && (
+              <View style={styles.progressStat}>
+                <Ionicons name="hourglass-outline" size={20} color="#FF9500" />
+                <Text style={styles.progressStatText}>
+                  {progressData.awaitingApproval} aguardando
+                </Text>
+              </View>
+            )}
+          </View>
+          <Text style={styles.progressPercentage}>
+            {progressData.total > 0 ? Math.round(progressData.completedPercentage) : 0}%
           </Text>
-          {progressData.awaitingApproval > 0 && (
-            <Text style={styles.awaitingText}>
-              {progressData.awaitingApproval} aguardando
-            </Text>
-          )}
         </View>
+        
         <View style={styles.progressBarContainer}>
           <View style={styles.progressBarBackground}>
             <View 
@@ -757,6 +775,11 @@ export default function HomeScreen({ route, navigation }) {
                 ]} 
               />
             )}
+          </View>
+          <View style={styles.progressLabels}>
+            <Text style={styles.progressLabel}>0%</Text>
+            <Text style={styles.progressLabel}>50%</Text>
+            <Text style={styles.progressLabel}>100%</Text>
           </View>
         </View>
       </View>
@@ -1135,51 +1158,72 @@ const styles = StyleSheet.create({
     shadowRadius: 3.84,
   },
   progressContainer: {
-    backgroundColor: '#fff',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+    marginHorizontal: 20,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  progressInfo: {
+  progressHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 16,
   },
-  progressText: {
+  progressStats: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  progressStat: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  progressStatText: {
     fontSize: 14,
-    fontWeight: '500',
-    color: '#333',
+    fontWeight: '600',
+    color: '#333333',
   },
-  awaitingText: {
-    fontSize: 12,
-    color: '#FF9500',
-    fontWeight: '500',
+  progressPercentage: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#007AFF',
   },
   progressBarContainer: {
-    width: '100%',
+    gap: 8,
   },
   progressBarBackground: {
-    height: 4,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 2,
-    position: 'relative',
+    height: 12,
+    backgroundColor: '#F2F2F7',
+    borderRadius: 6,
     overflow: 'hidden',
+    position: 'relative',
   },
   progressBarFill: {
     height: '100%',
     backgroundColor: '#34C759',
-    borderRadius: 2,
-    position: 'absolute',
-    left: 0,
-    top: 0,
+    borderRadius: 6,
   },
   progressBarAwaiting: {
     height: '100%',
     backgroundColor: '#FF9500',
-    borderRadius: 2,
+    borderRadius: 6,
     position: 'absolute',
     top: 0,
+  },
+  progressLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 2,
+  },
+  progressLabel: {
+    fontSize: 12,
+    color: '#8E8E93',
+    fontWeight: '500',
   },
 });
