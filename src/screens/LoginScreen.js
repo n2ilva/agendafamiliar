@@ -58,13 +58,41 @@ export default function LoginScreen({ navigation }) {
     if (response?.type === 'success') {
       const { authentication } = response;
       console.log('Autenticação bem-sucedida!', authentication);
+
+      // Verificação adicional para modo web
+      if (Platform.OS === 'web' && authentication) {
+        console.log('Modo web: verificando propriedades da autenticação');
+        console.log('idToken presente:', !!authentication.idToken);
+        console.log('accessToken presente:', !!authentication.accessToken);
+      }
+
+      // Verificar se authentication existe e tem as propriedades necessárias
+      if (!authentication) {
+        console.error('Objeto authentication não foi fornecido');
+        setIsLoading(false);
+        Alert.alert(
+          'Erro na Autenticação',
+          'Não foi possível obter as credenciais de autenticação. Tente novamente.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+
       // Se recebemos um idToken (JWT) vamos decodificar e usar os dados
       // diretamente (contém email, name, picture). Caso contrário, usamos
       // o accessToken como fallback para buscar no endpoint do Google.
-      if (authentication?.idToken) {
+      if (authentication.idToken) {
         fetchUserInfo(authentication.idToken, authentication, /* isIdToken */ true);
-      } else {
+      } else if (authentication.accessToken) {
         fetchUserInfo(authentication.accessToken, authentication, /* isIdToken */ false);
+      } else {
+        console.error('Nem idToken nem accessToken foram fornecidos');
+        setIsLoading(false);
+        Alert.alert(
+          'Erro na Autenticação',
+          'Credenciais de autenticação incompletas. Tente novamente.',
+          [{ text: 'OK' }]
+        );
       }
     } else if (response?.type === 'error') {
       console.error('Erro na autenticação:', response.error);
@@ -217,6 +245,13 @@ export default function LoginScreen({ navigation }) {
 
     try {
       setIsLoading(true);
+
+      // Verificação adicional para modo web
+      if (Platform.OS === 'web') {
+        console.log('Modo web detectado - usando autenticação web');
+        // Adicionar aviso sobre possíveis limitações do navegador
+        console.warn('Nota: Alguns navegadores podem bloquear popups de autenticação devido a políticas de segurança');
+      }
 
       // Timeout de 30 segundos para o processo de autenticação
       const result = await withTimeout(promptAsync(), 30000);

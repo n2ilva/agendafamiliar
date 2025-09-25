@@ -13,6 +13,7 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
+      "bundleIdentifier": "com.n2ilva.agendafamiliar",
       "supportsTablet": true
     },
     "android": {
@@ -26,7 +27,17 @@
       "favicon": "./assets/fivecon.svg"
     },
     "plugins": [
-      "expo-notifications"
+      "expo-notifications",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "extraMavenRepos": [
+              "https://maven.google.com/"
+            ]
+          }
+        }
+      ]
     ],
     "extra": {
       "eas": {
