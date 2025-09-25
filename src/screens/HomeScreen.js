@@ -219,6 +219,11 @@ export default function HomeScreen({ route, navigation }) {
     }
     return task.category === activeCategoryFilter;
   };
+
+  // Função para limpar filtros
+  const handleClearFilters = () => {
+    setActiveCategoryFilter('todos');
+  };
   const scheduleNotificationsForTasks = async (taskList) => {
     try {
       // Cancela todas as notificações existentes primeiro
@@ -779,6 +784,15 @@ export default function HomeScreen({ route, navigation }) {
             <Ionicons name="add" size={16} color="#007AFF" />
             <Text style={[styles.categoryFilterText, { color: '#007AFF' }]}>Nova</Text>
           </TouchableOpacity>
+
+          {/* Botão para limpar filtros */}
+          <TouchableOpacity 
+            style={[styles.categoryFilterButton, styles.clearFilterButton]}
+            onPress={handleClearFilters}
+          >
+            <Ionicons name="close" size={16} color="#FF3B30" />
+            <Text style={[styles.categoryFilterText, { color: '#FF3B30' }]}>Limpar</Text>
+          </TouchableOpacity>
         </ScrollView>
 
         {/* Task List */}
@@ -1046,6 +1060,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#007AFF',
     borderStyle: 'dashed',
+    backgroundColor: 'transparent',
+  },
+  clearFilterButton: {
+    borderWidth: 1,
+    borderColor: '#FF3B30',
     backgroundColor: 'transparent',
   },
   activeCategoryFilter: {
