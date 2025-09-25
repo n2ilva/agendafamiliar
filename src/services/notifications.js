@@ -1,5 +1,4 @@
 import * as Notifications from 'expo-notifications';
-import * as Permissions from 'expo-permissions';
 import { Platform } from 'react-native';
 
 export async function requestNotificationPermission() {
@@ -14,29 +13,68 @@ export async function requestNotificationPermission() {
 
 export async function scheduleTaskDueNotification(task, secondsFromNow = 0) {
   if (!task?.title || !task?.dueDate) return;
+
+  const dueDate = new Date(task.dueDate);
+  if (isNaN(dueDate.getTime())) return; // Verifica se a data é válida
+
+  const triggerDate = new Date(dueDate.getTime() + secondsFromNow * 1000);
+  const now = new Date();
+
+  // Só agenda se o trigger for no futuro
+  if (triggerDate <= now) return;
+
   await Notifications.scheduleNotificationAsync({
     content: {
-      title: 'Tarefa vencida',
-      body: `A tarefa "${task.title}" venceu!`,
+      title: '⏰ Tarefa Vencida',
+      body: `"${task.title}" venceu hoje! ${task.description ? task.description.substring(0, 50) + '...' : ''}`,
       sound: true,
       priority: Notifications.AndroidNotificationPriority.HIGH,
+      data: {
+        taskId: task.id,
+        type: 'task_due'
+      }
     },
     trigger: {
-      date: new Date(new Date(task.dueDate).getTime() + secondsFromNow * 1000),
+      date: triggerDate,
     },
   });
 }
 
 export async function scheduleTaskReminderNotification(task, secondsBefore = 3600) {
   if (!task?.title || !task?.dueDate) return;
-  const triggerDate = new Date(new Date(task.dueDate).getTime() - secondsBefore * 1000);
-  if (triggerDate < new Date()) return; // Não agenda lembrete no passado
+
+  const dueDate = new Date(task.dueDate);
+  if (isNaN(dueDate.getTime())) return; // Verifica se a data é válida
+
+  const triggerDate = new Date(dueDate.getTime() - secondsBefore * 1000);
+  const now = new Date();
+
+  if (triggerDate <= now) return; // Não agenda lembrete no passado
+
+  // Determina a mensagem baseada no tempo antes do vencimento
+  let timeMessage = '';
+  if (secondsBefore === 3600) {
+    timeMessage = '1 hora';
+  } else if (secondsBefore === 86400) {
+    timeMessage = '24 horas';
+  } else if (secondsBefore === 604800) {
+    timeMessage = '1 semana';
+  } else {
+    const hours = secondsBefore / 3600;
+    timeMessage = `${hours} hora${hours > 1 ? 's' : ''}`;
+  }
+
   await Notifications.scheduleNotificationAsync({
     content: {
-      title: 'Lembrete de tarefa',
-      body: `A tarefa "${task.title}" vence em breve!`,
-      sound: false,
+      title: '⏰ Lembrete de Tarefa',
+      body: `"${task.title}" vence em ${timeMessage}! ${task.description ? task.description.substring(0, 50) + '...' : ''}`,
+      sound: true,
       priority: Notifications.AndroidNotificationPriority.DEFAULT,
+      data: {
+        taskId: task.id,
+        type: 'task_reminder',
+        secondsBefore
+      }
     },
     trigger: {
       date: triggerDate,

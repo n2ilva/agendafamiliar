@@ -13,6 +13,7 @@ import { saveData, loadData, saveFamilyTasks, loadFamilyTasks, saveFamilyHistory
 import { useAuth } from '../contexts/AuthContext';
 import { USER_TYPES, TASK_STATUS } from '../constants/userTypes';
 import { DEFAULT_CATEGORIES, getCategoryByName } from '../constants/categories';
+import { scheduleTaskDueNotification, scheduleTaskReminderNotification, cancelAllNotifications, requestNotificationPermission } from '../services/notifications';
 
 export default function HomeScreen({ route, navigation }) {
   const { user: routeUser, userType: routeUserType } = route.params || {};
@@ -26,6 +27,7 @@ export default function HomeScreen({ route, navigation }) {
     canUserEditTask, 
     isAdmin, 
     isDependente,
+    isConvidado,
     isFamilyMemberUser,
     isFamilyAdminUser 
   } = useAuth();
@@ -85,6 +87,8 @@ export default function HomeScreen({ route, navigation }) {
       if (loadedTasks.length > 0 || recentHistory.length > 0) {
         setTasks(loadedTasks);
         setHistory(recentHistory);
+        // Agenda notificações para as tarefas carregadas
+        await scheduleNotificationsForTasks(loadedTasks);
       } else {
         // Dados iniciais se não houver nada salvo
         const initialTasks = [
@@ -123,6 +127,8 @@ export default function HomeScreen({ route, navigation }) {
           },
         ];
         setTasks(initialTasks);
+        // Agenda notificações para as tarefas iniciais
+        await scheduleNotificationsForTasks(initialTasks);
       }
     };
     
@@ -191,6 +197,55 @@ export default function HomeScreen({ route, navigation }) {
     });
   };
 
+  // Função para agendar notificações de tarefas pendentes
+  const scheduleNotificationsForTasks = async (taskList) => {
+    try {
+      // Cancela todas as notificações existentes primeiro
+      await cancelAllNotifications();
+
+      // Filtra apenas tarefas pendentes com data de vencimento
+      const pendingTasks = taskList.filter(task =>
+        task.status === TASK_STATUS.PENDING && task.dueDate
+      );
+
+      console.log(`Agendando notificações para ${pendingTasks.length} tarefas pendentes`);
+
+      // Agenda notificações para cada tarefa pendente
+      for (const task of pendingTasks) {
+        const dueDate = new Date(task.dueDate);
+        const now = new Date();
+
+        // Só agenda se a data de vencimento for no futuro
+        if (dueDate > now) {
+          // Agenda notificação de vencimento
+          await scheduleTaskDueNotification(task);
+
+          // Agenda lembrete 1 hora antes (se for mais de 1 hora no futuro)
+          const oneHourBefore = new Date(dueDate.getTime() - 60 * 60 * 1000);
+          if (oneHourBefore > now) {
+            await scheduleTaskReminderNotification(task, 3600); // 1 hora antes
+          }
+
+          // Agenda lembrete 24 horas antes (se for mais de 24 horas no futuro)
+          const oneDayBefore = new Date(dueDate.getTime() - 24 * 60 * 60 * 1000);
+          if (oneDayBefore > now) {
+            await scheduleTaskReminderNotification(task, 86400); // 24 horas antes
+          }
+
+          // Agenda lembrete 1 semana antes (se for mais de 1 semana no futuro)
+          const oneWeekBefore = new Date(dueDate.getTime() - 7 * 24 * 60 * 60 * 1000);
+          if (oneWeekBefore > now) {
+            await scheduleTaskReminderNotification(task, 604800); // 1 semana antes
+          }
+        }
+      }
+
+      console.log('Notificações agendadas com sucesso');
+    } catch (error) {
+      console.warn('Erro ao agendar notificações:', error);
+    }
+  };
+
   const handleAddTask = () => {
     setSelectedTask(null);
     setModalVisible(true);
@@ -243,6 +298,13 @@ export default function HomeScreen({ route, navigation }) {
     } catch (error) {
       console.warn('Erro na sincronização após deletar tarefa:', error);
     }
+
+    // Reagenda notificações após deletar tarefa
+    try {
+      await scheduleNotificationsForTasks(newTasks);
+    } catch (error) {
+      console.warn('Erro ao reagendar notificações após deletar tarefa:', error);
+    }
   };
 
   const handleConcludeTask = async (task) => {
@@ -289,6 +351,13 @@ export default function HomeScreen({ route, navigation }) {
         await autoSync(localData, family);
       } catch (error) {
         console.warn('Erro na sincronização após concluir tarefa:', error);
+      }
+
+      // Reagenda notificações após concluir tarefa
+      try {
+        await scheduleNotificationsForTasks(newTasks);
+      } catch (error) {
+        console.warn('Erro ao reagendar notificações após concluir tarefa:', error);
       }
     } else {
       // Dependente precisa de aprovação
@@ -375,6 +444,13 @@ export default function HomeScreen({ route, navigation }) {
       await autoSync(localData, family);
     } catch (error) {
       console.warn('Erro na sincronização após salvar tarefa:', error);
+    }
+
+    // Reagenda notificações após salvar tarefa
+    try {
+      await scheduleNotificationsForTasks(typeof newTasks !== 'undefined' ? newTasks : tasks);
+    } catch (error) {
+      console.warn('Erro ao reagendar notificações após salvar tarefa:', error);
     }
   };
 
