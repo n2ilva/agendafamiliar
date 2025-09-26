@@ -56,12 +56,4 @@ cd android
 
 # 5. o APK será gerado em:
 # android/app/build/outputs/apk/debug/app-debug.apk
-```
 
-Observações:
-- Se o projeto usar apenas recursos managed do Expo, `expo prebuild` criará a pasta `android`.
-- Para `assembleRelease` você precisa configurar `signingConfig` com keystore.
-
-Se quiser, posso:
-- iniciar a build no EAS (preciso que você faça `eas login` no seu computador) ou
-- orientar passo a passo a configurar o ambiente local (JDK/SDK) e rodar `expo prebuild` e `./gradlew assembleDebug`.
