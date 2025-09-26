@@ -1,6 +1,8 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
+const ANDROID_CHANNEL_ID = 'default';
+
 export async function requestNotificationPermission() {
   const { status: existingStatus } = await Notifications.getPermissionsAsync();
   let finalStatus = existingStatus;
@@ -29,6 +31,8 @@ export async function scheduleTaskDueNotification(task, secondsFromNow = 0) {
       body: `"${task.title}" venceu hoje! ${task.description ? task.description.substring(0, 50) + '...' : ''}`,
       sound: true,
       priority: Notifications.AndroidNotificationPriority.HIGH,
+      // Define channelId para Android (garante comportamento consistente em Android 8+)
+      ...(Platform.OS === 'android' ? { channelId: ANDROID_CHANNEL_ID } : {}),
       data: {
         taskId: task.id,
         type: 'task_due'
@@ -70,6 +74,7 @@ export async function scheduleTaskReminderNotification(task, secondsBefore = 360
       body: `"${task.title}" vence em ${timeMessage}! ${task.description ? task.description.substring(0, 50) + '...' : ''}`,
       sound: true,
       priority: Notifications.AndroidNotificationPriority.DEFAULT,
+      ...(Platform.OS === 'android' ? { channelId: ANDROID_CHANNEL_ID } : {}),
       data: {
         taskId: task.id,
         type: 'task_reminder',
@@ -92,6 +97,7 @@ export async function scheduleTaskOverdueNotification(task) {
       body: `"${task.title}" está vencida! ${task.description ? task.description.substring(0, 50) + '...' : ''}`,
       sound: true,
       priority: Notifications.AndroidNotificationPriority.HIGH,
+      ...(Platform.OS === 'android' ? { channelId: ANDROID_CHANNEL_ID } : {}),
       data: {
         taskId: task.id,
         type: 'task_overdue'
@@ -99,4 +105,35 @@ export async function scheduleTaskOverdueNotification(task) {
     },
     trigger: null, // Notificação imediata
   });
+}
+
+// Cancela todas notificações agendadas e notificações exibidas
+export async function cancelAllNotifications() {
+  try {
+    // Cancela notificações agendadas
+    await Notifications.cancelAllScheduledNotificationsAsync();
+    // Remove notificações exibidas da bandeja
+    if (typeof Notifications.dismissAllNotificationsAsync === 'function') {
+      try { await Notifications.dismissAllNotificationsAsync(); } catch (e) { /* ignore */ }
+    }
+  } catch (error) {
+    console.warn('Erro ao cancelar notificações:', error);
+  }
+}
+
+// Cria canal padrão no Android para garantir prioridade/som
+export async function ensureAndroidChannelExists() {
+  if (Platform.OS !== 'android') return;
+  try {
+    // AndroidImportance está disponível em Notifications como enum/constantes
+    const importance = Notifications.AndroidImportance ? Notifications.AndroidImportance.HIGH : 4;
+    await Notifications.setNotificationChannelAsync(ANDROID_CHANNEL_ID, {
+      name: 'Padrão',
+      importance,
+      vibrationPattern: [0, 250, 250, 250],
+      sound: 'default'
+    });
+  } catch (error) {
+    console.warn('Erro ao criar canal de notificações Android:', error);
+  }
 }

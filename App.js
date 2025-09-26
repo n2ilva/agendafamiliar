@@ -5,6 +5,7 @@ import { AuthProvider } from './src/contexts/AuthContext';
 import AppNavigator from './src/navigation/AppNavigator';
 import { requestNotificationPermission } from './src/services/notifications';
 import * as Notifications from 'expo-notifications';
+import { ensureAndroidChannelExists } from './src/services/notifications';
 
 export default function App() {
   useEffect(() => {
@@ -17,6 +18,9 @@ export default function App() {
         } else {
           console.log('Permissões de notificação negadas');
         }
+
+        // Garante canal Android para notificações
+        try { await ensureAndroidChannelExists(); } catch (e) { console.warn('Erro ao garantir canal Android:', e); }
 
         // Configura o handler para notificações recebidas
         Notifications.setNotificationHandler({
