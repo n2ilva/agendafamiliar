@@ -198,11 +198,30 @@ export const AuthProvider = ({ children }) => {
   // Funções do sistema de família
   const createUserFamily = async () => {
     if (!user) throw new Error('Usuário não logado');
-    
+
     try {
       const newFamily = createFamily(user);
       await saveFamilyData(newFamily);
       setFamily(newFamily);
+
+      // Sincroniza a nova família com a nuvem se o usuário estiver logado no Firebase
+      try {
+        const fbUser = await syncService.ensureFirebaseUserAvailable();
+        if (fbUser) {
+          const currentData = await loadData();
+          await syncService.syncToCloud(user.id, {
+            user,
+            userType,
+            tasks: currentData.tasks || [],
+            history: currentData.history || []
+          }, newFamily);
+          console.log('Família sincronizada com a nuvem');
+        }
+      } catch (syncError) {
+        console.warn('Erro ao sincronizar família com a nuvem:', syncError);
+        // Não falha a criação da família se a sincronização der erro
+      }
+
       return newFamily;
     } catch (error) {
       console.error('Erro ao criar família:', error);

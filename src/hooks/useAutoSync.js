@@ -15,8 +15,8 @@ export const useAutoSync = () => {
       // Aguarda curto período para o Firebase atualizar seu estado de autenticação
       const fbUser = await syncService.ensureFirebaseUserAvailable(3000);
       if (!fbUser) {
-        console.warn('Aviso: Firebase não reportou usuário logado após aguardar. Iremos tentar sincronizar usando o user do contexto (fallback).');
-        // Mantemos comportamento pragmático: tentar sincronizar com base no contexto do app
+        console.log('Usuário não está logado no Firebase, pulando sincronização automática');
+        return; // Não tenta sincronizar se não estiver logado no Firebase
       }
 
       // Faz upload dos dados locais para a nuvem usando o serviço de sync diretamente

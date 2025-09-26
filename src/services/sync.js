@@ -274,15 +274,9 @@ class SyncService {
   // Método para sincronização automática (chamado após login)
   async autoSyncAfterLogin(userId, localData, familyData = null) {
     try {
-      const lastSync = await this.getLastSync();
-      const now = new Date();
-      const lastSyncDate = lastSync ? new Date(lastSync) : new Date(0);
-      const hoursSinceLastSync = (now - lastSyncDate) / (1000 * 60 * 60);
-
-      // Se não sincronizou nas últimas 24 horas, faz upload
-      if (hoursSinceLastSync > 24) {
-        await this.syncToCloud(userId, localData, familyData);
-      }
+      // Para usuários logando com Google, sempre faz upload para garantir
+      // que os dados sejam salvos na nuvem (especialmente na primeira vez)
+      await this.syncToCloud(userId, localData, familyData);
     } catch (error) {
       console.warn('Erro na sincronização automática:', error);
       // Não lança erro para não interromper o login
