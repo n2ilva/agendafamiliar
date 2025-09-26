@@ -21,25 +21,32 @@ Os **Redirect URIs** configurados no Google Cloud Console não correspondem aos 
 - Vá para **APIs e Serviços** > **Credenciais**
 - Clique no seu **OAuth 2.0 Client ID** (Web application)
 
-### 4. Adicione os Redirect URIs Corretos
+### 4. Configure CORRETAMENTE os URIs
 
+**IMPORTANTE:** Existem DUAS seções diferentes no Google Cloud Console:
+
+#### **A) Authorized JavaScript origins** (para web apps que rodam no navegador)
+- **NÃO** adicione nada aqui para apps Expo/React Native
+- Esta seção é para aplicações web que rodam diretamente no navegador
+
+#### **B) Authorized redirect URIs** (para OAuth redirects)
 Adicione estes URIs na seção **Authorized redirect URIs**:
 
-#### Para Android/iOS (Expo):
-`
+**Para Android/iOS (Expo):**
+```
 com.n2ilva.agendafamiliar:/oauth2redirect
-`
+```
 
-#### Para Web (Expo):
-`
+**Para Web (Expo):**
+```
 https://auth.expo.io/@n2ilva/agenda-familiar
-`
+```
 
-#### Para Desenvolvimento Local (opcional):
-`
+**Para Desenvolvimento Local (opcional):**
+```
 http://localhost:8081
 exp://localhost:8081
-`
+```
 
 ### 5. Verifique as Configurações
 Certifique-se de que:
@@ -65,3 +72,21 @@ Após configurar os URIs:
 
 ---
 **Após seguir estes passos, o erro de OAuth deve ser resolvido!**
+
+## 🚨 TROUBLESHOOTING - Problemas Comuns
+
+### **Erro: "Origem inválida: não é permitido que URIs de origem contenham um caminho"**
+- **Causa:** Você está tentando adicionar o URI na seção **"Authorized JavaScript origins"**
+- **Solução:** Adicione na seção **"Authorized redirect URIs"**, não em "origins"
+
+### **Erro: "redirect_uri_mismatch"**
+- **Causa:** O redirect URI não está autorizado
+- **Solução:** Verifique se adicionou exatamente: `com.n2ilva.agendafamiliar:/oauth2redirect`
+
+### **Erro: "invalid_client"**
+- **Causa:** Client ID incorreto ou não autorizado
+- **Solução:** Verifique se os Client IDs estão corretos no `src/config/googleAuth.js`
+
+### **App fecha imediatamente após login**
+- **Causa:** Problema com o scheme no app.json
+- **Solução:** Certifique-se de que o scheme é `com.n2ilva.agendafamiliar`
