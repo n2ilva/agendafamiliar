@@ -12,6 +12,16 @@ Como usar as Cloud Functions para enviar push notifications via Expo
  - No repositório raiz, execute `firebase init functions` e siga as instruções (escolha Node 18+)
  - Coloque o código adaptado em `functions/index.js` e rode `firebase deploy --only functions`
 
+Exemplo de uso com a fila `pushQueue`:
+ - Para enfileirar uma mensagem manualmente, adicione um documento em `pushQueue` com os campos `to`, `title`, `body`, `data`.
+ - A Cloud Function agendada `processPushQueue` vai processar mensagens pendentes a cada 5 minutos.
+
+Deploy rápido
+ - No root: `firebase init functions` (escolha Node 18)
+ - Substitua o arquivo `functions/index.js` com o conteúdo deste repo
+ - `cd functions && npm install node-fetch firebase-admin firebase-functions`
+ - `firebase deploy --only functions`
+
 4) Segurança
  - Use regras de segurança no Firestore para proteger tokens.
 
