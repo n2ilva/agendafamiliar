@@ -4,11 +4,11 @@
     "slug": "agenda-familiar",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+  "icon": "",
     "userInterfaceStyle": "light",
     "scheme": "agenda-familiar",
     "splash": {
-      "image": "./assets/splash-icon.png",
+  "image": "",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -19,12 +19,12 @@
     "android": {
       "package": "com.n2ilva.agendafamiliar",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+  "foregroundImage": "",
         "backgroundColor": "#ffffff"
       }
     },
     "web": {
-      "favicon": "./assets/fivecon.svg"
+  "favicon": ""
     },
     "plugins": [
       "expo-notifications",
