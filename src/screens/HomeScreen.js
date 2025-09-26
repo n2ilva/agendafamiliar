@@ -635,15 +635,19 @@ export default function HomeScreen({ route, navigation }) {
 
   // Calcular dados de progresso
   const progressData = React.useMemo(() => {
-    const total = filteredTasks.length;
-    const completed = filteredTasks.filter(task => task.status === TASK_STATUS.COMPLETED).length;
-    const pending = filteredTasks.filter(task => task.status === TASK_STATUS.PENDING).length;
-    const inProgress = filteredTasks.filter(task => task.status === TASK_STATUS.IN_PROGRESS).length;
-    const awaitingApproval = filteredTasks.filter(task => task.status === TASK_STATUS.AWAITING_APPROVAL).length;
-    
+    // Inclui tarefas ativas + tarefas concluídas do histórico para cálculo total
+    const activeTasks = filteredTasks;
+    const completedFromHistory = history.filter(item => item.approved === true).length;
+
+    const total = activeTasks.length + completedFromHistory;
+    const completed = completedFromHistory; // Tarefas concluídas vêm do histórico
+    const pending = activeTasks.filter(task => task.status === TASK_STATUS.PENDING).length;
+    const inProgress = activeTasks.filter(task => task.status === TASK_STATUS.IN_PROGRESS).length;
+    const awaitingApproval = activeTasks.filter(task => task.status === TASK_STATUS.AWAITING_APPROVAL).length;
+
     const completedPercentage = total > 0 ? (completed / total) * 100 : 0;
     const awaitingPercentage = total > 0 ? (awaitingApproval / total) * 100 : 0;
-    
+
     return {
       total,
       completed,
@@ -653,7 +657,7 @@ export default function HomeScreen({ route, navigation }) {
       completedPercentage,
       awaitingPercentage
     };
-  }, [filteredTasks]);
+  }, [filteredTasks, history]);
 
   return (
     <SafeAreaView style={styles.container}>
