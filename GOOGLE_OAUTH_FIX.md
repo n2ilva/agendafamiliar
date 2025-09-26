@@ -1,6 +1,10 @@
 #  CORREÇÃO DO ERRO GOOGLE OAUTH - Agenda Familiar
 
-##  Problema Identificado
+##  Probl## 📋 Client IDs Atuais (Verificação)
+
+**Web Client ID:** 742861794909-je4328bkkcvj6ahsq6ac98piquveb6nl.apps.googleusercontent.com
+**Android Client ID:** 742861794909-je4328bkkcvj6ahsq6ac98piquveb6nl.apps.googleusercontent.com
+**iOS Client ID:** 742861794909-2bmiu7tgo0tngbjfhtj31dudssjtkgpe.apps.googleusercontent.comdentificado
 Erro **400: invalid_request** ao tentar fazer login com Google OAuth.
 
 ##  Causa do Problema
