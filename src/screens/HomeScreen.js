@@ -546,6 +546,74 @@ export default function HomeScreen({ route, navigation }) {
     }
   };
 
+  const handleDeleteCategory = async (categoryId) => {
+    // Verificar se é uma categoria padrão (não pode ser deletada)
+    const categoryToDelete = categories.find(cat => cat.id === categoryId);
+    if (!categoryToDelete) return;
+
+    // Verificar se é uma categoria padrão
+    const isDefaultCategory = DEFAULT_CATEGORIES.some(defaultCat => defaultCat.id === categoryId);
+    if (isDefaultCategory) {
+      Alert.alert(
+        'Não é possível deletar',
+        'Esta é uma categoria padrão do sistema e não pode ser removida.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    // Verificar se há tarefas usando esta categoria
+    const tasksUsingCategory = tasks.filter(task => task.category === categoryId);
+    if (tasksUsingCategory.length > 0) {
+      Alert.alert(
+        'Categoria em uso',
+        `Esta categoria está sendo usada por ${tasksUsingCategory.length} tarefa(s). Mova as tarefas para outra categoria antes de deletar.`,
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    // Confirmar deleção
+    Alert.alert(
+      'Deletar Categoria',
+      `Tem certeza que deseja deletar a categoria "${categoryToDelete.name}"?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Deletar',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const updatedCategories = categories.filter(cat => cat.id !== categoryId);
+              setCategories(updatedCategories);
+
+              // Se a categoria ativa foi deletada, voltar para 'todos'
+              if (activeCategoryFilter === categoryId) {
+                setActiveCategoryFilter('todos');
+              }
+
+              // Sincronização imediata após deletar categoria
+              const localData = {
+                tasks,
+                history,
+                user: currentUser,
+                userType: currentUserType,
+                categories: updatedCategories
+              };
+              await autoSync(localData, family);
+
+              console.log('Categoria deletada com sucesso');
+            } catch (error) {
+              console.warn('Erro na sincronização após deletar categoria:', error);
+              // Reverter mudança em caso de erro
+              setCategories(categories);
+            }
+          }
+        }
+      ]
+    );
+  };
+
   const filteredTasks = tasks.filter(task => {
     if (!task.dueDate) return false; // Ignora tarefas sem data
 
