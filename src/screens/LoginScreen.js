@@ -35,7 +35,7 @@ export default function LoginScreen({ navigation }) {
     responseType: 'id_token',
     additionalParameters: {
       access_type: 'offline',
-      prompt: 'consent',
+      prompt: 'select_account',
     },
   });
 
@@ -58,6 +58,7 @@ export default function LoginScreen({ navigation }) {
     if (response?.type === 'success') {
       const { authentication } = response;
       console.log('Autenticação bem-sucedida!', authentication);
+      console.log('Response completo:', JSON.stringify(response, null, 2));
 
       // Verificação adicional para modo web
       if (Platform.OS === 'web' && authentication) {
@@ -68,7 +69,18 @@ export default function LoginScreen({ navigation }) {
 
       // Verificar se authentication existe e tem as propriedades necessárias
       if (!authentication) {
-        console.error('Objeto authentication não foi fornecido');
+        console.error('Objeto authentication não foi fornecido - tentando usar response.params');
+        // Em alguns casos, os tokens podem estar em response.params
+        if (response.params && (response.params.id_token || response.params.access_token)) {
+          console.log('Encontrados tokens em response.params:', response.params);
+          const mockAuth = {
+            idToken: response.params.id_token,
+            accessToken: response.params.access_token,
+          };
+          fetchUserInfo(mockAuth.idToken || mockAuth.accessToken, mockAuth, !!mockAuth.idToken);
+          return;
+        }
+
         setIsLoading(false);
         Alert.alert(
           'Erro na Autenticação',
