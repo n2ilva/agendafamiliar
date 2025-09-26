@@ -4,16 +4,28 @@
     "slug": "agenda-familiar",
     "version": "1.0.0",
     "orientation": "portrait",
+    "icon": "./assets/android-chrome-192x192.png",
     "userInterfaceStyle": "light",
     "scheme": "agenda-familiar",
+    "splash": {
+      "image": "./assets/android-chrome-192x192.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
     "ios": {
       "bundleIdentifier": "com.n2ilva.agendafamiliar",
       "supportsTablet": true
     },
     "android": {
-      "package": "com.n2ilva.agendafamiliar"
+      "package": "com.n2ilva.agendafamiliar",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/android-chrome-512x512.png",
+        "backgroundColor": "#ffffff"
+      }
     },
-    "web": {},
+    "web": {
+      "favicon": "./assets/favicon.ico"
+    },
     "plugins": [
       "expo-notifications",
       [
