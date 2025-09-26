@@ -114,6 +114,117 @@ exports.processPushQueue = functions.pubsub.schedule('every 5 minutes').onRun(as
   return null;
 });
 
+// Detecta tarefas vencidas em qualquer subcoleção 'tasks' e enfileira notificações
+exports.detectOverdueTasks = functions.pubsub.schedule('every 5 minutes').onRun(async (context) => {
+  console.log('detectOverdueTasks: started');
+  const now = new Date();
+
+  // Query todos os documentos na collectionGroup 'tasks' com status PENDING
+  // Limit para evitar leitura massiva
+  const snapshot = await db.collectionGroup('tasks')
+    .where('status', '==', 'PENDING')
+    .orderBy('dueDate')
+    .limit(1000)
+    .get();
+
+  if (snapshot.empty) {
+    console.log('No pending tasks found');
+    return null;
+  }
+
+  const batchWrites = [];
+
+  for (const doc of snapshot.docs) {
+    const data = doc.data();
+    const dueDateRaw = data.dueDate;
+    if (!dueDateRaw) continue;
+
+    const dueDate = new Date(dueDateRaw);
+    if (isNaN(dueDate.getTime())) continue;
+
+    // Skip if not yet due
+    if (dueDate > now) continue;
+
+    // Skip if already notified
+    if (data.notifiedOverdue === true) continue;
+
+    // Determine recipients: if task path contains /users/{userId}/tasks/{taskId}
+    // or /families/{familyId}/tasks/{taskId}
+    const pathParts = doc.ref.path.split('/');
+    // pathParts example: ['users','<userId>','tasks','<taskId>']
+    let recipientUserIds = [];
+
+    try {
+      if (pathParts[0] === 'users' && pathParts[2] === 'tasks') {
+        const userId = pathParts[1];
+        recipientUserIds.push(userId);
+      } else if (pathParts[0] === 'families' && pathParts[2] === 'tasks') {
+        const familyId = pathParts[1];
+        // load family members
+        const familySnap = await db.collection('families').doc(familyId).get();
+        const familyData = familySnap.exists ? familySnap.data() : null;
+        if (familyData && Array.isArray(familyData.members)) {
+          familyData.members.forEach(m => { if (m && m.id) recipientUserIds.push(m.id); });
+        }
+      }
+    } catch (e) {
+      console.warn('Error determining recipients for task', doc.ref.path, e);
+    }
+
+    if (recipientUserIds.length === 0) {
+      // nothing to notify
+      // mark as notified to avoid repeated work
+      try { await doc.ref.update({ notifiedOverdue: true, notifiedOverdueAt: admin.firestore.FieldValue.serverTimestamp() }); } catch (e) { /* ignore */ }
+      continue;
+    }
+
+    // For each recipient, read their pushTokens and create pushQueue entries
+    for (const uid of recipientUserIds) {
+      try {
+        const userSnap = await db.collection('users').doc(uid).get();
+        if (!userSnap.exists) continue;
+        const userData = userSnap.data();
+        const tokens = Array.isArray(userData.pushTokens) ? userData.pushTokens : [];
+        for (const token of tokens) {
+          const qRef = db.collection('pushQueue').doc();
+          batchWrites.push(qRef.set({
+            to: token,
+            title: `Tarefa vencida: ${data.title || 'Sem título'}`,
+            body: `${data.title || 'Uma tarefa'} venceu em ${dueDate.toLocaleString()}`,
+            data: { taskPath: doc.ref.path, taskId: doc.id },
+            status: 'pending',
+            attempts: 0,
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+          }));
+        }
+      } catch (e) {
+        console.warn('Error enqueuing push for user', uid, e);
+      }
+    }
+
+    // mark task as notified to avoid duplicate notifications
+    try {
+      batchWrites.push(doc.ref.update({ notifiedOverdue: true, notifiedOverdueAt: admin.firestore.FieldValue.serverTimestamp() }));
+    } catch (e) {
+      console.warn('Failed to push notify flag for task', doc.ref.path, e);
+    }
+  }
+
+  // Commit batch writes in chunks to avoid exceeding limits
+  const chunkSize = 500; // Firestore batch limit
+  for (let i = 0; i < batchWrites.length; i += chunkSize) {
+    const chunk = batchWrites.slice(i, i + chunkSize);
+    try {
+      await Promise.all(chunk);
+    } catch (e) {
+      console.warn('Error committing batch chunk', e);
+    }
+  }
+
+  console.log('detectOverdueTasks: finished');
+  return null;
+});
+
 // Serviço auxiliar para enfileirar uma mensagem (pode ser chamado via HTTP ou diretamente do backend)
 exports.enqueuePush = functions.https.onCall(async (data, context) => {
   const { to, title, body, payload } = data;
