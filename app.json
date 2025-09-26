@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/android-chrome-192x192.png",
     "userInterfaceStyle": "light",
-    "scheme": "agenda-familiar",
+    "scheme": "com.n2ilva.agendafamiliar",
     "splash": {
       "image": "./assets/android-chrome-192x192.png",
       "resizeMode": "contain",
@@ -24,7 +24,7 @@
       }
     },
     "web": {
-      "favicon": "./assets/favicon.ico"
+      "favicon": "./assets/favicon-32x32.png"
     },
     "plugins": [
       "expo-notifications",
