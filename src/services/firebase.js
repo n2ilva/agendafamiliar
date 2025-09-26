@@ -151,6 +151,24 @@ class FirebaseService {
     }
   }
 
+  // Adiciona um token de push Expo/FCM ao documento do usuário (evita duplicados)
+  async addPushTokenToUser(userId, token) {
+    try {
+      if (!userId || !token) return;
+      const userDocRef = doc(this.db, 'users', userId);
+      const userSnap = await getDoc(userDocRef);
+      const existing = userSnap.exists() ? userSnap.data() : {};
+      const tokens = Array.isArray(existing.pushTokens) ? existing.pushTokens : [];
+      if (!tokens.includes(token)) {
+        tokens.push(token);
+        await setDoc(userDocRef, { pushTokens: tokens }, { merge: true });
+      }
+    } catch (error) {
+      console.error('Erro ao salvar push token do usuário:', error);
+      throw error;
+    }
+  }
+
   async getUserData(userId) {
     try {
       const userDocRef = doc(this.db, 'users', userId);

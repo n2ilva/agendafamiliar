@@ -4,6 +4,7 @@ import { saveData, loadData, saveFamilyData, loadFamilyData, saveGoogleCredentia
 import { createFamily, addMemberToFamily, isFamilyMember, isFamilyAdmin } from '../constants/family';
 import firebaseService from '../services/firebase';
 import syncService from '../services/sync';
+import * as Notifications from 'expo-notifications';
 
 const AuthContext = createContext();
 
@@ -103,6 +104,15 @@ export const AuthProvider = ({ children }) => {
             history: currentData.history || []
           }, familyData);
 
+          // Tenta registrar token de push Expo (se permitido)
+          try {
+            const expoPushToken = await Notifications.getExpoPushTokenAsync();
+            if (expoPushToken && expoPushToken.data) {
+              await firebaseService.addPushTokenToUser(userData.id, expoPushToken.data);
+            }
+          } catch (e) {
+            console.warn('Não foi possível obter/registrar token de push Expo:', e);
+          }
         } catch (firebaseError) {
           console.warn('Erro no login do Firebase, continuando com dados locais:', firebaseError);
           // Não falha o login se o Firebase der erro
