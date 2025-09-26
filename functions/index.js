@@ -23,7 +23,8 @@ async function sendBatch(messages) {
     throw new Error(`Expo push failed: ${resp.status} ${text}`);
   }
 
-  return await resp.json();
+  const jsonResponse = await resp.json();
+  return jsonResponse;
 }
 
 exports.processPushQueue = functions.pubsub.schedule('every 5 minutes').onRun(async (context) => {
@@ -65,6 +66,23 @@ exports.processPushQueue = functions.pubsub.schedule('every 5 minutes').onRun(as
     for (let i = 0; i < docs.length; i++) {
       const docInfo = docs[i];
       const resp = responses[i] || null;
+      // Se resposta indicar erro com token inválido, removemos token do usuário
+      try {
+        if (resp && resp.status === 'error' && resp.details && resp.details.error) {
+          const err = String(resp.details.error || '').toLowerCase();
+          // Erros que indicam token inválido/not registered
+          if (err.includes('device') || err.includes('notregistered') || err.includes('devicenotregistered') || err.includes('invalidcredentials')) {
+            const token = docInfo.data.to;
+            console.log('Removing invalid token:', token);
+            await removePushTokenFromUsers(token);
+            await docInfo.ref.update({ status: 'failed', sentAt: admin.firestore.FieldValue.serverTimestamp(), expoResponse: resp });
+            continue;
+          }
+        }
+      } catch (e) {
+        console.warn('Error handling expo response for doc', docInfo.id, e);
+      }
+
       await docInfo.ref.update({ status: 'sent', sentAt: admin.firestore.FieldValue.serverTimestamp(), expoResponse: resp });
     }
 
@@ -113,3 +131,42 @@ exports.enqueuePush = functions.https.onCall(async (data, context) => {
 
   return { id: docRef.id };
 });
+
+// HTTP endpoint para enfileirar mensagens (POST JSON { to, title, body, payload })
+exports.enqueuePushHttp = functions.https.onRequest(async (req, res) => {
+  if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
+  try {
+    const { to, title, body, payload } = req.body || {};
+    if (!to || !title || !body) return res.status(400).json({ error: 'Missing fields' });
+
+    const docRef = await db.collection('pushQueue').add({
+      to,
+      title,
+      body,
+      data: payload || {},
+      status: 'pending',
+      attempts: 0,
+      createdAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    return res.status(200).json({ id: docRef.id });
+  } catch (error) {
+    console.error('enqueuePushHttp error:', error);
+    return res.status(500).json({ error: String(error) });
+  }
+});
+
+// Helper para remover token de todos os usuários que o possuírem
+async function removePushTokenFromUsers(token) {
+  try {
+    const usersSnap = await db.collection('users').where('pushTokens', 'array-contains', token).get();
+    const batch = db.batch();
+    usersSnap.forEach(u => {
+      batch.update(u.ref, { pushTokens: admin.firestore.FieldValue.arrayRemove(token) });
+    });
+    await batch.commit();
+    console.log('Removed token from users:', token);
+  } catch (e) {
+    console.warn('Failed to remove push token from users:', e);
+  }
+}
