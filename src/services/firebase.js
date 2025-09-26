@@ -84,6 +84,8 @@ class FirebaseService {
     try {
       const credential = GoogleAuthProvider.credential(googleCredential.idToken);
       const result = await signInWithCredential(this.auth, credential);
+      // Atualiza currentUser imediatamente após signIn
+      this.currentUser = result.user;
       return result.user;
     } catch (error) {
       console.error('Erro ao fazer login com Google:', error);
@@ -94,6 +96,8 @@ class FirebaseService {
   async signOut() {
     try {
       await firebaseSignOut(this.auth);
+      // Limpa referência local ao usuário
+      this.currentUser = null;
     } catch (error) {
       console.error('Erro ao fazer logout:', error);
       throw error;
@@ -102,6 +106,34 @@ class FirebaseService {
 
   getCurrentUser() {
     return this.currentUser;
+  }
+
+  // Força atualização do usuário atual consultando onAuthStateChanged
+  // Retorna o usuário atual (pode ser null)
+  async forceRefreshCurrentUser(timeoutMs = 3000) {
+    // Se já temos um usuário conhecido, retorna imediatamente
+    if (this.currentUser) return this.currentUser;
+
+    return new Promise((resolve) => {
+      let resolved = false;
+
+      const unsub = onAuthStateChanged(this.auth, (user) => {
+        if (!resolved) {
+          resolved = true;
+          try { unsub(); } catch (e) {}
+          this.currentUser = user;
+          resolve(user);
+        }
+      });
+
+      setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          try { unsub(); } catch (e) {}
+          resolve(this.currentUser);
+        }
+      }, timeoutMs);
+    });
   }
 
   // Sincronização de dados do usuário

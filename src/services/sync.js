@@ -19,7 +19,8 @@ class SyncService {
   // Retorna o usuário atual (pode ser null) após aguardar um curto período
   async ensureFirebaseUserAvailable(timeoutMs = 3000) {
     try {
-      const user = await firebaseService.waitForCurrentUser(timeoutMs);
+      // usa forceRefreshCurrentUser que garante tentar obter estado atualizado
+      const user = await firebaseService.forceRefreshCurrentUser(timeoutMs);
       return user;
     } catch (error) {
       console.warn('Erro ao aguardar estado de autenticação do Firebase:', error);
