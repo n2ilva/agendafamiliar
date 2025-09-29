@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Image, StatusBar, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Image, StatusBar, Platform, FlatList } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import TaskItem from '../components/TaskItem';
@@ -914,22 +914,22 @@ export default function HomeScreen({ route, navigation }) {
         </ScrollView>
 
         {/* Task List */}
-        <View style={styles.taskList}>
-          {filteredTasks.length > 0 ? (
-            filteredTasks.map(task => (
-              <TaskItem
-                key={task.id}
-                task={task}
-                onEdit={() => handleEditTask(task)}
-                onDelete={() => handleDeleteTask(task.id)}
-                onConclude={() => handleConcludeTask(task)}
-                highlightColor={shouldHighlightTask(task) ? (activeCategoryFilter === 'todos' ? getTaskCategoryColor(task) : getActiveFilterColor()) : null}
-              />
-            ))
-          ) : (
-            <Text style={styles.noTasksText}>Nenhuma tarefa encontrada para os filtros selecionados.</Text>
+        <FlatList
+          data={filteredTasks}
+          keyExtractor={item => String(item.id)}
+          renderItem={({ item }) => (
+            <TaskItem
+              task={item}
+              onEdit={() => handleEditTask(item)}
+              onDelete={() => handleDeleteTask(item.id)}
+              onConclude={() => handleConcludeTask(item)}
+              highlightColor={shouldHighlightTask(item) ? (activeCategoryFilter === 'todos' ? getTaskCategoryColor(item) : getActiveFilterColor()) : null}
+            />
           )}
-        </View>
+          ListEmptyComponent={<Text style={styles.noTasksText}>Nenhuma tarefa encontrada para os filtros selecionados.</Text>}
+          contentContainerStyle={styles.taskList}
+          showsVerticalScrollIndicator={false}
+        />
       </ScrollView>
       <TouchableOpacity style={styles.fab} onPress={handleAddTask}>
         <Ionicons name="add" size={30} color="#fff" />
