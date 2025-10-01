@@ -63,7 +63,7 @@ export default function LoginPage() {
       } else {
         router.push('/dashboard');
       }
-    } catch (error) {
+    } catch {
       setError('Ocorreu um erro inesperado');
     } finally {
       setLoading(false);
@@ -81,7 +81,7 @@ export default function LoginPage() {
       } else {
         router.push('/dashboard');
       }
-    } catch (error) {
+    } catch {
       setError('Erro ao fazer login com Google');
     } finally {
       setLoading(false);

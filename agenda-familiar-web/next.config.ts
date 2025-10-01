@@ -1,12 +1,11 @@
 import type { NextConfig } from "next";
+import path from 'path';
 
 const nextConfig: NextConfig = {
-  /* config options here */
-  outputFileTracingRoot: require('path').resolve(__dirname),
   webpack: (config) => {
     config.resolve.alias = {
       ...config.resolve.alias,
-      '@/shared': require('path').resolve(__dirname, '../shared'),
+      '@/shared': path.resolve(__dirname, '../shared'),
     };
     return config;
   },
