@@ -24,6 +24,9 @@ import {
   getDocs
 } from 'firebase/firestore';
 
+// Import family types
+import { Family, FamilyUser, UserRole, TaskApproval, FamilySettings } from '../types/family';
+
 interface TaskData {
   title: string;
   description?: string;
@@ -56,6 +59,22 @@ interface TasksResult {
 
 interface GenericResult {
   success: boolean;
+  error: string | null;
+}
+
+interface FamilyResult {
+  success: boolean;
+  family?: Family;
+  error: string | null;
+}
+
+interface FamiliesResult {
+  families: Family[];
+  error: string | null;
+}
+
+interface ApprovalsResult {
+  approvals: TaskApproval[];
   error: string | null;
 }
 
@@ -235,6 +254,322 @@ export const deleteTask = async (taskId: string): Promise<GenericResult> => {
   }
 };
 
+// ==================== FAMILY FUNCTIONS ====================
+
+// Função para gerar código único para família
+const generateFamilyCode = (): string => {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let result = '';
+  for (let i = 0; i < 6; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+};
+
+// Criar uma nova família
+export const createFamily = async (userId: string, familyName: string, creatorEmail: string, creatorDisplayName?: string): Promise<FamilyResult> => {
+  try {
+    let familyCode: string;
+    let isCodeUnique = false;
+    
+    // Gerar código único
+    do {
+      familyCode = generateFamilyCode();
+      const existingFamilyQuery = query(collection(db, 'families'), where('code', '==', familyCode));
+      const existingSnapshot = await getDocs(existingFamilyQuery);
+      isCodeUnique = existingSnapshot.empty;
+    } while (!isCodeUnique);
+
+    const defaultSettings: FamilySettings = {
+      allowKidsCreateTasks: true,
+      requireApprovalForKidsCompletion: true,
+      allowUserManageMembers: false
+    };
+
+    const creator: FamilyUser = {
+      id: userId,
+      email: creatorEmail,
+      displayName: creatorDisplayName,
+      role: UserRole.ADMIN,
+      joinedAt: new Date(),
+      lastActive: new Date()
+    };
+
+    const familyData: Omit<Family, 'id'> = {
+      name: familyName,
+      code: familyCode,
+      createdBy: userId,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      members: [creator],
+      settings: defaultSettings
+    };
+
+    const docRef = doc(collection(db, 'families'));
+    const family: Family = { ...familyData, id: docRef.id };
+    
+    // Filtrar campos undefined
+    const cleanFamilyData = Object.fromEntries(
+      Object.entries(family).filter(([_, value]) => value !== undefined)
+    );
+
+    await setDoc(docRef, cleanFamilyData);
+    
+    return { success: true, family, error: null };
+  } catch (error) {
+    console.error('Error creating family:', error);
+    return { success: false, error: (error as Error).message };
+  }
+};
+
+// Entrar em uma família usando código
+export const joinFamily = async (userId: string, familyCode: string, userEmail: string, userDisplayName?: string): Promise<FamilyResult> => {
+  try {
+    const familyQuery = query(collection(db, 'families'), where('code', '==', familyCode.toUpperCase()));
+    const familySnapshot = await getDocs(familyQuery);
+    
+    if (familySnapshot.empty) {
+      return { success: false, error: 'Código de família inválido' };
+    }
+
+    const familyDoc = familySnapshot.docs[0];
+    const familyData = familyDoc.data() as Family;
+    
+    // Verificar se usuário já é membro
+    const isAlreadyMember = familyData.members.some(member => member.id === userId);
+    if (isAlreadyMember) {
+      return { success: false, error: 'Você já é membro desta família' };
+    }
+
+    // Adicionar novo membro como USER por padrão
+    const newMember: FamilyUser = {
+      id: userId,
+      email: userEmail,
+      displayName: userDisplayName,
+      role: UserRole.USER,
+      joinedAt: new Date(),
+      lastActive: new Date()
+    };
+
+    const updatedMembers = [...familyData.members, newMember];
+    
+    await updateDoc(doc(db, 'families', familyDoc.id), {
+      members: updatedMembers,
+      updatedAt: new Date()
+    });
+
+    const updatedFamily: Family = {
+      ...familyData,
+      id: familyDoc.id,
+      members: updatedMembers,
+      updatedAt: new Date()
+    };
+
+    return { success: true, family: updatedFamily, error: null };
+  } catch (error) {
+    console.error('Error joining family:', error);
+    return { success: false, error: (error as Error).message };
+  }
+};
+
+// Obter famílias do usuário
+export const getUserFamilies = async (userId: string): Promise<FamiliesResult> => {
+  try {
+    const familiesQuery = query(collection(db, 'families'));
+    const familiesSnapshot = await getDocs(familiesQuery);
+    
+    const userFamilies: Family[] = [];
+    
+    familiesSnapshot.forEach(doc => {
+      const familyData = doc.data() as Family;
+      const isMember = familyData.members.some(member => member.id === userId);
+      
+      if (isMember) {
+        userFamilies.push({ ...familyData, id: doc.id });
+      }
+    });
+
+    return { families: userFamilies, error: null };
+  } catch (error) {
+    console.error('Error getting user families:', error);
+    return { families: [], error: (error as Error).message };
+  }
+};
+
+// Atualizar papel do usuário na família (apenas ADMIN pode fazer)
+export const updateUserRole = async (familyId: string, userId: string, newRole: UserRole, adminId: string): Promise<GenericResult> => {
+  try {
+    const familyDoc = await getDocs(query(collection(db, 'families'), where('id', '==', familyId)));
+    
+    if (familyDoc.empty) {
+      return { success: false, error: 'Família não encontrada' };
+    }
+
+    const familyData = familyDoc.docs[0].data() as Family;
+    
+    // Verificar se quem está alterando é admin
+    const admin = familyData.members.find(member => member.id === adminId);
+    if (!admin || admin.role !== UserRole.ADMIN) {
+      return { success: false, error: 'Apenas administradores podem alterar papéis de usuários' };
+    }
+
+    // Atualizar papel do usuário
+    const updatedMembers = familyData.members.map(member => 
+      member.id === userId ? { ...member, role: newRole } : member
+    );
+
+    await updateDoc(doc(db, 'families', familyId), {
+      members: updatedMembers,
+      updatedAt: new Date()
+    });
+
+    return { success: true, error: null };
+  } catch (error) {
+    console.error('Error updating user role:', error);
+    return { success: false, error: (error as Error).message };
+  }
+};
+
+// Remover membro da família (apenas ADMIN pode fazer)
+export const removeFamilyMember = async (familyId: string, userIdToRemove: string, adminId: string): Promise<GenericResult> => {
+  try {
+    const familyDoc = await getDocs(query(collection(db, 'families'), where('id', '==', familyId)));
+    
+    if (familyDoc.empty) {
+      return { success: false, error: 'Família não encontrada' };
+    }
+
+    const familyData = familyDoc.docs[0].data() as Family;
+    
+    // Verificar se quem está removendo é admin
+    const admin = familyData.members.find(member => member.id === adminId);
+    if (!admin || admin.role !== UserRole.ADMIN) {
+      return { success: false, error: 'Apenas administradores podem remover membros' };
+    }
+
+    // Não permitir que admin remova a si mesmo se for o único admin
+    if (userIdToRemove === adminId) {
+      const adminCount = familyData.members.filter(member => member.role === UserRole.ADMIN).length;
+      if (adminCount === 1) {
+        return { success: false, error: 'Não é possível remover o último administrador da família' };
+      }
+    }
+
+    // Remover membro
+    const updatedMembers = familyData.members.filter(member => member.id !== userIdToRemove);
+
+    await updateDoc(doc(db, 'families', familyId), {
+      members: updatedMembers,
+      updatedAt: new Date()
+    });
+
+    return { success: true, error: null };
+  } catch (error) {
+    console.error('Error removing family member:', error);
+    return { success: false, error: (error as Error).message };
+  }
+};
+
+// Atualizar nome da família (apenas ADMIN pode fazer)
+export const updateFamilyName = async (familyId: string, newName: string, adminId: string): Promise<GenericResult> => {
+  try {
+    const familyDoc = await getDocs(query(collection(db, 'families'), where('id', '==', familyId)));
+    
+    if (familyDoc.empty) {
+      return { success: false, error: 'Família não encontrada' };
+    }
+
+    const familyData = familyDoc.docs[0].data() as Family;
+    
+    // Verificar se quem está alterando é admin
+    const admin = familyData.members.find(member => member.id === adminId);
+    if (!admin || admin.role !== UserRole.ADMIN) {
+      return { success: false, error: 'Apenas administradores podem alterar o nome da família' };
+    }
+
+    await updateDoc(doc(db, 'families', familyId), {
+      name: newName.trim(),
+      updatedAt: new Date()
+    });
+
+    return { success: true, error: null };
+  } catch (error) {
+    console.error('Error updating family name:', error);
+    return { success: false, error: (error as Error).message };
+  }
+};
+
+// Criar solicitação de aprovação para tarefa (KIDS)
+export const createTaskApproval = async (taskId: string, familyId: string, kidsId: string): Promise<GenericResult> => {
+  try {
+    const approvalData: Omit<TaskApproval, 'id'> = {
+      taskId,
+      familyId,
+      requestedBy: kidsId,
+      requestedAt: new Date(),
+      status: 'pending'
+    };
+
+    const docRef = doc(collection(db, 'taskApprovals'));
+    
+    // Filtrar campos undefined
+    const cleanApprovalData = Object.fromEntries(
+      Object.entries(approvalData).filter(([_, value]) => value !== undefined)
+    );
+
+    await setDoc(docRef, cleanApprovalData);
+    
+    return { success: true, error: null };
+  } catch (error) {
+    console.error('Error creating task approval:', error);
+    return { success: false, error: (error as Error).message };
+  }
+};
+
+// Aprovar/rejeitar tarefa (ADMIN ou USER)
+export const processTaskApproval = async (approvalId: string, action: 'approved' | 'rejected', approverId: string, rejectionReason?: string): Promise<GenericResult> => {
+  try {
+    const updateData: any = {
+      status: action,
+      approvedBy: approverId,
+      approvedAt: new Date()
+    };
+
+    if (action === 'rejected' && rejectionReason) {
+      updateData.rejectionReason = rejectionReason;
+    }
+
+    await updateDoc(doc(db, 'taskApprovals', approvalId), updateData);
+    
+    return { success: true, error: null };
+  } catch (error) {
+    console.error('Error processing task approval:', error);
+    return { success: false, error: (error as Error).message };
+  }
+};
+
+// Obter aprovações pendentes para uma família
+export const getPendingApprovals = async (familyId: string): Promise<ApprovalsResult> => {
+  try {
+    const approvalsQuery = query(
+      collection(db, 'taskApprovals'), 
+      where('familyId', '==', familyId),
+      where('status', '==', 'pending')
+    );
+    const approvalsSnapshot = await getDocs(approvalsQuery);
+    
+    const approvals: TaskApproval[] = [];
+    approvalsSnapshot.forEach(doc => {
+      approvals.push({ id: doc.id, ...doc.data() } as TaskApproval);
+    });
+
+    return { approvals, error: null };
+  } catch (error) {
+    console.error('Error getting pending approvals:', error);
+    return { approvals: [], error: (error as Error).message };
+  }
+};
+
 // Default export
 const firebaseService = {
   auth,
@@ -249,7 +584,17 @@ const firebaseService = {
   createTask,
   getTasks,
   updateTask,
-  deleteTask
+  deleteTask,
+  // Family functions
+  createFamily,
+  joinFamily,
+  getUserFamilies,
+  updateUserRole,
+  removeFamilyMember,
+  updateFamilyName,
+  createTaskApproval,
+  processTaskApproval,
+  getPendingApprovals
 };
 
 export default firebaseService;

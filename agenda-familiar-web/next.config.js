@@ -1,10 +1,8 @@
 /**
- * Next.js configuration: allow importing files from outside the project root
- * (shared/) by enabling experimental.externalDir. This is necessary because
- * the monorepo keeps shared code outside the web package.
+ * @type {import('next').NextConfig}
  */
-module.exports = {
-  experimental: {
-    externalDir: true
-  }
-};
+const nextConfig = {
+  // Empty config for now
+}
+
+module.exports = nextConfig

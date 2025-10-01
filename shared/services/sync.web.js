@@ -10,7 +10,8 @@ export const syncUserData = async (userId) => {
     if (!userId) return { success: false, error: 'User ID is required' };
 
     // Sync user preferences from Firestore to localStorage
-    const userDoc = await firebaseService.readDocument('users', userId);
+    const service = await firebaseService();
+    const userDoc = await service.readDocument('users', userId);
     if (userDoc.error) {
       return { success: false, error: userDoc.error };
     }
@@ -35,7 +36,8 @@ export const syncFamilyData = async (familyId) => {
     if (!familyId) return { success: false, error: 'Family ID is required' };
 
     // Sync family data from Firestore to localStorage
-    const familyDoc = await firebaseService.readDocument('families', familyId);
+    const service = await firebaseService();
+    const familyDoc = await service.readDocument('families', familyId);
     if (familyDoc.error) {
       return { success: false, error: familyDoc.error };
     }
@@ -59,7 +61,8 @@ export const syncTasks = async (familyId) => {
     if (!familyId) return { success: false, error: 'Family ID is required' };
 
     // Get all tasks for the family from Firestore
-    const tasksQuery = await firebaseService.queryDocuments('tasks', 'familyId', '==', familyId);
+    const service = await firebaseService();
+    const tasksQuery = await service.queryDocuments('tasks', 'familyId', '==', familyId);
     if (tasksQuery.error) {
       return { success: false, error: tasksQuery.error };
     }
@@ -87,7 +90,8 @@ export const uploadLocalChanges = async (userId, familyId) => {
     // For now, just sync user preferences
     const userType = isWeb && window.localStorage ? localStorage.getItem('userType') : null;
     if (userType) {
-      await firebaseService.updateDocument('users', userId, {
+      const service = await firebaseService();
+      await service.updateDocument('users', userId, {
         userType,
         familyId,
         lastSync: new Date().toISOString()

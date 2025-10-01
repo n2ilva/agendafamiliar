@@ -29,22 +29,34 @@ export const AuthProvider = ({ children }) => {
       return;
     }
 
-    const unsubscribe = firebaseService.onAuthStateChange(async (firebaseUser) => {
-      if (firebaseUser) {
-        // Load user data from localStorage
-        const savedUserType = await loadData('userType');
-        const savedFamilyId = await loadData('familyId');
+    let unsubscribe = () => {};
+    
+    const setupAuthListener = async () => {
+      try {
+        const service = await firebaseService();
+        unsubscribe = service.onAuthStateChange(async (firebaseUser) => {
+          if (firebaseUser) {
+            // Load user data from localStorage
+            const savedUserType = await loadData('userType');
+            const savedFamilyId = await loadData('familyId');
 
-        setUser(firebaseUser);
-        setUserType(savedUserType || USER_TYPES.MEMBER);
-        setFamilyId(savedFamilyId);
-      } else {
-        setUser(null);
-        setUserType(USER_TYPES.MEMBER);
-        setFamilyId(null);
+            setUser(firebaseUser);
+            setUserType(savedUserType || USER_TYPES.MEMBER);
+            setFamilyId(savedFamilyId);
+          } else {
+            setUser(null);
+            setUserType(USER_TYPES.MEMBER);
+            setFamilyId(null);
+          }
+          setLoading(false);
+        });
+      } catch (error) {
+        console.error('Error setting up auth listener:', error);
+        setLoading(false);
       }
-      setLoading(false);
-    });
+    };
+
+    setupAuthListener();
 
     return () => unsubscribe();
   }, []);
@@ -56,7 +68,8 @@ export const AuthProvider = ({ children }) => {
 
     setLoading(true);
     try {
-      const result = await firebaseService.signIn(email, password);
+      const service = await firebaseService();
+      const result = await service.signIn(email, password);
       if (result.error) {
         setLoading(false);
         return { success: false, error: result.error };
@@ -84,7 +97,8 @@ export const AuthProvider = ({ children }) => {
 
     setLoading(true);
     try {
-      const result = await firebaseService.signUp(email, password);
+      const service = await firebaseService();
+      const result = await service.signUp(email, password);
       if (result.error) {
         setLoading(false);
         return { success: false, error: result.error };
@@ -109,7 +123,8 @@ export const AuthProvider = ({ children }) => {
 
     setLoading(true);
     try {
-      const result = await firebaseService.signInWithGoogle();
+      const service = await firebaseService();
+      const result = await service.signInWithGoogle();
       if (result.error) {
         setLoading(false);
         return { success: false, error: result.error };
@@ -137,7 +152,8 @@ export const AuthProvider = ({ children }) => {
 
     setLoading(true);
     try {
-      const result = await firebaseService.logout();
+      const service = await firebaseService();
+      const result = await service.logout();
       if (result.error) {
         setLoading(false);
         return { success: false, error: result.error };
