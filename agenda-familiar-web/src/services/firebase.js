@@ -348,6 +348,155 @@ export const cleanupInvalidTasks = async (userId) => {
   }
 };
 
+// Family functions
+export const createFamily = async (userId, familyName, userEmail, userDisplayName) => {
+  try {
+    ensureInitialized();
+    if (!db) throw new Error('Firestore not initialized');
+
+    // Generate a unique family code
+    const generateFamilyCode = () => {
+      const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+      let result = '';
+      for (let i = 0; i < 8; i++) {
+        result += characters.charAt(Math.floor(Math.random() * characters.length));
+      }
+      return result;
+    };
+
+    const familyCode = generateFamilyCode();
+    const familyData = {
+      name: familyName,
+      code: familyCode,
+      adminId: userId,
+      members: [{
+        id: userId,
+        email: userEmail,
+        name: userDisplayName || userEmail,
+        isAdmin: true,
+        joinedAt: new Date().toISOString()
+      }],
+      createdAt: new Date().toISOString()
+    };
+
+    const docRef = await addDoc(collection(db, 'families'), familyData);
+    
+    return {
+      success: true,
+      family: {
+        id: docRef.id,
+        ...familyData
+      }
+    };
+  } catch (error) {
+    console.error('Error creating family:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+};
+
+export const joinFamily = async (userId, userEmail, userDisplayName, familyCode) => {
+  try {
+    ensureInitialized();
+    if (!db) throw new Error('Firestore not initialized');
+
+    // Find family by code
+    const familiesRef = collection(db, 'families');
+    const q = query(familiesRef, where('code', '==', familyCode));
+    const querySnapshot = await getDocs(q);
+
+    if (querySnapshot.empty) {
+      return {
+        success: false,
+        error: 'Código de família não encontrado'
+      };
+    }
+
+    const familyDoc = querySnapshot.docs[0];
+    const familyData = familyDoc.data();
+
+    // Check if user is already a member
+    if (familyData.members.some(member => member.id === userId)) {
+      return {
+        success: false,
+        error: 'Você já é membro desta família'
+      };
+    }
+
+    // Add user to family
+    const newMember = {
+      id: userId,
+      email: userEmail,
+      name: userDisplayName || userEmail,
+      isAdmin: false,
+      joinedAt: new Date().toISOString()
+    };
+
+    const updatedMembers = [...familyData.members, newMember];
+    await updateDoc(doc(db, 'families', familyDoc.id), {
+      members: updatedMembers
+    });
+
+    return {
+      success: true,
+      family: {
+        id: familyDoc.id,
+        ...familyData,
+        members: updatedMembers
+      }
+    };
+  } catch (error) {
+    console.error('Error joining family:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+};
+
+export const getUserFamilies = async (userId) => {
+  try {
+    ensureInitialized();
+    if (!db) throw new Error('Firestore not initialized');
+
+    const familiesRef = collection(db, 'families');
+    const q = query(familiesRef, where('members', 'array-contains-any', [
+      { id: userId },
+      { id: userId, isAdmin: true },
+      { id: userId, isAdmin: false }
+    ]));
+    
+    const querySnapshot = await getDocs(q);
+    const families = [];
+
+    for (const docSnapshot of querySnapshot.docs) {
+      const familyData = docSnapshot.data();
+      const isMember = familyData.members.some(member => member.id === userId);
+      
+      if (isMember) {
+        families.push({
+          id: docSnapshot.id,
+          ...familyData
+        });
+      }
+    }
+
+    return {
+      success: true,
+      families: families
+    };
+  } catch (error) {
+    console.error('Error getting user families:', error);
+    return {
+      success: false,
+      error: error.message,
+      families: []
+    };
+  }
+};
+
 // Export as default service for compatibility
 const firebaseService = async () => ({
   auth,
@@ -367,7 +516,11 @@ const firebaseService = async () => ({
   createTask,
   getTasks,
   updateTask,
-  deleteTask
+  deleteTask,
+  // Family functions
+  createFamily,
+  joinFamily,
+  getUserFamily
 });
 
 export default firebaseService;
