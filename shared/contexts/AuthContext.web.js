@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { USER_TYPES, hasPermission, canEditTask } from '../constants/userTypes';
 import { saveData, loadData, saveFamilyData, loadFamilyData, saveGoogleCredential, loadGoogleCredential, removeGoogleCredential } from '../services/storage.web';
-import firebaseService from '../services/firebase.web';
+import firebaseService from '../services/firebase';
 import { createFamily, addMemberToFamily, isFamilyMember, isFamilyAdmin } from '../constants/family';
 
 const AuthContext = createContext();

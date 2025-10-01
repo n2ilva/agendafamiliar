@@ -1,41 +1,41 @@
-// Web version of Firebase service using Firebase v9+ modular API
-import { initializeApp } from 'firebase/app';
-import {
-  getAuth,
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  signOut,
-  onAuthStateChanged,
-  sendPasswordResetEmail,
-  GoogleAuthProvider,
-  signInWithPopup
-} from 'firebase/auth';
-import {
-  getFirestore,
-  doc,
-  setDoc,
-  getDoc,
-  updateDoc,
-  deleteDoc,
-  collection,
-  query,
-  where,
-  getDocs
-} from 'firebase/firestore';
-
+// Web version of Firebase service using dynamic imports of Firebase modular SDK.
+// We use eval("import('...')") to avoid static bundlers trying to resolve
+// 'firebase/*' from outside the web package during the server build.
 import { firebaseConfig } from '../config/firebase.web';
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
+let app = null;
+let auth = null;
+let db = null;
+let initialized = false;
 
-// Initialize Firebase services
-const auth = getAuth(app);
-const db = getFirestore(app);
+const ensureWebInitialized = async () => {
+  if (initialized) return;
+  if (typeof window === 'undefined') return;
+
+  try {
+    const { initializeApp } = await eval("import('firebase/app')");
+    const authMod = await eval("import('firebase/auth')");
+    const firestoreMod = await eval("import('firebase/firestore')");
+
+    if (firebaseConfig && firebaseConfig.apiKey) {
+      app = initializeApp(firebaseConfig);
+      auth = authMod.getAuth(app);
+      db = firestoreMod.getFirestore(app);
+      initialized = true;
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('Failed to dynamically load Firebase SDK in web implementation:', err);
+  }
+};
 
 // Auth functions
 export const signIn = async (email, password) => {
   try {
-    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    await ensureWebInitialized();
+    const authMod = await eval("import('firebase/auth')");
+    if (!auth) auth = authMod.getAuth(app);
+    const userCredential = await authMod.signInWithEmailAndPassword(auth, email, password);
     return { user: userCredential.user, error: null };
   } catch (error) {
     console.error('Error signing in:', error);
@@ -45,7 +45,10 @@ export const signIn = async (email, password) => {
 
 export const signUp = async (email, password) => {
   try {
-    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+    await ensureWebInitialized();
+    const authMod = await eval("import('firebase/auth')");
+    if (!auth) auth = authMod.getAuth(app);
+    const userCredential = await authMod.createUserWithEmailAndPassword(auth, email, password);
     return { user: userCredential.user, error: null };
   } catch (error) {
     console.error('Error signing up:', error);
@@ -55,8 +58,12 @@ export const signUp = async (email, password) => {
 
 export const signInWithGoogle = async () => {
   try {
-    const provider = new GoogleAuthProvider();
-    const result = await signInWithPopup(auth, provider);
+    await ensureWebInitialized();
+    const authMod = await eval("import('firebase/auth')");
+    if (!auth) auth = authMod.getAuth(app);
+    const Provider = authMod.GoogleAuthProvider;
+    const provider = new Provider();
+    const result = await authMod.signInWithPopup(auth, provider);
     return { user: result.user, error: null };
   } catch (error) {
     console.error('Error signing in with Google:', error);
@@ -66,7 +73,10 @@ export const signInWithGoogle = async () => {
 
 export const logout = async () => {
   try {
-    await signOut(auth);
+    await ensureWebInitialized();
+    const authMod = await eval("import('firebase/auth')");
+    if (!auth) auth = authMod.getAuth(app);
+    await authMod.signOut(auth);
     return { error: null };
   } catch (error) {
     console.error('Error signing out:', error);
@@ -76,7 +86,10 @@ export const logout = async () => {
 
 export const resetPassword = async (email) => {
   try {
-    await sendPasswordResetEmail(auth, email);
+    await ensureWebInitialized();
+    const authMod = await eval("import('firebase/auth')");
+    if (!auth) auth = authMod.getAuth(app);
+    await authMod.sendPasswordResetEmail(auth, email);
     return { error: null };
   } catch (error) {
     console.error('Error resetting password:', error);
@@ -85,13 +98,24 @@ export const resetPassword = async (email) => {
 };
 
 export const onAuthStateChange = (callback) => {
-  return onAuthStateChanged(auth, callback);
+  let unsub = () => {};
+  ensureWebInitialized().then(async () => {
+    const authMod = await eval("import('firebase/auth')");
+    if (!auth) auth = authMod.getAuth(app);
+    unsub = authMod.onAuthStateChanged(auth, callback);
+  }).catch(() => {});
+  // immediate fallback
+  callback(null);
+  return () => { try { unsub(); } catch (e) {} };
 };
 
 // Firestore functions
 export const createDocument = async (collectionName, docId, data) => {
   try {
-    await setDoc(doc(db, collectionName, docId), data);
+    await ensureWebInitialized();
+    const firestoreMod = await eval("import('firebase/firestore')");
+    if (!db) db = firestoreMod.getFirestore(app);
+    await firestoreMod.setDoc(firestoreMod.doc(firestoreMod.collection(db, collectionName), docId), data);
     return { success: true, error: null };
   } catch (error) {
     console.error('Error creating document:', error);
@@ -101,12 +125,12 @@ export const createDocument = async (collectionName, docId, data) => {
 
 export const readDocument = async (collectionName, docId) => {
   try {
-    const docSnap = await getDoc(doc(db, collectionName, docId));
-    if (docSnap.exists()) {
-      return { data: docSnap.data(), error: null };
-    } else {
-      return { data: null, error: 'Document does not exist' };
-    }
+    await ensureWebInitialized();
+    const firestoreMod = await eval("import('firebase/firestore')");
+    if (!db) db = firestoreMod.getFirestore(app);
+    const docSnap = await firestoreMod.getDoc(firestoreMod.doc(firestoreMod.collection(db, collectionName), docId));
+    if (docSnap.exists()) return { data: docSnap.data(), error: null };
+    return { data: null, error: 'Document does not exist' };
   } catch (error) {
     console.error('Error reading document:', error);
     return { data: null, error: error.message };
@@ -115,7 +139,10 @@ export const readDocument = async (collectionName, docId) => {
 
 export const updateDocument = async (collectionName, docId, data) => {
   try {
-    await updateDoc(doc(db, collectionName, docId), data);
+    await ensureWebInitialized();
+    const firestoreMod = await eval("import('firebase/firestore')");
+    if (!db) db = firestoreMod.getFirestore(app);
+    await firestoreMod.updateDoc(firestoreMod.doc(firestoreMod.collection(db, collectionName), docId), data);
     return { success: true, error: null };
   } catch (error) {
     console.error('Error updating document:', error);
@@ -125,7 +152,10 @@ export const updateDocument = async (collectionName, docId, data) => {
 
 export const deleteDocument = async (collectionName, docId) => {
   try {
-    await deleteDoc(doc(db, collectionName, docId));
+    await ensureWebInitialized();
+    const firestoreMod = await eval("import('firebase/firestore')");
+    if (!db) db = firestoreMod.getFirestore(app);
+    await firestoreMod.deleteDoc(firestoreMod.doc(firestoreMod.collection(db, collectionName), docId));
     return { success: true, error: null };
   } catch (error) {
     console.error('Error deleting document:', error);
@@ -135,12 +165,13 @@ export const deleteDocument = async (collectionName, docId) => {
 
 export const queryDocuments = async (collectionName, field, operator, value) => {
   try {
-    const q = query(collection(db, collectionName), where(field, operator, value));
-    const querySnapshot = await getDocs(q);
+    await ensureWebInitialized();
+    const firestoreMod = await eval("import('firebase/firestore')");
+    if (!db) db = firestoreMod.getFirestore(app);
+    const q = firestoreMod.query(firestoreMod.collection(db, collectionName), firestoreMod.where(field, operator, value));
+    const querySnapshot = await firestoreMod.getDocs(q);
     const documents = [];
-    querySnapshot.forEach((doc) => {
-      documents.push({ id: doc.id, ...doc.data() });
-    });
+    querySnapshot.forEach((doc) => documents.push({ id: doc.id, ...doc.data() }));
     return { documents, error: null };
   } catch (error) {
     console.error('Error querying documents:', error);
@@ -150,11 +181,12 @@ export const queryDocuments = async (collectionName, field, operator, value) => 
 
 export const getAllDocuments = async (collectionName) => {
   try {
-    const querySnapshot = await getDocs(collection(db, collectionName));
+    await ensureWebInitialized();
+    const firestoreMod = await eval("import('firebase/firestore')");
+    if (!db) db = firestoreMod.getFirestore(app);
+    const querySnapshot = await firestoreMod.getDocs(firestoreMod.collection(db, collectionName));
     const documents = [];
-    querySnapshot.forEach((doc) => {
-      documents.push({ id: doc.id, ...doc.data() });
-    });
+    querySnapshot.forEach((doc) => documents.push({ id: doc.id, ...doc.data() }));
     return { documents, error: null };
   } catch (error) {
     console.error('Error getting all documents:', error);

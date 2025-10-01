@@ -1,5 +1,5 @@
 // Web version of sync service
-import firebaseService from '../services/firebase.web';
+import firebaseService from '../services/firebase';
 import { loadGoogleCredential, removeGoogleCredential } from '../services/storage.web';
 
 // Platform detection for web
