@@ -2,7 +2,7 @@
   "name": "agenda-familiar",
   "version": "0.1.0",
   "private": true,
-  "main": "App.js",
+  "main": "index.js",
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",
@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "expo": "^54.0.12",
-    "firebase": "^12.3.0"
+    "firebase": "^12.3.0",
+    "react-dom": "19.1.0",
+    "react-native-web": "^0.21.0"
   }
 }
