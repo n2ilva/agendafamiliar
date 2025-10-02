@@ -12,7 +12,7 @@ const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  const [profile, setProfile] = useState(null); // {uid, role}
+  const [profile, setProfile] = useState(null); // {uid, role, avatarUrl?}
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -33,7 +33,7 @@ export function AuthProvider({ children }) {
         setProfile(snap.data());
       } else {
         // fallback create basic profile if missing
-        const baseProfile = { uid: firebaseUser.uid, role: 'kid', createdAt: Date.now() };
+  const baseProfile = { uid: firebaseUser.uid, role: 'kid', createdAt: Date.now(), avatarUrl: '' };
         await setDoc(ref, baseProfile);
         setProfile(baseProfile);
       }
@@ -51,7 +51,7 @@ export function AuthProvider({ children }) {
     const q = query(collection(db, 'users'));
     const existing = await getDocs(q);
     if (existing.empty) role = 'admin';
-    const profileData = { uid: cred.user.uid, role, createdAt: Date.now() };
+  const profileData = { uid: cred.user.uid, role, createdAt: Date.now(), avatarUrl: '' };
     await setDoc(doc(db, 'users', cred.user.uid), profileData);
     setProfile(profileData);
     return cred.user;
@@ -67,7 +67,15 @@ export function AuthProvider({ children }) {
     await signOut(auth);
   }
 
-  const value = { user, profile, loading, signUp, signIn, logout };
+  async function updateAvatar(url) {
+    if (!user) return;
+    const db = getDb();
+    const ref = doc(db, 'users', user.uid);
+    await setDoc(ref, { ...profile, avatarUrl: url }, { merge: true });
+    setProfile(p => ({ ...p, avatarUrl: url }));
+  }
+
+  const value = { user, profile, loading, signUp, signIn, logout, updateAvatar };
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

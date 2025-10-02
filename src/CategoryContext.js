@@ -3,7 +3,7 @@ import { getDb } from './firebase';
 import { collection, addDoc, onSnapshot, doc, updateDoc } from 'firebase/firestore';
 import { useAuth } from './AuthContext';
 
-/* Category shape: { id, name, color, createdAt } */
+/* Category shape: { id, name, color, icon, createdAt } */
 
 const CategoryContext = createContext(null);
 
@@ -22,14 +22,29 @@ export function CategoryProvider({ children }) {
       list.sort((a,b)=>a.name.localeCompare(b.name));
       setCategories(list);
       setLoading(false);
+      // seed se vazio
+      if (list.length === 0) {
+        seedDefaults();
+      }
     });
     return () => unsub();
   }, [user]);
 
-  const createCategory = useCallback(async (name, color) => {
+  const seedDefaults = useCallback(async () => {
+    const presets = [
+      { name: 'Trabalho', color: '#2563eb', icon: '💼' },
+      { name: 'Saúde', color: '#16a34a', icon: '💊' },
+      { name: 'Estudos', color: '#9333ea', icon: '📚' }
+    ];
+    for (const p of presets) {
+      await addDoc(collection(getDb(), 'categories'), { ...p, createdAt: Date.now() });
+    }
+  }, []);
+
+  const createCategory = useCallback(async (name, color, icon='⭐') => {
     if (!user) return;
     const db = getDb();
-    await addDoc(collection(db, 'categories'), { name, color, createdAt: Date.now() });
+    await addDoc(collection(db, 'categories'), { name, color, icon, createdAt: Date.now() });
   }, [user]);
 
   const renameCategory = useCallback(async (categoryId, name) => {
