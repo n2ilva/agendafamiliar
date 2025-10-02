@@ -1,51 +1,53 @@
-# Agenda Familiar (JS Reset)## Agenda Familiar (Reset JavaScript)
+# Agenda Familiar (Base JavaScript)
 
+Aplicativo colaborativo simples para gerenciamento de tarefas familiares.
 
+## Objetivo Atual
+Base funcional mínima: autenticação email/senha, definição de papéis (primeiro usuário = admin, demais = kids) e fluxo básico de aprovação/conclusão de tarefas.
 
-Base mínima criada após limpeza do projeto anterior. Preencha Firebase e evolua iterativamente.O projeto foi reiniciado em uma base mínima JavaScript para simplificar build Android e remover complexidade de TypeScript + múltiplos contexts. O estado anterior completo (TS + contexts + filtros avançados) permanece salvo no Git (tag ou commit de backup) e listado em `backup_manifest_2025-10-02.txt`.
-
-
-
-## Scripts### Estrutura Atual
-
-- `npm start` – iniciar```
-
-- `npm run android` – abrir em dispositivo/emulador Androidindex.js          # Entrada registra App
-
-- `npm run web` – abrir no navegadorsrc/App.js        # Lista simples de tarefas
-
-src/firebase.js   # Inicialização Firebase (substituir REPLACE_ME)
-
-## Próximos passossrc/tasks.js      # Funções utilitárias p/ tarefas
-
-Ver roadmap interno a ser reintroduzido.backup_manifest_2025-10-02.txt  # Inventário da versão anterior
-
+## Estrutura
+```
+App.js              # UI principal (login + lista de tarefas)
+src/firebase.js     # Inicialização Firebase (substituir REPLACE_ME)
+src/AuthContext.js  # Autenticação + roles
+src/TaskContext.js  # Lógica de tarefas e workflow
 ```
 
-### Como Rodar
+## Scripts
 ```
-npm install
-npx expo start
-```
-Para Android (dev client ou Expo Go simplificado):
-```
-npx expo start --android
+npm start        # iniciar Metro bundler
+npm run android  # abrir em dispositivo/emulador Android
+npm run web      # abrir no navegador
 ```
 
-### Configurar Firebase
-Edite `src/firebase.js` e substitua todos os campos `REPLACE_ME` pelos valores do seu projeto Firebase (Web). Se quiser reintroduzir pacotes nativos Firebase, será necessário gerar um development build novamente.
+## Configurar Firebase
+Edite `src/firebase.js` e preencha as chaves. Você pode usar variáveis `EXPO_PUBLIC_...` em um arquivo `.env` (não versionado) se desejar.
 
-### Próximos Passos Planejados (Roadmap Rebuild)
-1. Reintroduzir Auth (Google) em JS.
-2. Recriar categorias + cores + ícones.
-3. Fluxo de status (pending/approved/completed/rejected).
-4. Filtros e ordenação avançada.
-5. Paginação / otimizações.
-6. Regras de segurança Firestore.
-7. Notificações (Expo Notifications).
+## Papéis e Permissões
+| Papel | Pode criar | Pode marcar concluída direto | Precisa aprovação | Pode aprovar | Pode reverter |
+|-------|------------|------------------------------|-------------------|--------------|---------------|
+| admin | sim        | sim                          | não               | sim          | sim           |
+| kid   | sim        | não (vira pending_approval)  | sim               | não          | pode voltar para pending |
 
-### Observação
-Este reset visa destravar build nativo e permitir evolução incremental limpa. Recursos avançados serão reintegrados em etapas.
+## Workflow de Status
+Estados utilizados:
+```
+pending -> (kid tenta concluir) -> pending_approval -> (admin aprova) -> completed
+pending -> (admin conclui) -> completed
+pending_approval -> (kid retorna) -> pending
+completed -> (admin reabre) -> pending
+```
+
+## Próximos Passos Planejados
+1. Categorias e ícones
+2. Ordenação avançada / busca
+3. Estatísticas agregadas
+4. Regras Firestore de segurança
+5. Notificações
+6. Paginação de histórico
+
+## Observação
+O estado anterior em TypeScript com recursos avançados foi removido neste reset e listado em `backup_manifest_2025-10-02.txt` (se existente em seu histórico).
 
 ---
-*Última atualização: Reset para scaffold JavaScript mínimo.*
+*Última atualização: Base JS com auth e tarefas.*

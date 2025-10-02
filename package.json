@@ -10,6 +10,7 @@
     "clean": "expo start --clear"
   },
   "dependencies": {
-    "expo": "^54.0.12"
+    "expo": "^54.0.12",
+    "firebase": "^12.3.0"
   }
 }
