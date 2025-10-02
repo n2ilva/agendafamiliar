@@ -3,14 +3,17 @@
 Aplicativo colaborativo simples para gerenciamento de tarefas familiares.
 
 ## Objetivo Atual
-Base funcional mínima: autenticação email/senha, definição de papéis (primeiro usuário = admin, demais = kids) e fluxo básico de aprovação/conclusão de tarefas.
+Base funcional mínima + incrementos: autenticação email/senha, papéis (primeiro usuário = admin), categorias básicas, due date opcional, paginação inicial (lazy load), notificações scaffold e rascunho de regras Firestore.
 
 ## Estrutura
 ```
-App.js              # UI principal (login + lista de tarefas)
-src/firebase.js     # Inicialização Firebase (substituir REPLACE_ME)
-src/AuthContext.js  # Autenticação + roles
-src/TaskContext.js  # Lógica de tarefas e workflow
+App.js               # UI principal
+src/firebase.js      # Inicialização Firebase
+src/AuthContext.js   # Autenticação + roles
+src/TaskContext.js   # Tarefas + workflow + paginação
+src/CategoryContext.js # Categorias e criação
+src/notifications.js # Scaffold de notificações (placeholder)
+firestore.rules      # Regras (draft)
 ```
 
 ## Scripts
@@ -38,16 +41,26 @@ pending_approval -> (kid retorna) -> pending
 completed -> (admin reabre) -> pending
 ```
 
+## Funcionalidades Atuais
+- Login / Registro (e-mail & senha)
+- Definição automática de papel (primeiro admin)
+- Criação e fluxo de aprovação/conclusão (admin vs kids)
+- Categorias (criação, filtro, badge de cor)
+- Due date simples (entrada YYYY-MM-DD)
+- Paginação incremental (15 por lote + "Carregar mais")
+- Regras Firestore rascunho (`firestore.rules`)
+- Scaffold de notificações (registro permissões e stub de agendamento)
+
 ## Próximos Passos Planejados
-1. Categorias e ícones
-2. Ordenação avançada / busca
-3. Estatísticas agregadas
-4. Regras Firestore de segurança
-5. Notificações
-6. Paginação de histórico
+1. Ordenação avançada / busca
+2. Estatísticas agregadas (contadores por status)
+3. Melhorar UI de due date (date picker) e validações
+4. Notificações reais para tarefas próximas do vencimento
+5. Histórico separado e paginação refinada
+6. Hardening das regras Firestore (validações de schema)
 
 ## Observação
 O estado anterior em TypeScript com recursos avançados foi removido neste reset e listado em `backup_manifest_2025-10-02.txt` (se existente em seu histórico).
 
 ---
-*Última atualização: Base JS com auth e tarefas.*
+*Última atualização: adicionadas categorias, dueAt, paginação, regras draft e scaffold de notificações.*
