@@ -1,4 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import Reaexport default function App() {
+  const [user, setUser] = useState<any>(null);
+  const [authData, setAuthData] = useState<any>(null);
+
+  const [request, response, promptAsync] = Google.useAuthRequest({{ useState, useEffect } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { TaskScreen } from './screens/TaskScreen';
 import { LoginScreen } from './screens/LoginScreen';
@@ -10,14 +14,13 @@ WebBrowser.maybeCompleteAuthSession();
 
 export default function App() {
   const [user, setUser] = useState<any>(null);
-  const [authData, setAuthData] = useState<any>(null);
 
-  const [request, response, promptAsync] = Google.useAuthRequest({
-    clientId: '742861794909-qtrkl3r2fhhre3734c3heb0sm1l2fatj.apps.googleusercontent.com',
-    iosClientId: '742861794909-2bmiu7tgo0tngbjfhtj31dudssjtkgpe.apps.googleusercontent.com',
-    androidClientId: '742861794909-je4328bkkcvj6ahsq6ac98piquveb6nl.apps.googleusercontent.com',
-    webClientId: '742861794909-qtrkl3r2fhhre3734c3heb0sm1l2fatj.apps.googleusercontent.com',
-  });
+const [request, response, promptAsync] = Google.useAuthRequest({
+  clientId: '742861794909-qtrkl3r2fhhre3734c3heb0sm1l2fatj.apps.googleusercontent.com',
+  iosClientId: '742861794909-2bmiu7tgo0tngbjfhtj31dudssjtkgpe.apps.googleusercontent.com',
+  androidClientId: '742861794909-je4328bkkcvj6ahsq6ac98piquveb6nl.apps.googleusercontent.com',
+  webClientId: '742861794909-qtrkl3r2fhhre3734c3heb0sm1l2fatj.apps.googleusercontent.com',
+});
 
   useEffect(() => {
     if (response?.type === 'success') {
@@ -55,6 +58,7 @@ export default function App() {
 
   const handleLogout = async () => {
     try {
+      // Se o usuário tiver um token de acesso, revogar no Google
       if (authData?.accessToken) {
         await fetch(
           `https://oauth2.googleapis.com/revoke?token=${authData.accessToken}`,
@@ -69,6 +73,7 @@ export default function App() {
     } catch (error) {
       console.log('Erro ao revogar token:', error);
     } finally {
+      // Sempre limpar o estado local independentemente do resultado da revogação
       setUser(null);
       setAuthData(null);
     }

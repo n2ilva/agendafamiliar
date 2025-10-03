@@ -14,14 +14,16 @@ import * as ImagePicker from 'expo-image-picker';
 
 interface HeaderProps {
   userName: string;
+  userImage?: string;
   onUserNameChange: (newName: string) => void;
   onSettings: () => void;
   onLogout: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ userName, onUserNameChange, onSettings, onLogout }) => {
-  const [userImage, setUserImage] = useState<string | null>(null);
+export const Header: React.FC<HeaderProps> = ({ userName, userImage, onUserNameChange, onSettings, onLogout }) => {
+  const [userImageLocal, setUserImageLocal] = useState<string | null>(userImage || null);
   const [nameModalVisible, setNameModalVisible] = useState(false);
+  const [menuVisible, setMenuVisible] = useState(false);
   const [newName, setNewName] = useState(userName);
 
   const handleImagePicker = async () => {
@@ -40,7 +42,7 @@ export const Header: React.FC<HeaderProps> = ({ userName, onUserNameChange, onSe
     });
 
     if (!result.canceled) {
-      setUserImage(result.assets[0].uri);
+      setUserImageLocal(result.assets[0].uri);
     }
   };
 
@@ -51,6 +53,16 @@ export const Header: React.FC<HeaderProps> = ({ userName, onUserNameChange, onSe
     } else {
       Alert.alert('Nome inválido', 'O nome não pode ficar em branco.');
     }
+  };
+
+  const handleHistoryPress = () => {
+    setMenuVisible(false);
+    onSettings(); // Esta função irá abrir o histórico
+  };
+
+  const handleSettingsPress = () => {
+    setMenuVisible(false);
+    Alert.alert('Configurações', 'Funcionalidade a ser implementada.');
   };
 
   const handleLogout = () => {
@@ -69,8 +81,8 @@ export const Header: React.FC<HeaderProps> = ({ userName, onUserNameChange, onSe
       <View style={styles.container}>
         <View style={styles.leftSection}>
           <TouchableOpacity onPress={handleImagePicker} style={styles.avatarContainer}>
-            {userImage ? (
-              <Image source={{ uri: userImage }} style={styles.avatar} />
+            {userImageLocal ? (
+              <Image source={{ uri: userImageLocal }} style={styles.avatar} />
             ) : (
               <View style={styles.defaultAvatar}>
                 <Ionicons name="person" size={30} color="#666" />
@@ -91,9 +103,25 @@ export const Header: React.FC<HeaderProps> = ({ userName, onUserNameChange, onSe
         </View>
 
         <View style={styles.rightSection}>
-          <TouchableOpacity onPress={onSettings} style={styles.iconButton}>
-            <Ionicons name="settings-outline" size={24} color="#333" />
-          </TouchableOpacity>
+          <View style={styles.menuContainer}>
+            <TouchableOpacity onPress={() => setMenuVisible(!menuVisible)} style={styles.iconButton}>
+              <Ionicons name="ellipsis-vertical" size={24} color="#333" />
+            </TouchableOpacity>
+            
+            {menuVisible && (
+              <View style={styles.dropdownMenu}>
+                <TouchableOpacity onPress={handleHistoryPress} style={styles.menuItem}>
+                  <Ionicons name="time-outline" size={18} color="#333" />
+                  <Text style={styles.menuText}>Histórico</Text>
+                </TouchableOpacity>
+                <View style={styles.menuSeparator} />
+                <TouchableOpacity onPress={handleSettingsPress} style={styles.menuItem}>
+                  <Ionicons name="settings-outline" size={18} color="#333" />
+                  <Text style={styles.menuText}>Configurações</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
           
           <TouchableOpacity onPress={handleLogout} style={styles.iconButton}>
             <Ionicons name="log-out-outline" size={24} color="#e74c3c" />
@@ -155,7 +183,8 @@ const styles = StyleSheet.create({
     },
     shadowOpacity: 0.1,
     shadowRadius: 3.84,
-    elevation: 5,
+    elevation: 8,
+    zIndex: 1000,
   },
   leftSection: {
     flexDirection: 'row',
@@ -213,6 +242,46 @@ const styles = StyleSheet.create({
   },
   iconButton: {
     marginLeft: 16,
+  },
+  menuContainer: {
+    position: 'relative',
+    zIndex: 9999,
+  },
+  dropdownMenu: {
+    position: 'absolute',
+    top: 40,
+    right: 0,
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    paddingVertical: 8,
+    minWidth: 150,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 10,
+    zIndex: 9999,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  menuText: {
+    marginLeft: 12,
+    fontSize: 16,
+    color: '#333',
+  },
+  menuSeparator: {
+    height: 1,
+    backgroundColor: '#e0e0e0',
+    marginHorizontal: 16,
   },
   nameContainer: {
     flexDirection: 'row',

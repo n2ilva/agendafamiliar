@@ -127,8 +127,13 @@ interface HistoryItem {
   details?: string;
 }
 
-export const TaskScreen: React.FC = () => {
-  const [userName, setUserName] = useState('Usuário');
+interface TaskScreenProps {
+  user: any;
+  onLogout: () => Promise<void>;
+  onUserNameChange: (newName: string) => void;
+}
+
+export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNameChange }) => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [categories, setCategories] = useState<CategoryConfig[]>(DEFAULT_CATEGORIES);
   const [modalVisible, setModalVisible] = useState(false);
@@ -695,25 +700,35 @@ export const TaskScreen: React.FC = () => {
   };
 
   const handleSettings = () => {
-    Alert.alert(
-      'Configurações',
-      'Escolha uma opção:',
-      [
-        {
-          text: 'Histórico',
-          onPress: () => setHistoryModalVisible(true),
-        },
-        {
-          text: 'Cancelar',
-          style: 'cancel',
-        },
-      ]
-    );
+    // Esta função agora apenas abre o histórico diretamente
+    setHistoryModalVisible(true);
   };
 
-  const handleLogout = () => {
-    Alert.alert('Logout', 'Fazendo logout...');
-    // Aqui você implementaria a lógica de logout
+  const handleLogout = async () => {
+    if (Platform.OS === 'web') {
+      // Para web, usar confirm em vez de Alert
+      const confirmed = confirm('Tem certeza que deseja sair?');
+      if (confirmed && onLogout) {
+        await onLogout();
+      }
+    } else {
+      Alert.alert(
+        'Sair',
+        'Tem certeza que deseja sair?',
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          { 
+            text: 'Sair', 
+            onPress: async () => {
+              if (onLogout) {
+                await onLogout();
+              }
+            }, 
+            style: 'destructive' 
+          },
+        ]
+      );
+    }
   };
 
   const renderTask = ({ item }: { item: Task }) => {
@@ -838,8 +853,9 @@ export const TaskScreen: React.FC = () => {
   return (
     <SafeAreaView style={styles.container}>
       <Header 
-        userName={userName}
-        onUserNameChange={setUserName}
+        userName={user?.name || 'Usuário'}
+        userImage={user?.picture}
+        onUserNameChange={onUserNameChange}
         onSettings={handleSettings}
         onLogout={handleLogout}
       />
