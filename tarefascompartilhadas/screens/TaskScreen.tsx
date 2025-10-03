@@ -128,6 +128,7 @@ interface HistoryItem {
 }
 
 export const TaskScreen: React.FC = () => {
+  const [userName, setUserName] = useState('Usuário');
   const [tasks, setTasks] = useState<Task[]>([]);
   const [categories, setCategories] = useState<CategoryConfig[]>(DEFAULT_CATEGORIES);
   const [modalVisible, setModalVisible] = useState(false);
@@ -151,25 +152,71 @@ export const TaskScreen: React.FC = () => {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [historyModalVisible, setHistoryModalVisible] = useState(false);
   
-  // Configurar notificações
+  // Estado para atualização automática
+  const [lastUpdate, setLastUpdate] = useState(new Date());
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  
+  // Configurar notificações apenas uma vez
   useEffect(() => {
     configurarNotificacoes();
+  }, []);
+
+  // Configurar atualização automática apenas uma vez
+  useEffect(() => {
     verificarTarefasVencidas();
     
-    // Verificar tarefas vencidas a cada minuto
-    const interval = setInterval(verificarTarefasVencidas, 60000);
+    // Configurar atualização automática a cada minuto
+    const interval = setInterval(() => {
+      console.log('🔄 Executando atualização automática agendada...');
+      forceRefresh();
+    }, 60000); // 60000ms = 1 minuto
     
     return () => clearInterval(interval);
-  }, [tasks]);
+  }, []);
+
+  // Verificar tarefas vencidas quando há mudanças nas tasks ou atualizações automáticas
+  useEffect(() => {
+    verificarTarefasVencidas();
+  }, [tasks, lastUpdate]);
+
+  // useEffect para executar limpeza do histórico quando há atualizações
+  useEffect(() => {
+    clearOldHistory();
+  }, [lastUpdate]);
+
+  // Função para forçar atualização completa do aplicativo
+  const forceRefresh = () => {
+    console.log('🔄 Forçando atualização completa...');
+    
+    setIsRefreshing(true);
+    
+    // Atualizar timestamp
+    setLastUpdate(new Date());
+    
+    // Verificar tarefas vencidas
+    verificarTarefasVencidas();
+    
+    // Forçar re-render das listas criando nova referência dos arrays
+    setTasks(prevTasks => [...prevTasks]);
+    setCategories(prevCategories => [...prevCategories]);
+    setHistory(prevHistory => [...prevHistory]);
+    
+    // Limpar histórico antigo
+    clearOldHistory();
+    
+    // Simular um pequeno delay para mostrar o feedback visual
+    setTimeout(() => {
+      setIsRefreshing(false);
+    }, 500);
+  };
 
   const configurarNotificacoes = async () => {
     // Configurar handler de notificações
     Notifications.setNotificationHandler({
       handleNotification: async () => ({
-        shouldShowAlert: true,
+        shouldShowBanner: true,
         shouldPlaySound: true,
         shouldSetBadge: false,
-        shouldShowBanner: true,
         shouldShowList: true,
       }),
     });
@@ -241,8 +288,6 @@ export const TaskScreen: React.FC = () => {
   // Estados para repetição
   const [repeatType, setRepeatType] = useState<RepeatType>(RepeatType.NONE);
   const [customDays, setCustomDays] = useState<number[]>([]);
-  
-  const [userName] = useState('João Silva'); // Em um app real, isso viria do contexto/state global
 
   const addTask = () => {
     if (!newTaskTitle.trim()) {
@@ -794,6 +839,7 @@ export const TaskScreen: React.FC = () => {
     <SafeAreaView style={styles.container}>
       <Header 
         userName={userName}
+        onUserNameChange={setUserName}
         onSettings={handleSettings}
         onLogout={handleLogout}
       />
@@ -896,6 +942,23 @@ export const TaskScreen: React.FC = () => {
           <Text style={styles.summaryText}>
             {getCurrentTasks().filter((task: Task) => !task.completed).length} pendentes • {getCurrentTasks().filter((task: Task) => task.completed).length} concluídas
           </Text>
+          <View style={styles.refreshContainer}>
+            <Text style={styles.lastUpdateText}>
+              {isRefreshing ? '🔄 Atualizando...' : `🔄 Última atualização: ${lastUpdate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`}
+            </Text>
+            <TouchableOpacity 
+              style={[styles.refreshButton, isRefreshing && styles.refreshButtonActive]}
+              onPress={forceRefresh}
+              disabled={isRefreshing}
+            >
+              <Ionicons 
+                name="refresh" 
+                size={16} 
+                color={isRefreshing ? "#007AFF" : "#28a745"} 
+                style={isRefreshing && styles.rotating}
+              />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {getCurrentTasks().length === 0 ? (
@@ -2114,5 +2177,30 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#e74c3c',
     marginLeft: 2,
+  },
+  lastUpdateText: {
+    fontSize: 11,
+    color: '#28a745',
+    marginTop: 4,
+    textAlign: 'center',
+    fontWeight: '500',
+  },
+  refreshContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 4,
+  },
+  refreshButton: {
+    marginLeft: 8,
+    padding: 4,
+    borderRadius: 12,
+    backgroundColor: '#f0f9f0',
+  },
+  refreshButtonActive: {
+    backgroundColor: '#e7f3ff',
+  },
+  rotating: {
+    transform: [{ rotate: '45deg' }],
   },
 });
