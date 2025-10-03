@@ -15,7 +15,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
-// import * as Notifications from 'expo-notifications';
+import * as Notifications from 'expo-notifications';
 import { Header } from '../components/Header';
 
 export enum RepeatType {
@@ -153,24 +153,24 @@ export const TaskScreen: React.FC = () => {
   
   // Configurar notificações
   useEffect(() => {
-    // configurarNotificacoes();
-    // verificarTarefasVencidas();
+    configurarNotificacoes();
+    verificarTarefasVencidas();
     
     // Verificar tarefas vencidas a cada minuto
-    // const interval = setInterval(verificarTarefasVencidas, 60000);
+    const interval = setInterval(verificarTarefasVencidas, 60000);
     
-    // return () => clearInterval(interval);
+    return () => clearInterval(interval);
   }, [tasks]);
 
   const configurarNotificacoes = async () => {
-    // Temporariamente desabilitado - aguardando configuração do expo-notifications
-    /*
     // Configurar handler de notificações
     Notifications.setNotificationHandler({
       handleNotification: async () => ({
         shouldShowAlert: true,
         shouldPlaySound: true,
         shouldSetBadge: false,
+        shouldShowBanner: true,
+        shouldShowList: true,
       }),
     });
 
@@ -182,12 +182,9 @@ export const TaskScreen: React.FC = () => {
         'Para receber lembretes de tarefas vencidas, permita as notificações nas configurações do seu dispositivo.'
       );
     }
-    */
   };
 
   const verificarTarefasVencidas = () => {
-    // Temporariamente desabilitado
-    /*
     const agora = new Date();
     
     tasks.forEach(task => {
@@ -205,12 +202,9 @@ export const TaskScreen: React.FC = () => {
         }
       }
     });
-    */
   };
 
   const enviarNotificacaoVencimento = async (task: Task) => {
-    // Temporariamente desabilitado
-    /*
     await Notifications.scheduleNotificationAsync({
       content: {
         title: '⏰ Tarefa Vencida!',
@@ -219,7 +213,6 @@ export const TaskScreen: React.FC = () => {
       },
       trigger: null, // Enviar imediatamente
     });
-    */
   };
 
   const isTaskOverdue = (task: Task): boolean => {
