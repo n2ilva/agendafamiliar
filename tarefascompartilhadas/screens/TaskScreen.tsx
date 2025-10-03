@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -15,6 +15,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
+// import * as Notifications from 'expo-notifications';
 import { Header } from '../components/Header';
 
 export enum RepeatType {
@@ -150,6 +151,94 @@ export const TaskScreen: React.FC = () => {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [historyModalVisible, setHistoryModalVisible] = useState(false);
   
+  // Configurar notificações
+  useEffect(() => {
+    // configurarNotificacoes();
+    // verificarTarefasVencidas();
+    
+    // Verificar tarefas vencidas a cada minuto
+    // const interval = setInterval(verificarTarefasVencidas, 60000);
+    
+    // return () => clearInterval(interval);
+  }, [tasks]);
+
+  const configurarNotificacoes = async () => {
+    // Temporariamente desabilitado - aguardando configuração do expo-notifications
+    /*
+    // Configurar handler de notificações
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: false,
+      }),
+    });
+
+    // Solicitar permissões
+    const { status } = await Notifications.requestPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert(
+        'Permissão de Notificação',
+        'Para receber lembretes de tarefas vencidas, permita as notificações nas configurações do seu dispositivo.'
+      );
+    }
+    */
+  };
+
+  const verificarTarefasVencidas = () => {
+    // Temporariamente desabilitado
+    /*
+    const agora = new Date();
+    
+    tasks.forEach(task => {
+      if (task.dueDate && !task.completed) {
+        const dataVencimento = new Date(task.dueDate);
+        if (task.dueTime) {
+          const horaVencimento = new Date(task.dueTime);
+          dataVencimento.setHours(horaVencimento.getHours(), horaVencimento.getMinutes());
+        }
+        
+        // Se a tarefa venceu há menos de 5 minutos, enviar notificação
+        const diffMinutos = (agora.getTime() - dataVencimento.getTime()) / (1000 * 60);
+        if (diffMinutos >= 0 && diffMinutos <= 5) {
+          enviarNotificacaoVencimento(task);
+        }
+      }
+    });
+    */
+  };
+
+  const enviarNotificacaoVencimento = async (task: Task) => {
+    // Temporariamente desabilitado
+    /*
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: '⏰ Tarefa Vencida!',
+        body: `A tarefa "${task.title}" venceu. Que tal completá-la agora?`,
+        data: { taskId: task.id },
+      },
+      trigger: null, // Enviar imediatamente
+    });
+    */
+  };
+
+  const isTaskOverdue = (task: Task): boolean => {
+    if (!task.dueDate || task.completed) return false;
+    
+    const agora = new Date();
+    const dataVencimento = new Date(task.dueDate);
+    
+    if (task.dueTime) {
+      const horaVencimento = new Date(task.dueTime);
+      dataVencimento.setHours(horaVencimento.getHours(), horaVencimento.getMinutes());
+    } else {
+      // Se não tem hora específica, considerar fim do dia
+      dataVencimento.setHours(23, 59, 59);
+    }
+    
+    return agora > dataVencimento;
+  };
+  
   // Estados para data e hora
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const [selectedTime, setSelectedTime] = useState<Date | undefined>(undefined);
@@ -262,6 +351,32 @@ export const TaskScreen: React.FC = () => {
         return false;
       }
       return !task.dueDate || isToday(task.dueDate);
+    }).sort((a, b) => {
+      // Priorizar tarefas vencidas
+      const aOverdue = isTaskOverdue(a);
+      const bOverdue = isTaskOverdue(b);
+      
+      if (aOverdue && !bOverdue) return -1;
+      if (!aOverdue && bOverdue) return 1;
+      
+      // Se ambas vencidas ou não vencidas, ordenar por data
+      if (!a.dueDate && !b.dueDate) return 0;
+      if (!a.dueDate) return 1;
+      if (!b.dueDate) return -1;
+      
+      const dateA = new Date(a.dueDate);
+      const dateB = new Date(b.dueDate);
+      
+      if (a.dueTime) {
+        const timeA = new Date(a.dueTime);
+        dateA.setHours(timeA.getHours(), timeA.getMinutes());
+      }
+      if (b.dueTime) {
+        const timeB = new Date(b.dueTime);
+        dateB.setHours(timeB.getHours(), timeB.getMinutes());
+      }
+      
+      return dateA.getTime() - dateB.getTime();
     });
   };
 
@@ -274,7 +389,20 @@ export const TaskScreen: React.FC = () => {
     }).sort((a, b) => {
       if (!a.dueDate) return 1;
       if (!b.dueDate) return -1;
-      return a.dueDate.getTime() - b.dueDate.getTime();
+      
+      const dateA = new Date(a.dueDate);
+      const dateB = new Date(b.dueDate);
+      
+      if (a.dueTime) {
+        const timeA = new Date(a.dueTime);
+        dateA.setHours(timeA.getHours(), timeA.getMinutes());
+      }
+      if (b.dueTime) {
+        const timeB = new Date(b.dueTime);
+        dateB.setHours(timeB.getHours(), timeB.getMinutes());
+      }
+      
+      return dateA.getTime() - dateB.getTime();
     });
   };
 
@@ -552,11 +680,23 @@ export const TaskScreen: React.FC = () => {
 
   const renderTask = ({ item }: { item: Task }) => {
     const categoryConfig = getCategoryConfig(item.category);
-    const isOverdue = item.dueDate && item.dueDate < new Date() && !item.completed;
+    const isOverdue = isTaskOverdue(item);
     
     return (
-      <View style={[styles.taskItem, item.completed && styles.taskCompleted]}>
+      <View style={[
+        styles.taskItem, 
+        item.completed && styles.taskCompleted,
+        isOverdue && styles.taskOverdue
+      ]}>
         <View style={[styles.categoryIndicator, { backgroundColor: categoryConfig.color }]} />
+        
+        {/* Indicador de tarefa vencida */}
+        {isOverdue && (
+          <View style={styles.overdueIndicator}>
+            <Ionicons name="warning" size={16} color="#e74c3c" />
+            <Text style={styles.overdueLabel}>VENCIDA</Text>
+          </View>
+        )}
         
         <TouchableOpacity 
           onPress={() => toggleTask(item.id)}
@@ -1953,5 +2093,33 @@ const styles = StyleSheet.create({
   historyTime: {
     fontSize: 12,
     color: '#999',
+  },
+  // Overdue Task Styles
+  taskOverdue: {
+    backgroundColor: '#fff5f5',
+    borderLeftWidth: 4,
+    borderLeftColor: '#e74c3c',
+  },
+  overdueIndicator: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  overdueLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#e74c3c',
+    marginLeft: 2,
   },
 });
