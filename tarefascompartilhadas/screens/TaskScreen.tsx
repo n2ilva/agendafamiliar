@@ -11,12 +11,14 @@ import {
   ScrollView,
   Platform,
   KeyboardAvoidingView,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Notifications from 'expo-notifications';
 import { Header } from '../components/Header';
+import { FamilyUser, TaskStatus, TaskApproval, ApprovalNotification, Family, FamilyInvite } from '../types/FamilyTypes';
 
 export enum RepeatType {
   NONE = 'none',
@@ -44,10 +46,13 @@ interface Task {
   title: string;
   description: string;
   completed: boolean;
+  status: TaskStatus;
   category: string;
   dueDate?: Date;
   dueTime?: Date;
   repeat: RepeatConfig;
+  userId: string;
+  approvalId?: string;
   createdAt: Date;
 }
 
@@ -120,7 +125,7 @@ interface Task {
 
 interface HistoryItem {
   id: string;
-  action: 'created' | 'completed' | 'uncompleted' | 'edited' | 'deleted';
+  action: 'created' | 'completed' | 'uncompleted' | 'edited' | 'deleted' | 'approval_requested' | 'approved' | 'rejected';
   taskTitle: string;
   taskId: string;
   timestamp: Date;
@@ -128,7 +133,7 @@ interface HistoryItem {
 }
 
 interface TaskScreenProps {
-  user: any;
+  user: FamilyUser;
   onLogout: () => Promise<void>;
   onUserNameChange: (newName: string) => void;
 }
@@ -144,6 +149,20 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [newCategoryName, setNewCategoryName] = useState('');
   const [selectedIcon, setSelectedIcon] = useState('star');
+  
+  // Estados para sistema de aprovação
+  const [approvals, setApprovals] = useState<TaskApproval[]>([]);
+  const [notifications, setNotifications] = useState<ApprovalNotification[]>([]);
+  const [approvalModalVisible, setApprovalModalVisible] = useState(false);
+  const [selectedApproval, setSelectedApproval] = useState<TaskApproval | null>(null);
+  
+  // Estados para sistema de família
+  const [currentFamily, setCurrentFamily] = useState<Family | null>(null);
+  const [familyMembers, setFamilyMembers] = useState<FamilyUser[]>([]);
+  const [familyInvites, setFamilyInvites] = useState<FamilyInvite[]>([]);
+  const [familyModalVisible, setFamilyModalVisible] = useState(false);
+  const [inviteCode, setInviteCode] = useState<string>('');
+  
   const [selectedColorIndex, setSelectedColorIndex] = useState(0);
   
   // Estados para edição
@@ -328,6 +347,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         title: newTaskTitle.trim(),
         description: newTaskDescription.trim(),
         completed: false,
+        status: 'pendente' as TaskStatus,
         category: selectedCategory,
         dueDate: selectedDate,
         dueTime: selectedTime,
@@ -335,6 +355,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           type: repeatType,
           days: repeatType === RepeatType.CUSTOM ? customDays : undefined
         },
+        userId: user.id,
         createdAt: new Date(),
       };
 
@@ -459,7 +480,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
 
   // Funções do sistema de histórico
   const addToHistory = (
-    action: 'created' | 'completed' | 'uncompleted' | 'edited' | 'deleted',
+    action: 'created' | 'completed' | 'uncompleted' | 'edited' | 'deleted' | 'approval_requested' | 'approved' | 'rejected',
     taskTitle: string,
     taskId: string,
     details?: string
@@ -609,7 +630,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   };
 
   const formatDate = (date?: Date): string => {
-    if (!date) return '';
+    if (!date || !(date instanceof Date) || isNaN(date.getTime())) return '';
     return date.toLocaleDateString('pt-BR', {
       day: '2-digit',
       month: '2-digit',
@@ -618,7 +639,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   };
 
   const formatTime = (time?: Date): string => {
-    if (!time) return '';
+    if (!time || !(time instanceof Date) || isNaN(time.getTime())) return '';
     return time.toLocaleTimeString('pt-BR', {
       hour: '2-digit',
       minute: '2-digit'
@@ -665,16 +686,271 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     const task = tasks.find(t => t.id === taskId);
     if (!task) return;
     
-    setTasks(tasks.map(task => 
-      task.id === taskId ? { ...task, completed: !task.completed } : task
+    if (user.role === 'dependente' && !task.completed) {
+      // Dependente solicita aprovação para completar tarefa
+      requestTaskApproval(task);
+    } else if (user.role === 'admin') {
+      // Admin pode completar/descompletar diretamente
+      setTasks(tasks.map(t => 
+        t.id === taskId ? { 
+          ...t, 
+          completed: !t.completed,
+          status: !t.completed ? 'concluida' : 'pendente'
+        } : t
+      ));
+      
+      // Adicionar ao histórico
+      addToHistory(
+        !task.completed ? 'completed' : 'uncompleted',
+        task.title,
+        taskId
+      );
+    } else {
+      // Para convidados ou outras situações
+      setTasks(tasks.map(t => 
+        t.id === taskId ? { 
+          ...t, 
+          completed: !t.completed,
+          status: !t.completed ? 'concluida' : 'pendente'
+        } : t
+      ));
+      
+      addToHistory(
+        !task.completed ? 'completed' : 'uncompleted',
+        task.title,
+        taskId
+      );
+    }
+  };
+
+  const requestTaskApproval = (task: Task) => {
+    const approval: TaskApproval = {
+      id: Date.now().toString(),
+      taskId: task.id,
+      dependenteId: user.id,
+      dependenteName: user.name,
+      status: 'pendente',
+      requestedAt: new Date(),
+    };
+
+    setApprovals([...approvals, approval]);
+
+    // Atualizar tarefa para status pendente aprovação
+    setTasks(tasks.map(t => 
+      t.id === task.id ? { 
+        ...t, 
+        status: 'pendente_aprovacao',
+        approvalId: approval.id
+      } : t
     ));
-    
-    // Adicionar ao histórico
-    addToHistory(
-      !task.completed ? 'completed' : 'uncompleted',
-      task.title,
-      taskId
+
+    // Criar notificação para admins
+    const notification: ApprovalNotification = {
+      id: Date.now().toString(),
+      type: 'task_approval_request',
+      taskId: task.id,
+      taskTitle: task.title,
+      dependenteId: user.id,
+      dependenteName: user.name,
+      createdAt: new Date(),
+      read: false,
+    };
+
+    setNotifications([...notifications, notification]);
+
+    Alert.alert(
+      'Solicitação Enviada',
+      'Sua solicitação para completar a tarefa foi enviada para aprovação dos administradores.',
+      [{ text: 'OK' }]
     );
+
+    addToHistory('approval_requested', task.title, task.id);
+  };
+
+  const approveTask = (approvalId: string, adminComment?: string) => {
+    const approval = approvals.find(a => a.id === approvalId);
+    if (!approval || user.role !== 'admin') return;
+
+    // Atualizar aprovação
+    setApprovals(approvals.map(a => 
+      a.id === approvalId ? {
+        ...a,
+        status: 'aprovada',
+        adminId: user.id,
+        resolvedAt: new Date(),
+        adminComment
+      } : a
+    ));
+
+    // Completar tarefa
+    setTasks(tasks.map(t => 
+      t.id === approval.taskId ? {
+        ...t,
+        completed: true,
+        status: 'aprovada'
+      } : t
+    ));
+
+    // Remover notificação
+    setNotifications(notifications.filter(n => n.taskId !== approval.taskId));
+
+    addToHistory('approved', approval.dependenteName + ' - ' + tasks.find(t => t.id === approval.taskId)?.title || '', approval.taskId, adminComment);
+
+    Alert.alert('Tarefa Aprovada', 'A tarefa foi aprovada e marcada como concluída.');
+  };
+
+  const rejectTask = (approvalId: string, adminComment?: string) => {
+    const approval = approvals.find(a => a.id === approvalId);
+    if (!approval || user.role !== 'admin') return;
+
+    // Atualizar aprovação
+    setApprovals(approvals.map(a => 
+      a.id === approvalId ? {
+        ...a,
+        status: 'rejeitada',
+        adminId: user.id,
+        resolvedAt: new Date(),
+        adminComment
+      } : a
+    ));
+
+    // Reverter tarefa para pendente
+    setTasks(tasks.map(t => 
+      t.id === approval.taskId ? {
+        ...t,
+        status: 'rejeitada',
+        approvalId: undefined
+      } : t
+    ));
+
+    // Remover notificação
+    setNotifications(notifications.filter(n => n.taskId !== approval.taskId));
+
+    addToHistory('rejected', approval.dependenteName + ' - ' + tasks.find(t => t.id === approval.taskId)?.title || '', approval.taskId, adminComment);
+
+    Alert.alert('Tarefa Rejeitada', 'A solicitação de conclusão foi rejeitada.');
+  };
+
+  const openApprovalModal = (approval: TaskApproval) => {
+    setSelectedApproval(approval);
+    setApprovalModalVisible(true);
+  };
+
+  // Funções de gerenciamento de família
+  const generateInviteCode = () => {
+    const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+    const newInvite: FamilyInvite = {
+      id: Date.now().toString(),
+      familyId: user.familyId || 'family_001',
+      familyName: currentFamily?.name || 'Minha Família',
+      code: code,
+      createdBy: user.id,
+      createdAt: new Date(),
+      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 horas
+      isActive: true
+    };
+    
+    setFamilyInvites([newInvite, ...familyInvites.filter(inv => inv.isActive === false)]);
+    setInviteCode(code);
+    
+    Alert.alert(
+      'Código de Convite Gerado',
+      `Código: ${code}\n\nEste código é válido por 24 horas. Compartilhe com quem você deseja adicionar à família.`,
+      [{ text: 'OK' }]
+    );
+  };
+
+  const removeFamilyMember = (memberId: string) => {
+    console.log('Tentando remover membro:', memberId);
+    console.log('Membros atuais:', familyMembers.map(m => ({ id: m.id, name: m.name })));
+    console.log('Usuário atual:', user.id, 'Role:', user.role);
+    
+    // Verificar se o usuário é admin
+    if (user.role !== 'admin') {
+      console.log('Usuário não é admin!');
+      Alert.alert('Erro', 'Apenas administradores podem remover membros da família.');
+      return;
+    }
+    
+    const member = familyMembers.find(m => m.id === memberId);
+    console.log('Membro encontrado:', member);
+    
+    if (!member) {
+      console.log('Membro não encontrado!');
+      Alert.alert('Erro', 'Membro não encontrado.');
+      return;
+    }
+    
+    if (member.id === user.id) {
+      console.log('Tentativa de remover a si mesmo!');
+      Alert.alert('Erro', 'Você não pode remover a si mesmo da família.');
+      return;
+    }
+
+    Alert.alert(
+      'Remover Membro',
+      `Tem certeza que deseja remover ${member.name} da família?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Remover',
+          style: 'destructive',
+          onPress: () => {
+            console.log('Confirmou remoção do membro:', memberId);
+            const updatedMembers = familyMembers.filter(m => m.id !== memberId);
+            console.log('Novos membros:', updatedMembers.map(m => ({ id: m.id, name: m.name })));
+            setFamilyMembers(updatedMembers);
+            
+            // Remover tarefas do membro removido
+            const updatedTasks = tasks.filter(t => t.userId !== memberId);
+            setTasks(updatedTasks);
+            console.log('Membro removido com sucesso');
+            Alert.alert('Sucesso', `${member.name} foi removido da família.`);
+          }
+        }
+      ]
+    );
+  };
+
+  const handleManageFamily = () => {
+    // Simular dados da família (em um app real, isso viria de uma API)
+    if (!currentFamily) {
+      const family: Family = {
+        id: user.familyId || 'family_001',
+        name: 'Minha Família',
+        adminId: user.id,
+        members: [user],
+        createdAt: new Date(),
+      };
+      setCurrentFamily(family);
+    }
+    
+    // Simular membros da família
+    if (familyMembers.length === 0) {
+      setFamilyMembers([
+        user,
+        // Adicionar alguns membros fictícios para demonstração
+        {
+          id: 'member_2',
+          name: 'João Silva',
+          role: 'dependente',
+          isGuest: true,
+          familyId: user.familyId,
+          joinedAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) // 7 dias atrás
+        },
+        {
+          id: 'member_3', 
+          name: 'Maria Silva',
+          role: 'dependente',
+          isGuest: false,
+          email: 'maria@example.com',
+          familyId: user.familyId,
+          joinedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000) // 3 dias atrás
+        }
+      ]);
+    }
+    
+    setFamilyModalVisible(true);
   };
 
   const deleteTask = (taskId: string) => {
@@ -831,6 +1107,28 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           </View>
         </TouchableOpacity>
         
+        {/* Indicador de status de aprovação */}
+        {item.status === 'pendente_aprovacao' && (
+          <View style={styles.approvalStatus}>
+            <Ionicons name="hourglass-outline" size={16} color="#ff9800" />
+            <Text style={styles.approvalStatusText}>Pendente Aprovação</Text>
+          </View>
+        )}
+        
+        {item.status === 'aprovada' && (
+          <View style={[styles.approvalStatus, styles.approvalStatusApproved]}>
+            <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />
+            <Text style={[styles.approvalStatusText, styles.approvalStatusTextApproved]}>Aprovada</Text>
+          </View>
+        )}
+        
+        {item.status === 'rejeitada' && (
+          <View style={[styles.approvalStatus, styles.approvalStatusRejected]}>
+            <Ionicons name="close-circle" size={16} color="#e74c3c" />
+            <Text style={[styles.approvalStatusText, styles.approvalStatusTextRejected]}>Rejeitada</Text>
+          </View>
+        )}
+        
         <View style={styles.taskActions}>
           <TouchableOpacity 
             onPress={() => editTask(item)}
@@ -855,9 +1153,13 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       <Header 
         userName={user?.name || 'Usuário'}
         userImage={user?.picture}
+        userRole={user?.role}
         onUserNameChange={onUserNameChange}
         onSettings={handleSettings}
         onLogout={handleLogout}
+        notificationCount={user.role === 'admin' ? notifications.filter(n => !n.read).length : 0}
+        onNotifications={user.role === 'admin' ? () => setApprovalModalVisible(true) : undefined}
+        onManageFamily={user.role === 'admin' ? handleManageFamily : undefined}
       />
       
       <View style={styles.content}>
@@ -1380,13 +1682,13 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                         <Text style={styles.historyDetails}>{item.details}</Text>
                       )}
                       <Text style={styles.historyTime}>
-                        {item.timestamp.toLocaleDateString('pt-BR', {
+                        {item.timestamp ? new Date(item.timestamp).toLocaleDateString('pt-BR', {
                           day: '2-digit',
                           month: '2-digit',
                           year: 'numeric',
                           hour: '2-digit',
                           minute: '2-digit'
-                        })}
+                        }) : 'Data não disponível'}
                       </Text>
                     </View>
                   </View>
@@ -1395,6 +1697,213 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             )}
           </View>
         </SafeAreaView>
+      </Modal>
+
+      {/* Modal de Aprovação para Admins */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={approvalModalVisible}
+        onRequestClose={() => setApprovalModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Solicitações de Aprovação</Text>
+            
+            {notifications.filter(n => !n.read).length === 0 ? (
+              <Text style={styles.noNotificationsText}>Nenhuma solicitação pendente</Text>
+            ) : (
+              <ScrollView style={styles.notificationsList}>
+                {notifications.filter(n => !n.read).map(notification => {
+                  const approval = approvals.find(a => a.taskId === notification.taskId);
+                  const task = tasks.find(t => t.id === notification.taskId);
+                  
+                  if (!approval || !task) return null;
+                  
+                  return (
+                    <View key={notification.id} style={styles.notificationItem}>
+                      <Text style={styles.notificationTitle}>
+                        {notification.dependenteName} quer completar:
+                      </Text>
+                      <Text style={styles.notificationTaskTitle}>
+                        "{notification.taskTitle}"
+                      </Text>
+                      <Text style={styles.notificationTime}>
+                        {approval.requestedAt ? new Date(approval.requestedAt).toLocaleDateString('pt-BR', {
+                          day: '2-digit',
+                          month: '2-digit',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        }) : 'Data não disponível'}
+                      </Text>
+                      
+                      <View style={styles.approvalActions}>
+                        <TouchableOpacity
+                          style={[styles.approvalButton, styles.rejectButton]}
+                          onPress={() => {
+                            rejectTask(approval.id, 'Rejeitado pelo administrador');
+                            setNotifications(notifications.map(n => 
+                              n.id === notification.id ? { ...n, read: true } : n
+                            ));
+                          }}
+                        >
+                          <Ionicons name="close-circle" size={20} color="#fff" />
+                          <Text style={styles.approvalButtonText}>Rejeitar</Text>
+                        </TouchableOpacity>
+                        
+                        <TouchableOpacity
+                          style={[styles.approvalButton, styles.approveButton]}
+                          onPress={() => {
+                            approveTask(approval.id, 'Aprovado pelo administrador');
+                            setNotifications(notifications.map(n => 
+                              n.id === notification.id ? { ...n, read: true } : n
+                            ));
+                          }}
+                        >
+                          <Ionicons name="checkmark-circle" size={20} color="#fff" />
+                          <Text style={styles.approvalButtonText}>Aprovar</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  );
+                })}
+              </ScrollView>
+            )}
+            
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={() => setApprovalModalVisible(false)}
+            >
+              <Text style={styles.closeButtonText}>Fechar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal de Gerenciamento de Família */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={familyModalVisible}
+        onRequestClose={() => setFamilyModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, styles.familyModalContent]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Gerenciar Família</Text>
+              <TouchableOpacity
+                onPress={() => setFamilyModalVisible(false)}
+                style={styles.closeModalButton}
+              >
+                <Ionicons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.familyContent}>
+              {/* Seção de Convites */}
+              <View style={styles.familySection}>
+                <Text style={styles.familySectionTitle}>Convidar Membros</Text>
+                <Text style={styles.familySectionSubtitle}>
+                  Gere um código para convidar novos membros para a família
+                </Text>
+                
+                <TouchableOpacity
+                  style={styles.generateCodeButton}
+                  onPress={generateInviteCode}
+                >
+                  <Ionicons name="add-circle" size={20} color="#fff" />
+                  <Text style={styles.generateCodeButtonText}>Gerar Código de Convite</Text>
+                </TouchableOpacity>
+
+                {inviteCode && (
+                  <View style={styles.inviteCodeContainer}>
+                    <Text style={styles.inviteCodeLabel}>Código de Convite:</Text>
+                    <View style={styles.inviteCodeBox}>
+                      <Text style={styles.inviteCodeText}>{inviteCode}</Text>
+                      <TouchableOpacity
+                        onPress={() => {
+                          // Em um app real, isso copiaria para o clipboard
+                          Alert.alert('Código Copiado', 'O código foi copiado para a área de transferência.');
+                        }}
+                        style={styles.copyButton}
+                      >
+                        <Ionicons name="copy" size={16} color="#007AFF" />
+                      </TouchableOpacity>
+                    </View>
+                    <Text style={styles.inviteCodeExpiry}>
+                      Válido por 24 horas
+                    </Text>
+                  </View>
+                )}
+
+                {/* Lista de convites ativos */}
+                {familyInvites.filter(inv => inv.isActive).length > 0 && (
+                  <View style={styles.activeInvites}>
+                    <Text style={styles.activeInvitesTitle}>Convites Ativos:</Text>
+                    {familyInvites.filter(inv => inv.isActive).map(invite => (
+                      <View key={invite.id} style={styles.activeInviteItem}>
+                        <Text style={styles.activeInviteCode}>{invite.code}</Text>
+                        <Text style={styles.activeInviteExpiry}>
+                          Expira: {invite.expiresAt ? new Date(invite.expiresAt).toLocaleDateString('pt-BR') : 'Data não disponível'}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </View>
+
+              {/* Seção de Membros */}
+              <View style={styles.familySection}>
+                <Text style={styles.familySectionTitle}>Membros da Família</Text>
+                
+                {familyMembers.map(member => (
+                  <View key={member.id} style={styles.familyMember}>
+                    <View style={styles.memberInfo}>
+                      <View style={styles.memberAvatar}>
+                        {member.picture ? (
+                          <Image source={{ uri: member.picture }} style={styles.memberAvatarImage} />
+                        ) : (
+                          <Ionicons name="person" size={20} color="#666" />
+                        )}
+                      </View>
+                      <View style={styles.memberDetails}>
+                        <Text style={styles.memberName}>{member.name}</Text>
+                        <View style={styles.memberRole}>
+                          <Ionicons 
+                            name={member.role === 'admin' ? 'shield-checkmark' : 'person'} 
+                            size={14} 
+                            color={member.role === 'admin' ? '#007AFF' : '#666'} 
+                          />
+                          <Text style={[
+                            styles.memberRoleText,
+                            member.role === 'admin' && styles.memberRoleAdmin
+                          ]}>
+                            {member.role === 'admin' ? 'Administrador' : 'Dependente'}
+                          </Text>
+                        </View>
+                        {member.email && (
+                          <Text style={styles.memberEmail}>{member.email}</Text>
+                        )}
+                        <Text style={styles.memberJoinDate}>
+                          Entrou em: {member.joinedAt ? new Date(member.joinedAt).toLocaleDateString('pt-BR') : 'Data não disponível'}
+                        </Text>
+                      </View>
+                    </View>
+                    
+                    {member.id !== user.id && user.role === 'admin' && (
+                      <TouchableOpacity
+                        onPress={() => removeFamilyMember(member.id)}
+                        style={styles.removeMemberButton}
+                      >
+                        <Ionicons name="trash-outline" size={18} color="#e74c3c" />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                ))}
+              </View>
+            </ScrollView>
+          </View>
+        </View>
       </Modal>
     </SafeAreaView>
   );
@@ -2218,5 +2727,297 @@ const styles = StyleSheet.create({
   },
   rotating: {
     transform: [{ rotate: '45deg' }],
+  },
+  approvalStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    backgroundColor: '#fff3cd',
+    borderRadius: 12,
+    marginHorizontal: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#ff9800',
+  },
+  approvalStatusApproved: {
+    backgroundColor: '#d4edda',
+    borderColor: '#4CAF50',
+  },
+  approvalStatusRejected: {
+    backgroundColor: '#f8d7da',
+    borderColor: '#e74c3c',
+  },
+  approvalStatusText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#ff9800',
+    marginLeft: 4,
+  },
+  approvalStatusTextApproved: {
+    color: '#4CAF50',
+  },
+  approvalStatusTextRejected: {
+    color: '#e74c3c',
+  },
+  noNotificationsText: {
+    textAlign: 'center',
+    color: '#666',
+    fontStyle: 'italic',
+    marginVertical: 20,
+  },
+  notificationsList: {
+    maxHeight: 400,
+    marginVertical: 10,
+  },
+  notificationItem: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: 10,
+    padding: 15,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  notificationTitle: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 5,
+  },
+  notificationTaskTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 5,
+  },
+  notificationTime: {
+    fontSize: 12,
+    color: '#999',
+    marginBottom: 10,
+  },
+  approvalActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  approvalButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 15,
+    borderRadius: 8,
+    gap: 5,
+  },
+  approveButton: {
+    backgroundColor: '#4CAF50',
+  },
+  rejectButton: {
+    backgroundColor: '#e74c3c',
+  },
+  approvalButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
+  closeButton: {
+    backgroundColor: '#6c757d',
+    paddingVertical: 12,
+    paddingHorizontal: 30,
+    borderRadius: 8,
+    marginTop: 15,
+  },
+  closeButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  // Estilos do Modal de Família
+  familyModalContent: {
+    maxHeight: '85%',
+    minHeight: '70%',
+  },
+  closeModalButton: {
+    padding: 5,
+  },
+  familyContent: {
+    flex: 1,
+  },
+  familySection: {
+    marginBottom: 25,
+    paddingBottom: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  familySectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 5,
+  },
+  familySectionSubtitle: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 15,
+  },
+  generateCodeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#007AFF',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    gap: 8,
+  },
+  generateCodeButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  inviteCodeContainer: {
+    marginTop: 15,
+    padding: 15,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  inviteCodeLabel: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 8,
+  },
+  inviteCodeBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#fff',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#007AFF',
+  },
+  inviteCodeText: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#007AFF',
+    letterSpacing: 2,
+  },
+  copyButton: {
+    padding: 5,
+  },
+  inviteCodeExpiry: {
+    fontSize: 12,
+    color: '#666',
+    fontStyle: 'italic',
+    marginTop: 5,
+  },
+  activeInvites: {
+    marginTop: 15,
+  },
+  activeInvitesTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 8,
+  },
+  activeInviteItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    padding: 10,
+    borderRadius: 6,
+    marginBottom: 5,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  activeInviteCode: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#007AFF',
+  },
+  activeInviteExpiry: {
+    fontSize: 12,
+    color: '#666',
+  },
+  familyMember: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#fff',
+    padding: 15,
+    borderRadius: 10,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  memberInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  memberAvatar: {
+    width: 45,
+    height: 45,
+    borderRadius: 22.5,
+    backgroundColor: '#f0f0f0',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+    borderWidth: 2,
+    borderColor: '#e0e0e0',
+  },
+  memberAvatarImage: {
+    width: 41,
+    height: 41,
+    borderRadius: 20.5,
+  },
+  memberDetails: {
+    flex: 1,
+  },
+  memberName: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 2,
+  },
+  memberRole: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 2,
+    gap: 4,
+  },
+  memberRoleText: {
+    fontSize: 13,
+    color: '#666',
+  },
+  memberRoleAdmin: {
+    color: '#007AFF',
+    fontWeight: 'bold',
+  },
+  memberEmail: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 2,
+  },
+  memberJoinDate: {
+    fontSize: 11,
+    color: '#999',
+  },
+  removeMemberButton: {
+    padding: 8,
+    borderRadius: 6,
+    backgroundColor: '#ffe6e6',
   },
 });

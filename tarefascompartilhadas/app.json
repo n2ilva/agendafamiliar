@@ -26,10 +26,16 @@
         "RECEIVE_BOOT_COMPLETED",
         "VIBRATE",
         "WAKE_LOCK"
-      ]
+      ],
+      "package": "com.n2ilva.taskapp"
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "81e5447d-98d1-493b-8999-0655322c9a18"
+      }
     }
   }
 }

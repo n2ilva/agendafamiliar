@@ -11,16 +11,31 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import { UserRole } from '../types/FamilyTypes';
 
 interface HeaderProps {
   userName: string;
   userImage?: string;
+  userRole?: UserRole;
   onUserNameChange: (newName: string) => void;
   onSettings: () => void;
   onLogout: () => void;
+  notificationCount?: number;
+  onNotifications?: () => void;
+  onManageFamily?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ userName, userImage, onUserNameChange, onSettings, onLogout }) => {
+export const Header: React.FC<HeaderProps> = ({ 
+  userName, 
+  userImage,
+  userRole,
+  onUserNameChange, 
+  onSettings, 
+  onLogout,
+  notificationCount = 0,
+  onNotifications,
+  onManageFamily
+}) => {
   const [userImageLocal, setUserImageLocal] = useState<string | null>(userImage || null);
   const [nameModalVisible, setNameModalVisible] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
@@ -110,6 +125,31 @@ export const Header: React.FC<HeaderProps> = ({ userName, userImage, onUserNameC
             
             {menuVisible && (
               <View style={styles.dropdownMenu}>
+                {onNotifications && (
+                  <>
+                    <TouchableOpacity onPress={() => { setMenuVisible(false); onNotifications(); }} style={styles.menuItem}>
+                      <Ionicons name="notifications-outline" size={18} color="#333" />
+                      <Text style={styles.menuText}>
+                        Notificações {notificationCount > 0 && `(${notificationCount})`}
+                      </Text>
+                      {notificationCount > 0 && (
+                        <View style={styles.notificationBadge}>
+                          <Text style={styles.notificationBadgeText}>{notificationCount}</Text>
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                    <View style={styles.menuSeparator} />
+                  </>
+                )}
+                {userRole === 'admin' && onManageFamily && (
+                  <>
+                    <TouchableOpacity onPress={() => { setMenuVisible(false); onManageFamily(); }} style={styles.menuItem}>
+                      <Ionicons name="people-outline" size={18} color="#333" />
+                      <Text style={styles.menuText}>Gerenciar Família</Text>
+                    </TouchableOpacity>
+                    <View style={styles.menuSeparator} />
+                  </>
+                )}
                 <TouchableOpacity onPress={handleHistoryPress} style={styles.menuItem}>
                   <Ionicons name="time-outline" size={18} color="#333" />
                   <Text style={styles.menuText}>Histórico</Text>
@@ -346,6 +386,20 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     color: '#fff',
+    fontWeight: 'bold',
+  },
+  notificationBadge: {
+    backgroundColor: '#e74c3c',
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 8,
+  },
+  notificationBadgeText: {
+    color: '#fff',
+    fontSize: 12,
     fontWeight: 'bold',
   },
 });
