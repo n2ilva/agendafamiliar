@@ -24,9 +24,14 @@ export default function App() {
 
   // Observar mudanças de autenticação do Firebase
   useEffect(() => {
-    const unsubscribe = FirebaseAuthService.onAuthStateChange((firebaseUser) => {
+    const unsubscribe = FirebaseAuthService.onAuthStateChange(async (firebaseUser) => {
       setUser(firebaseUser);
       setLoading(false);
+      
+      // Se usuário logado, inicializar sistema offline
+      if (firebaseUser) {
+        await FirebaseAuthService.initializeOfflineSupport();
+      }
     });
 
     return unsubscribe;
@@ -66,7 +71,7 @@ export default function App() {
     }
   };
 
-  const handleGuestLogin = (role: UserRole) => {
+  const handleGuestLogin = (role: UserRole = 'admin') => {
     const guestUser: FamilyUser = {
       id: Date.now().toString(),
       name: role === 'admin' ? 'Admin Convidado' : 'Dependente Convidado',
@@ -78,73 +83,80 @@ export default function App() {
     setUser(guestUser);
   };
 
-  const handleGoogleLogin = async (role: UserRole) => {
-    try {
-      if (!authData) {
-        const result = await promptAsync();
-        if (result?.type === 'success' && result.authentication) {
-          // Usar Firebase para login com Google
-          const firebaseResult = await FirebaseAuthService.loginWithGoogle(
-            result.authentication.accessToken, 
-            role
-          );
-          
-          if (firebaseResult.success) {
-            // O usuário será definido automaticamente pelo onAuthStateChange
-            Alert.alert('Sucesso!', 'Login com Google realizado com sucesso!');
-          } else {
-            Alert.alert('Erro', firebaseResult.error);
-          }
-        }
-        return;
-      }
-
-      // Se já temos authData, usar para login com Firebase
-      const result = await FirebaseAuthService.loginWithGoogle(authData.accessToken, role);
-      if (result.success) {
-        Alert.alert('Sucesso!', 'Login com Google realizado com sucesso!');
-      } else {
-        Alert.alert('Erro', result.error);
-      }
-    } catch (error: any) {
-      Alert.alert('Erro', 'Erro no login com Google: ' + error.message);
-    }
+  const handleGoogleLogin = async (role: UserRole = 'admin') => {
+    // Função mantida para compatibilidade, mas login agora é feito diretamente no LoginScreen
+    console.log('Login com Google solicitado para role:', role);
   };
 
-  // Verificar se há um role pendente após autenticação
-  useEffect(() => {
-    if (authData && (window as any).pendingRole) {
-      handleGoogleLogin((window as any).pendingRole);
-      delete (window as any).pendingRole;
-    }
-  }, [authData]);
+
 
   const handleUserNameChange = (newName: string) => {
     setUser((prev) => prev ? { ...prev, name: newName } : null);
   };
 
   const handleLogout = async () => {
-    try {
-      // Logout do Firebase
-      await FirebaseAuthService.logout();
-      
-      // Revogar token do Google se existir
-      if (authData?.accessToken) {
-        await fetch(
-          `https://oauth2.googleapis.com/revoke?token=${authData.accessToken}`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-type': 'application/x-www-form-urlencoded',
-            },
+    Alert.alert(
+      'Sair do App',
+      'Tem certeza que deseja sair da sua conta?',
+      [
+        { 
+          text: 'Cancelar', 
+          style: 'cancel' 
+        },
+        { 
+          text: 'Sair', 
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // Logout do Firebase
+              await FirebaseAuthService.logout();
+              
+              // Revogar token do Google se existir
+              if (authData?.accessToken) {
+                await fetch(
+                  `https://oauth2.googleapis.com/revoke?token=${authData.accessToken}`,
+                  {
+                    method: 'POST',
+                    headers: {
+                      'Content-type': 'application/x-www-form-urlencoded',
+                    },
+                  }
+                );
+              }
+            } catch (error) {
+              console.log('Erro no logout:', error);
+            } finally {
+              setUser(null);
+              setAuthData(null);
+            }
           }
+        }
+      ]
+    );
+  };
+
+  const handleUserRoleChange = async (newRole: UserRole) => {
+    if (user) {
+      try {
+        // Atualizar role no Firebase se não for convidado
+        if (!user.isGuest) {
+          await FirebaseAuthService.updateUserRole(user.id, newRole);
+        }
+        
+        // Atualizar estado local
+        const updatedUser: FamilyUser = {
+          ...user,
+          role: newRole
+        };
+        setUser(updatedUser);
+        
+        Alert.alert(
+          'Perfil Atualizado',
+          `Seu perfil foi alterado para ${newRole === 'admin' ? 'Administrador' : 'Dependente'}.`
         );
+      } catch (error: any) {
+        Alert.alert('Erro', 'Não foi possível alterar o perfil: ' + error.message);
       }
-    } catch (error) {
-      console.log('Erro no logout:', error);
-    } finally {
-      setUser(null);
-      setAuthData(null);
     }
   };
 
@@ -159,6 +171,7 @@ export default function App() {
           user={user}
           onLogout={handleLogout}
           onUserNameChange={handleUserNameChange}
+          onUserRoleChange={handleUserRoleChange}
         />
       ) : (
         <LoginScreen onGuestLogin={handleGuestLogin} onGoogleLogin={handleGoogleLogin} />

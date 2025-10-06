@@ -18,7 +18,10 @@ import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Notifications from 'expo-notifications';
 import { Header } from '../components/Header';
-import { FamilyUser, TaskStatus, TaskApproval, ApprovalNotification, Family, FamilyInvite } from '../types/FamilyTypes';
+import { FamilyUser, UserRole, TaskStatus, TaskApproval, ApprovalNotification, Family, FamilyInvite, Task as FirebaseTask } from '../types/FamilyTypes';
+import LocalStorageService from '../services/LocalStorageService';
+import SyncService, { SyncStatus } from '../services/SyncService';
+import ConnectivityService, { ConnectivityState } from '../services/ConnectivityService';
 
 export enum RepeatType {
   NONE = 'none',
@@ -54,6 +57,12 @@ interface Task {
   userId: string;
   approvalId?: string;
   createdAt: Date;
+  // Campos de autoria
+  createdBy: string;
+  createdByName: string;
+  editedBy?: string;
+  editedByName?: string;
+  editedAt?: Date;
 }
 
 export const DEFAULT_CATEGORIES: CategoryConfig[] = [
@@ -130,15 +139,20 @@ interface HistoryItem {
   taskId: string;
   timestamp: Date;
   details?: string;
+  // Informações de autoria
+  userId: string;
+  userName: string;
+  userRole?: string;
 }
 
 interface TaskScreenProps {
   user: FamilyUser;
   onLogout: () => Promise<void>;
   onUserNameChange: (newName: string) => void;
+  onUserRoleChange?: (newRole: UserRole) => void;
 }
 
-export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNameChange }) => {
+export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNameChange, onUserRoleChange }) => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [categories, setCategories] = useState<CategoryConfig[]>(DEFAULT_CATEGORIES);
   const [modalVisible, setModalVisible] = useState(false);
@@ -162,10 +176,23 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   const [familyInvites, setFamilyInvites] = useState<FamilyInvite[]>([]);
   const [familyModalVisible, setFamilyModalVisible] = useState(false);
   const [inviteCode, setInviteCode] = useState<string>('');
-  
+
   const [selectedColorIndex, setSelectedColorIndex] = useState(0);
-  
-  // Estados para edição
+
+  // Estados para sistema offline
+  const [isOffline, setIsOffline] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>({
+    isOnline: true,
+    isSyncing: false,
+    lastSync: 0,
+    pendingOperations: 0,
+    hasError: false
+  });
+  const [connectivityState, setConnectivityState] = useState<ConnectivityState>({
+    isConnected: true,
+    isInternetReachable: true,
+    type: 'wifi'
+  });  // Estados para edição
   const [isEditing, setIsEditing] = useState(false);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   
@@ -179,6 +206,108 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   // Estado para atualização automática
   const [lastUpdate, setLastUpdate] = useState(new Date());
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Função para converter Task local para FirebaseTask
+  const taskToFirebaseTask = (task: Task): FirebaseTask => ({
+    id: task.id,
+    title: task.title,
+    description: task.description || '',
+    completed: task.completed,
+    status: task.status,
+    category: task.category,
+    priority: 'media', // valor padrão
+    createdAt: task.createdAt,
+    updatedAt: task.editedAt || new Date(),
+    completedAt: task.completed ? new Date() : undefined,
+    dueDate: task.dueDate,
+    repeatOption: task.repeat?.type === RepeatType.DAILY ? 'diario' : 
+                  task.repeat?.type === RepeatType.CUSTOM ? 'semanal' : 'nenhum',
+    userId: task.userId,
+    approvalId: task.approvalId,
+    // Campos de autoria
+    createdBy: task.createdBy,
+    createdByName: task.createdByName,
+    editedBy: task.editedBy,
+    editedByName: task.editedByName,
+    editedAt: task.editedAt
+  });
+
+  // Função para converter FirebaseTask para Task local
+  const firebaseTaskToTask = (firebaseTask: FirebaseTask): Task => ({
+    id: firebaseTask.id,
+    title: firebaseTask.title,
+    description: firebaseTask.description || '',
+    completed: firebaseTask.completed,
+    status: firebaseTask.status,
+    category: firebaseTask.category,
+    dueDate: firebaseTask.dueDate,
+    dueTime: firebaseTask.dueDate, // usar mesma data para time
+    repeat: {
+      type: firebaseTask.repeatOption === 'diario' ? RepeatType.DAILY :
+            firebaseTask.repeatOption === 'semanal' ? RepeatType.CUSTOM : RepeatType.NONE,
+      days: firebaseTask.repeatOption === 'semanal' ? [1, 2, 3, 4, 5] : []
+    },
+    userId: firebaseTask.userId,
+    approvalId: firebaseTask.approvalId,
+    createdAt: firebaseTask.createdAt,
+    // Campos de autoria com fallback para dados antigos
+    createdBy: firebaseTask.createdBy || firebaseTask.userId,
+    createdByName: firebaseTask.createdByName || 'Usuário',
+    editedBy: firebaseTask.editedBy,
+    editedByName: firebaseTask.editedByName,
+    editedAt: firebaseTask.editedAt
+  });
+
+  // Função para carregar dados do cache local
+  const loadDataFromCache = async () => {
+    try {
+      console.log('📱 Carregando dados do cache local...');
+      
+      // Carregar tarefas do cache
+      const cachedFirebaseTasks = await LocalStorageService.getTasks();
+      if (cachedFirebaseTasks.length > 0) {
+        const convertedTasks = cachedFirebaseTasks.map(firebaseTaskToTask);
+        setTasks(convertedTasks);
+        console.log(`✅ ${convertedTasks.length} tarefas carregadas do cache`);
+      }
+
+      // Carregar aprovações do cache
+      const cachedApprovals = await LocalStorageService.getApprovals();
+      if (cachedApprovals.length > 0) {
+        setApprovals(cachedApprovals);
+        console.log(`✅ ${cachedApprovals.length} aprovações carregadas do cache`);
+      }
+
+      // Se há dados em cache, mostrar indicador
+      const hasCachedData = await LocalStorageService.hasCachedData();
+      if (hasCachedData) {
+        console.log('✅ Dados offline disponíveis');
+      }
+
+    } catch (error) {
+      console.error('❌ Erro ao carregar dados do cache:', error);
+    }
+  };
+
+  // Função para salvar dados no cache
+  const saveDataToCache = async () => {
+    try {
+      // Salvar tarefas convertidas
+      for (const task of tasks) {
+        const firebaseTask = taskToFirebaseTask(task);
+        await LocalStorageService.saveTask(firebaseTask);
+      }
+
+      // Salvar aprovações
+      for (const approval of approvals) {
+        await LocalStorageService.saveApproval(approval);
+      }
+
+      console.log('💾 Dados salvos no cache local');
+    } catch (error) {
+      console.error('❌ Erro ao salvar dados no cache:', error);
+    }
+  };
   
   // Configurar notificações apenas uma vez
   useEffect(() => {
@@ -207,6 +336,63 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   useEffect(() => {
     clearOldHistory();
   }, [lastUpdate]);
+
+  // useEffect para inicializar sistema offline
+  useEffect(() => {
+    const initializeOfflineSystem = async () => {
+      try {
+        // Inicializar conectividade
+        await ConnectivityService.initialize();
+        
+        // Configurar listener de conectividade
+        const removeConnectivityListener = ConnectivityService.addConnectivityListener((state) => {
+          setConnectivityState(state);
+          setIsOffline(!state.isConnected);
+        });
+
+        // Inicializar sincronização
+        await SyncService.initialize();
+        
+        // Configurar listener de sincronização
+        const removeSyncListener = SyncService.addSyncListener((status) => {
+          setSyncStatus(status);
+        });
+
+        // Obter estado inicial
+        const initialState = ConnectivityService.getCurrentState();
+        setConnectivityState(initialState);
+        setIsOffline(!initialState.isConnected);
+
+        // Carregar dados do cache se estiver offline
+        if (!initialState.isConnected) {
+          await loadDataFromCache();
+        }
+
+        console.log('Sistema offline inicializado');
+
+        // Cleanup function
+        return () => {
+          removeConnectivityListener();
+          removeSyncListener();
+        };
+      } catch (error) {
+        console.error('Erro ao inicializar sistema offline:', error);
+      }
+    };
+
+    const cleanup = initializeOfflineSystem();
+    
+    return () => {
+      cleanup.then(cleanupFn => cleanupFn && cleanupFn());
+    };
+  }, []);
+
+  // useEffect para carregar dados do cache quando fica offline
+  useEffect(() => {
+    if (isOffline) {
+      loadDataFromCache();
+    }
+  }, [isOffline]);
 
   // Função para forçar atualização completa do aplicativo
   const forceRefresh = () => {
@@ -313,60 +499,100 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   const [repeatType, setRepeatType] = useState<RepeatType>(RepeatType.NONE);
   const [customDays, setCustomDays] = useState<number[]>([]);
 
-  const addTask = () => {
+  const addTask = async () => {
     if (!newTaskTitle.trim()) {
       Alert.alert('Erro', 'Por favor, insira um título para a tarefa.');
       return;
     }
 
-    if (isEditing && editingTaskId) {
-      // Atualizar tarefa existente
-      setTasks(tasks.map(task => 
-        task.id === editingTaskId 
-          ? {
-              ...task,
-              title: newTaskTitle.trim(),
-              description: newTaskDescription.trim(),
-              category: selectedCategory,
-              dueDate: selectedDate,
-              dueTime: selectedTime,
-              repeat: {
-                type: repeatType,
-                days: repeatType === RepeatType.CUSTOM ? customDays : undefined
+    try {
+      if (isEditing && editingTaskId) {
+        // Atualizar tarefa existente
+        const updatedTasks = tasks.map(task => 
+          task.id === editingTaskId 
+            ? {
+                ...task,
+                title: newTaskTitle.trim(),
+                description: newTaskDescription.trim(),
+                category: selectedCategory,
+                dueDate: selectedDate,
+                dueTime: selectedTime,
+                repeat: {
+                  type: repeatType,
+                  days: repeatType === RepeatType.CUSTOM ? customDays : undefined
+                },
+                // Campos de edição
+                editedBy: user.id,
+                editedByName: user.name,
+                editedAt: new Date()
               }
-            }
-          : task
-      ));
-      
-      // Adicionar ao histórico
-      addToHistory('edited', newTaskTitle.trim(), editingTaskId);
-    } else {
-      // Criar nova tarefa
-      const newTask: Task = {
-        id: Date.now().toString(),
-        title: newTaskTitle.trim(),
-        description: newTaskDescription.trim(),
-        completed: false,
-        status: 'pendente' as TaskStatus,
-        category: selectedCategory,
-        dueDate: selectedDate,
-        dueTime: selectedTime,
-        repeat: {
-          type: repeatType,
-          days: repeatType === RepeatType.CUSTOM ? customDays : undefined
-        },
-        userId: user.id,
-        createdAt: new Date(),
-      };
+            : task
+        );
+        
+        setTasks(updatedTasks);
+        
+        // Salvar no cache local
+        const updatedTask = updatedTasks.find(t => t.id === editingTaskId);
+        if (updatedTask) {
+          const firebaseTask = taskToFirebaseTask(updatedTask);
+          await LocalStorageService.saveTask(firebaseTask);
+          
+          // Se estiver offline, adicionar à fila de sincronização
+          if (isOffline) {
+            await SyncService.addOfflineOperation('update', 'tasks', firebaseTask);
+            console.log('📱 Tarefa atualizada offline e adicionada à fila de sincronização');
+          }
+        }
+        
+        // Adicionar ao histórico
+        addToHistory('edited', newTaskTitle.trim(), editingTaskId);
+      } else {
+        // Criar nova tarefa
+        const newTask: Task = {
+          id: Date.now().toString(),
+          title: newTaskTitle.trim(),
+          description: newTaskDescription.trim(),
+          completed: false,
+          status: 'pendente' as TaskStatus,
+          category: selectedCategory,
+          dueDate: selectedDate,
+          dueTime: selectedTime,
+          repeat: {
+            type: repeatType,
+            days: repeatType === RepeatType.CUSTOM ? customDays : undefined
+          },
+          userId: user.id,
+          createdAt: new Date(),
+          // Campos de autoria
+          createdBy: user.id,
+          createdByName: user.name
+        };
 
-      setTasks([newTask, ...tasks]);
+        const updatedTasks = [newTask, ...tasks];
+        setTasks(updatedTasks);
+        
+        // Salvar no cache local
+        const firebaseTask = taskToFirebaseTask(newTask);
+        await LocalStorageService.saveTask(firebaseTask);
+        
+        // Se estiver offline, adicionar à fila de sincronização
+        if (isOffline) {
+          await SyncService.addOfflineOperation('create', 'tasks', firebaseTask);
+          console.log('📱 Nova tarefa criada offline e adicionada à fila de sincronização');
+        }
+        
+        // Adicionar ao histórico
+        addToHistory('created', newTask.title, newTask.id);
+      }
       
-      // Adicionar ao histórico
-      addToHistory('created', newTask.title, newTask.id);
+      // Reset form
+      resetForm();
+      setModalVisible(false);
+      
+    } catch (error) {
+      console.error('Erro ao salvar tarefa:', error);
+      Alert.alert('Erro', 'Não foi possível salvar a tarefa. Tente novamente.');
     }
-    
-    // Reset form
-    resetForm();
   };
 
   const resetForm = () => {
@@ -483,7 +709,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     action: 'created' | 'completed' | 'uncompleted' | 'edited' | 'deleted' | 'approval_requested' | 'approved' | 'rejected',
     taskTitle: string,
     taskId: string,
-    details?: string
+    details?: string,
+    actionUserId?: string,
+    actionUserName?: string
   ) => {
     const historyItem: HistoryItem = {
       id: Date.now().toString(),
@@ -491,7 +719,11 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       taskTitle,
       taskId,
       timestamp: new Date(),
-      details
+      details,
+      // Informações de autoria (usar usuário atual se não fornecido)
+      userId: actionUserId || user.id,
+      userName: actionUserName || user.name,
+      userRole: user.role
     };
 
     setHistory(prev => {
@@ -1144,6 +1376,32 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             <Ionicons name="trash-outline" size={18} color="#e74c3c" />
           </TouchableOpacity>
         </View>
+        
+        {/* Informações de Autoria */}
+        <View style={styles.authorshipInfo}>
+          <View style={styles.authorshipRow}>
+            <Ionicons name="person-outline" size={12} color="#666" />
+            <Text style={styles.authorshipText}>
+              Criado por {item.createdByName || 'Usuário'}
+            </Text>
+            <Text style={styles.authorshipDate}>
+              {formatDate(item.createdAt)}
+            </Text>
+          </View>
+          {item.editedBy && item.editedByName && (
+            <View style={styles.authorshipRow}>
+              <Ionicons name="pencil-outline" size={12} color="#666" />
+              <Text style={styles.authorshipText}>
+                Editado por {item.editedByName}
+              </Text>
+              {item.editedAt && (
+                <Text style={styles.authorshipDate}>
+                  {formatDate(item.editedAt)}
+                </Text>
+              )}
+            </View>
+          )}
+        </View>
       </View>
     );
   };
@@ -1155,12 +1413,39 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         userImage={user?.picture}
         userRole={user?.role}
         onUserNameChange={onUserNameChange}
+        onUserRoleChange={onUserRoleChange}
         onSettings={handleSettings}
         onLogout={handleLogout}
         notificationCount={user.role === 'admin' ? notifications.filter(n => !n.read).length : 0}
         onNotifications={user.role === 'admin' ? () => setApprovalModalVisible(true) : undefined}
         onManageFamily={user.role === 'admin' ? handleManageFamily : undefined}
       />
+      
+      {/* Indicador de Status de Conectividade */}
+      {(isOffline || syncStatus.pendingOperations > 0) && (
+        <View style={styles.connectivityIndicator}>
+          <View style={styles.connectivityContent}>
+            <Ionicons 
+              name={isOffline ? "cloud-offline" : "sync"} 
+              size={16} 
+              color={isOffline ? "#ff6b6b" : "#4CAF50"} 
+            />
+            <Text style={[styles.connectivityText, { color: isOffline ? "#ff6b6b" : "#4CAF50" }]}>
+              {isOffline 
+                ? `Modo Offline • ${syncStatus.pendingOperations} pendentes` 
+                : syncStatus.isSyncing 
+                  ? "Sincronizando..." 
+                  : `${syncStatus.pendingOperations} operações na fila`
+              }
+            </Text>
+            {syncStatus.isSyncing && (
+              <View style={styles.syncingIndicator}>
+                <Text style={styles.syncingDot}>•</Text>
+              </View>
+            )}
+          </View>
+        </View>
+      )}
       
       <View style={styles.content}>
         <View style={styles.categoryFiltersContainer}>
@@ -1678,6 +1963,10 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                         </Text>{' '}
                         a tarefa "{item.taskTitle}"
                       </Text>
+                      {/* Informações de autoria */}
+                      <Text style={styles.historyAuthor}>
+                        por {item.userName} ({item.userRole === 'admin' ? 'Admin' : 'Dependente'})
+                      </Text>
                       {item.details && (
                         <Text style={styles.historyDetails}>{item.details}</Text>
                       )}
@@ -2193,7 +2482,7 @@ const styles = StyleSheet.create({
   taskTitleRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     marginBottom: 4,
   },
   taskTitle: {
@@ -2210,9 +2499,10 @@ const styles = StyleSheet.create({
   categoryBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
   },
   categoryBadgeText: {
     fontSize: 10,
@@ -3019,5 +3309,62 @@ const styles = StyleSheet.create({
     padding: 8,
     borderRadius: 6,
     backgroundColor: '#ffe6e6',
+  },
+  // Estilos para indicador de conectividade
+  connectivityIndicator: {
+    backgroundColor: '#f8f9fa',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  connectivityContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  connectivityText: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  syncingIndicator: {
+    marginLeft: 4,
+  },
+  // Estilos para informações de autoria
+  authorshipInfo: {
+    backgroundColor: '#f8f9fa',
+    padding: 8,
+    borderRadius: 6,
+    marginTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#e9ecef',
+  },
+  authorshipRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 2,
+    gap: 6,
+  },
+  authorshipText: {
+    fontSize: 11,
+    color: '#666',
+    fontWeight: '500',
+    flex: 1,
+  },
+  authorshipDate: {
+    fontSize: 10,
+    color: '#999',
+    fontStyle: 'italic',
+  },
+  historyAuthor: {
+    fontSize: 11,
+    color: '#666',
+    fontStyle: 'italic',
+    marginTop: 2,
+  },
+  syncingDot: {
+    fontSize: 20,
+    color: '#4CAF50',
   },
 });

@@ -74,6 +74,12 @@ export interface Task {
   repeatOption?: 'nenhum' | 'diario' | 'semanal' | 'mensal';
   userId: string;
   approvalId?: string;
+  // Campos de autoria
+  createdBy: string;
+  createdByName: string;
+  editedBy?: string;
+  editedByName?: string;
+  editedAt?: Date;
 }
 
 export interface FamilyData {

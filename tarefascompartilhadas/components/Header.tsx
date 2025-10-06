@@ -18,6 +18,7 @@ interface HeaderProps {
   userImage?: string;
   userRole?: UserRole;
   onUserNameChange: (newName: string) => void;
+  onUserRoleChange?: (newRole: UserRole) => void;
   onSettings: () => void;
   onLogout: () => void;
   notificationCount?: number;
@@ -29,7 +30,8 @@ export const Header: React.FC<HeaderProps> = ({
   userName, 
   userImage,
   userRole,
-  onUserNameChange, 
+  onUserNameChange,
+  onUserRoleChange, 
   onSettings, 
   onLogout,
   notificationCount = 0,
@@ -38,8 +40,10 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const [userImageLocal, setUserImageLocal] = useState<string | null>(userImage || null);
   const [nameModalVisible, setNameModalVisible] = useState(false);
+  const [profileModalVisible, setProfileModalVisible] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
   const [newName, setNewName] = useState(userName);
+  const [selectedRole, setSelectedRole] = useState<UserRole>(userRole || 'admin');
 
   const handleImagePicker = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -77,18 +81,20 @@ export const Header: React.FC<HeaderProps> = ({
 
   const handleSettingsPress = () => {
     setMenuVisible(false);
-    Alert.alert('Configurações', 'Funcionalidade a ser implementada.');
+    setSelectedRole(userRole || 'admin'); // Resetar para role atual
+    setProfileModalVisible(true);
+  };
+
+  const handleRoleChange = () => {
+    if (onUserRoleChange && selectedRole !== userRole) {
+      onUserRoleChange(selectedRole);
+    }
+    setProfileModalVisible(false);
   };
 
   const handleLogout = () => {
-    Alert.alert(
-      'Sair',
-      'Tem certeza que deseja sair?',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        { text: 'Sair', onPress: onLogout, style: 'destructive' },
-      ]
-    );
+    // Chamada direta do logout sem confirmação duplicada
+    onLogout();
   };
 
   return (
@@ -197,6 +203,92 @@ export const Header: React.FC<HeaderProps> = ({
                 onPress={handleNameChange}
               >
                 <Text style={styles.buttonText}>Salvar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      
+      {/* Modal de Configurações de Perfil */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={profileModalVisible}
+        onRequestClose={() => setProfileModalVisible(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Configurações de Perfil</Text>
+            
+            <Text style={styles.roleSelectionTitle}>Escolha seu perfil:</Text>
+            
+            <View style={styles.roleOptionsContainer}>
+              <TouchableOpacity 
+                style={[
+                  styles.roleOption, 
+                  selectedRole === 'admin' && styles.roleOptionSelected
+                ]} 
+                onPress={() => setSelectedRole('admin')}
+              >
+                <Ionicons 
+                  name="shield-checkmark" 
+                  size={24} 
+                  color={selectedRole === 'admin' ? '#fff' : '#007AFF'} 
+                />
+                <Text style={[
+                  styles.roleOptionText, 
+                  selectedRole === 'admin' && styles.roleOptionTextSelected
+                ]}>
+                  Administrador
+                </Text>
+                <Text style={[
+                  styles.roleDescription,
+                  selectedRole === 'admin' && styles.roleDescriptionSelected
+                ]}>
+                  Gerencia tarefas da família
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={[
+                  styles.roleOption, 
+                  selectedRole === 'dependente' && styles.roleOptionSelected
+                ]} 
+                onPress={() => setSelectedRole('dependente')}
+              >
+                <Ionicons 
+                  name="person" 
+                  size={24} 
+                  color={selectedRole === 'dependente' ? '#fff' : '#007AFF'} 
+                />
+                <Text style={[
+                  styles.roleOptionText, 
+                  selectedRole === 'dependente' && styles.roleOptionTextSelected
+                ]}>
+                  Dependente
+                </Text>
+                <Text style={[
+                  styles.roleDescription,
+                  selectedRole === 'dependente' && styles.roleDescriptionSelected
+                ]}>
+                  Precisa de aprovação para concluir tarefas
+                </Text>
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.modalButtons}>
+              <TouchableOpacity 
+                style={[styles.modalButton, styles.cancelButton]} 
+                onPress={() => setProfileModalVisible(false)}
+              >
+                <Text style={styles.cancelButtonText}>Cancelar</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={[styles.modalButton, styles.saveButton]} 
+                onPress={handleRoleChange}
+              >
+                <Text style={styles.saveButtonText}>Salvar</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -400,6 +492,66 @@ const styles = StyleSheet.create({
   notificationBadgeText: {
     color: '#fff',
     fontSize: 12,
+    fontWeight: 'bold',
+  },
+  // Estilos para modal de configurações de perfil
+  roleSelectionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 15,
+    textAlign: 'center',
+  },
+  roleOptionsContainer: {
+    width: '100%',
+    marginBottom: 20,
+  },
+  roleOption: {
+    backgroundColor: '#fff',
+    borderWidth: 2,
+    borderColor: '#007AFF',
+    borderRadius: 10,
+    padding: 15,
+    alignItems: 'center',
+    marginBottom: 10,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  roleOptionSelected: {
+    backgroundColor: '#007AFF',
+    borderColor: '#007AFF',
+  },
+  roleOptionText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#007AFF',
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  roleOptionTextSelected: {
+    color: '#fff',
+  },
+  roleDescription: {
+    fontSize: 11,
+    color: '#666',
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  roleDescriptionSelected: {
+    color: '#e6f3ff',
+  },
+  cancelButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+  },
+  saveButtonText: {
+    color: '#fff',
     fontWeight: 'bold',
   },
 });
