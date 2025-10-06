@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "742861794909",
+    "project_id": "agenda-familiar-472905",
+    "storage_bucket": "agenda-familiar-472905.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:742861794909:android:967badc5ae126af56aa7b4",
+        "android_client_info": {
+          "package_name": "com.n2ilva.agendafamiliar"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "742861794909-qtrkl3r2fhhre3734c3heb0sm1l2fatj.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCmQgb7em7H61BVRsgbyqmKwWbt6yPIUuQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "742861794909-qtrkl3r2fhhre3734c3heb0sm1l2fatj.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

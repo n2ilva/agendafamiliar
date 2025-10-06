@@ -4,13 +4,15 @@ import { TaskScreen } from './screens/TaskScreen';
 import { LoginScreen } from './screens/LoginScreen';
 import * as WebBrowser from 'expo-web-browser';
 import * as Google from 'expo-auth-session/providers/google';
-import { Alert } from 'react-native';
+import { Alert, ActivityIndicator, View, StyleSheet } from 'react-native';
 import { FamilyUser, UserRole } from './types/FamilyTypes';
+import FirebaseAuthService from './services/FirebaseAuthService';
 
 WebBrowser.maybeCompleteAuthSession();
 
 export default function App() {
   const [user, setUser] = useState<FamilyUser | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
   const [authData, setAuthData] = useState<any>(null);
 
   const [request, response, promptAsync] = Google.useAuthRequest({
@@ -19,6 +21,16 @@ export default function App() {
     androidClientId: '742861794909-je4328bkkcvj6ahsq6ac98piquveb6nl.apps.googleusercontent.com',
     webClientId: '742861794909-qtrkl3r2fhhre3734c3heb0sm1l2fatj.apps.googleusercontent.com',
   });
+
+  // Observar mudanças de autenticação do Firebase
+  useEffect(() => {
+    const unsubscribe = FirebaseAuthService.onAuthStateChange((firebaseUser) => {
+      setUser(firebaseUser);
+      setLoading(false);
+    });
+
+    return unsubscribe;
+  }, []);
 
   useEffect(() => {
     if (response?.type === 'success') {
@@ -66,20 +78,43 @@ export default function App() {
     setUser(guestUser);
   };
 
-  const handleGoogleLogin = (role: UserRole) => {
-    if (authData) {
-      fetchUserInfo(authData.accessToken, role);
-    } else {
-      // Armazenar o role temporariamente para usar após a autenticação
-      (window as any).pendingRole = role;
-      promptAsync();
+  const handleGoogleLogin = async (role: UserRole) => {
+    try {
+      if (!authData) {
+        const result = await promptAsync();
+        if (result?.type === 'success' && result.authentication) {
+          // Usar Firebase para login com Google
+          const firebaseResult = await FirebaseAuthService.loginWithGoogle(
+            result.authentication.accessToken, 
+            role
+          );
+          
+          if (firebaseResult.success) {
+            // O usuário será definido automaticamente pelo onAuthStateChange
+            Alert.alert('Sucesso!', 'Login com Google realizado com sucesso!');
+          } else {
+            Alert.alert('Erro', firebaseResult.error);
+          }
+        }
+        return;
+      }
+
+      // Se já temos authData, usar para login com Firebase
+      const result = await FirebaseAuthService.loginWithGoogle(authData.accessToken, role);
+      if (result.success) {
+        Alert.alert('Sucesso!', 'Login com Google realizado com sucesso!');
+      } else {
+        Alert.alert('Erro', result.error);
+      }
+    } catch (error: any) {
+      Alert.alert('Erro', 'Erro no login com Google: ' + error.message);
     }
   };
 
   // Verificar se há um role pendente após autenticação
   useEffect(() => {
     if (authData && (window as any).pendingRole) {
-      fetchUserInfo(authData.accessToken, (window as any).pendingRole);
+      handleGoogleLogin((window as any).pendingRole);
       delete (window as any).pendingRole;
     }
   }, [authData]);
@@ -90,6 +125,10 @@ export default function App() {
 
   const handleLogout = async () => {
     try {
+      // Logout do Firebase
+      await FirebaseAuthService.logout();
+      
+      // Revogar token do Google se existir
       if (authData?.accessToken) {
         await fetch(
           `https://oauth2.googleapis.com/revoke?token=${authData.accessToken}`,
@@ -102,7 +141,7 @@ export default function App() {
         );
       }
     } catch (error) {
-      console.log('Erro ao revogar token:', error);
+      console.log('Erro no logout:', error);
     } finally {
       setUser(null);
       setAuthData(null);
@@ -111,7 +150,11 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      {user ? (
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#007AFF" />
+        </View>
+      ) : user ? (
         <TaskScreen 
           user={user}
           onLogout={handleLogout}
@@ -123,3 +166,12 @@ export default function App() {
     </SafeAreaProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+  },
+});
