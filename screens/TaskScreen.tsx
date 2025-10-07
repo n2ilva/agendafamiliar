@@ -2522,13 +2522,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       >
         <SafeAreaView style={styles.container}>
           <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <TouchableOpacity onPress={() => setHistoryModalVisible(false)}>
-                <Ionicons name="close" size={24} color="#666" />
-              </TouchableOpacity>
-              <Text style={styles.modalTitle}>Informações</Text>
-              <View style={{ width: 24 }} />
-            </View>
+            <Text style={styles.modalTitle}>Informações</Text>
 
             <Text style={styles.historySubtitle}>
               Últimas ações realizadas (15 dias)
@@ -3792,16 +3786,18 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   closeButton: {
-    backgroundColor: '#6c757d',
+    backgroundColor: '#007AFF',
     paddingVertical: 12,
     paddingHorizontal: 30,
     borderRadius: 8,
     marginTop: 15,
+    alignItems: 'center',
   },
   closeButtonText: {
     color: '#fff',
-    fontWeight: 'bold',
+    fontWeight: '600',
     textAlign: 'center',
+    fontSize: 16,
   },
   // Estilos do Modal de Família
   familyModalContent: {
