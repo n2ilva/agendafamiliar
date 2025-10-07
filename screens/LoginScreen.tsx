@@ -62,10 +62,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
         if (isLogin) {
           Alert.alert('Sucesso!', 'Login realizado com sucesso!');
         } else {
-          // Alerta após criar cadastro com opção de atualizar página
+          // Alerta após criar cadastro com confirmação e atualização automática
           Alert.alert(
-            'Cadastro Criado!', 
-            'Sua conta foi criada com sucesso!',
+            'Conta Criada com Sucesso!', 
+            'Sua conta foi criada com sucesso! A página será atualizada automaticamente.',
             [
               {
                 text: 'OK',
@@ -75,6 +75,13 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
                   setPassword('');
                   setName('');
                   setIsLogin(true);
+                  
+                  // Atualizar a página automaticamente após um breve delay
+                  setTimeout(() => {
+                    if (typeof window !== 'undefined') {
+                      window.location.reload();
+                    }
+                  }, 500);
                 }
               }
             ]
