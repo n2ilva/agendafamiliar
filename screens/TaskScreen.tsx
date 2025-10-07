@@ -266,6 +266,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       repeatOption: task.repeat?.type === RepeatType.DAILY ? 'diario' : 
                     task.repeat?.type === RepeatType.CUSTOM ? 'semanal' : 'nenhum',
       userId: task.userId,
+      // Adicionar familyId se o usuário pertence a uma família
+      familyId: currentFamily?.id,
       // Campos de autoria
       createdBy: task.createdBy,
       createdByName: task.createdByName,
