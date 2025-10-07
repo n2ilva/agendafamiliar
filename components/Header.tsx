@@ -5,7 +5,6 @@ import {
   StyleSheet,
   Pressable,
   Image,
-  Alert,
   Modal,
   TextInput,
   ActivityIndicator,
@@ -14,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { UserRole } from '../types/FamilyTypes';
 import FirebaseAuthService from '../services/FirebaseAuthService';
+import Alert from '../utils/Alert';
 
 interface HeaderProps {
   userName: string;

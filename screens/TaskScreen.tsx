@@ -6,7 +6,6 @@ import {
   FlatList,
   Pressable,
   TextInput,
-  Alert,
   Modal,
   ScrollView,
   Platform,
@@ -29,6 +28,7 @@ import { FamilyUser, UserRole, TaskStatus, TaskApproval, ApprovalNotification, F
 import LocalStorageService, { HistoryItem as StoredHistoryItem } from '../services/LocalStorageService';
 import SyncService, { SyncStatus } from '../services/SyncService';
 import ConnectivityService, { ConnectivityState } from '../services/ConnectivityService';
+import Alert from '../utils/Alert';
 import familyService from '../services/FirebaseFamilyService';
 import { safeToDate, isToday, isUpcoming, isTaskOverdue, getNextRecurrenceDate, isRecurringTaskCompletable } from '../utils/DateUtils';
 

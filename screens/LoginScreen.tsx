@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Image, Alert, TextInput, ActivityIndicator, Platform, ScrollView, Modal } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Image, TextInput, ActivityIndicator, Platform, ScrollView, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import FirebaseAuthService from '../services/FirebaseAuthService';
+import Alert from '../utils/Alert';
 
 interface LoginScreenProps {
   // Interface vazia - login agora é gerenciado internamente

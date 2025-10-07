@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   TextInput,
-  Alert,
   ScrollView,
   KeyboardAvoidingView,
   Platform,
@@ -13,6 +12,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { familyService } from '../services/FirebaseFamilyService';
 import { UserRole } from '../types/FamilyTypes';
+import Alert from '../utils/Alert';
 
 interface Props {
   onFamilySetup: (familyId: string) => void;

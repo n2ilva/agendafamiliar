@@ -4,11 +4,12 @@ import { TaskScreen } from './screens/TaskScreen';
 import { LoginScreen } from './screens/LoginScreen';
 import FamilySetupScreen from './screens/FamilySetupScreen';
 
-import { Alert, ActivityIndicator, View, StyleSheet } from 'react-native';
+import { ActivityIndicator, View, StyleSheet } from 'react-native';
 import { FamilyUser, UserRole } from './types/FamilyTypes';
 import FirebaseAuthService from './services/FirebaseAuthService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import BackgroundSyncService from './services/BackgroundSyncService';
+import Alert from './utils/Alert';
 
 
 
