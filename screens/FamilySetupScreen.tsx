@@ -3,12 +3,12 @@ import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
   TextInput,
   Alert,
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { familyService } from '../services/FirebaseFamilyService';
@@ -180,7 +180,7 @@ export default function FamilySetupScreen({ onFamilySetup, userEmail, userName, 
       </View>
 
       <View style={styles.optionsContainer}>
-        <TouchableOpacity
+        <Pressable
           style={styles.roleOption}
           onPress={() => handleRoleSelection('admin')}
         >
@@ -189,9 +189,9 @@ export default function FamilySetupScreen({ onFamilySetup, userEmail, userName, 
           <Text style={styles.roleDescription}>
             Criar nova família ou entrar como segundo administrador
           </Text>
-        </TouchableOpacity>
+        </Pressable>
 
-        <TouchableOpacity
+        <Pressable
           style={styles.roleOption}
           onPress={() => handleRoleSelection('dependent')}
         >
@@ -200,7 +200,7 @@ export default function FamilySetupScreen({ onFamilySetup, userEmail, userName, 
           <Text style={styles.roleDescription}>
             Entrar em uma família existente usando código
           </Text>
-        </TouchableOpacity>
+        </Pressable>
       </View>
     </View>
   );
@@ -208,19 +208,19 @@ export default function FamilySetupScreen({ onFamilySetup, userEmail, userName, 
   const renderAdminOptions = () => (
     <View style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity
+        <Pressable
           style={styles.backButton}
           onPress={() => setCurrentStep('select-role')}
         >
           <Ionicons name="arrow-back" size={24} color="#007AFF" />
-        </TouchableOpacity>
+        </Pressable>
         <Ionicons name="person-circle" size={60} color="#007AFF" />
         <Text style={styles.title}>Administrador</Text>
         <Text style={styles.subtitle}>Escolha uma opção:</Text>
       </View>
 
       <View style={styles.optionsContainer}>
-        <TouchableOpacity
+        <Pressable
           style={styles.roleOption}
           onPress={() => handleAdminOption('create')}
         >
@@ -229,9 +229,9 @@ export default function FamilySetupScreen({ onFamilySetup, userEmail, userName, 
           <Text style={styles.roleDescription}>
             Criar uma nova família e ser o primeiro administrador
           </Text>
-        </TouchableOpacity>
+        </Pressable>
 
-        <TouchableOpacity
+        <Pressable
           style={styles.roleOption}
           onPress={() => handleAdminOption('join')}
         >
@@ -240,7 +240,7 @@ export default function FamilySetupScreen({ onFamilySetup, userEmail, userName, 
           <Text style={styles.roleDescription}>
             Entrar em uma família existente como administrador
           </Text>
-        </TouchableOpacity>
+        </Pressable>
       </View>
     </View>
   );
@@ -248,12 +248,12 @@ export default function FamilySetupScreen({ onFamilySetup, userEmail, userName, 
   const renderCreateFamily = () => (
     <View style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity
+        <Pressable
           style={styles.backButton}
           onPress={() => setCurrentStep('admin-options')}
         >
           <Ionicons name="arrow-back" size={24} color="#007AFF" />
-        </TouchableOpacity>
+        </Pressable>
         <Ionicons name="home" size={60} color="#007AFF" />
         <Text style={styles.title}>Criar Família</Text>
         <Text style={styles.subtitle}>Insira o nome da sua família:</Text>
@@ -268,7 +268,7 @@ export default function FamilySetupScreen({ onFamilySetup, userEmail, userName, 
           maxLength={50}
         />
 
-        <TouchableOpacity
+        <Pressable
           style={[styles.primaryButton, isLoading && styles.disabledButton]}
           onPress={handleCreateFamily}
           disabled={isLoading}
@@ -276,7 +276,7 @@ export default function FamilySetupScreen({ onFamilySetup, userEmail, userName, 
           <Text style={styles.primaryButtonText}>
             {isLoading ? 'Criando...' : 'Criar Família'}
           </Text>
-        </TouchableOpacity>
+        </Pressable>
       </View>
     </View>
   );
@@ -284,12 +284,12 @@ export default function FamilySetupScreen({ onFamilySetup, userEmail, userName, 
   const renderJoinFamily = () => (
     <View style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity
+        <Pressable
           style={styles.backButton}
           onPress={() => setCurrentStep('admin-options')}
         >
           <Ionicons name="arrow-back" size={24} color="#007AFF" />
-        </TouchableOpacity>
+        </Pressable>
         <Ionicons name="enter" size={60} color="#FF9500" />
         <Text style={styles.title}>Entrar como Admin</Text>
         <Text style={styles.subtitle}>Insira o código da família:</Text>
@@ -305,7 +305,7 @@ export default function FamilySetupScreen({ onFamilySetup, userEmail, userName, 
           autoCapitalize="characters"
         />
 
-        <TouchableOpacity
+        <Pressable
           style={[styles.primaryButton, isLoading && styles.disabledButton]}
           onPress={handleJoinAsAdmin}
           disabled={isLoading}
@@ -313,7 +313,7 @@ export default function FamilySetupScreen({ onFamilySetup, userEmail, userName, 
           <Text style={styles.primaryButtonText}>
             {isLoading ? 'Entrando...' : 'Entrar na Família'}
           </Text>
-        </TouchableOpacity>
+        </Pressable>
       </View>
     </View>
   );
@@ -321,12 +321,12 @@ export default function FamilySetupScreen({ onFamilySetup, userEmail, userName, 
   const renderDependentJoin = () => (
     <View style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity
+        <Pressable
           style={styles.backButton}
           onPress={() => setCurrentStep('select-role')}
         >
           <Ionicons name="arrow-back" size={24} color="#007AFF" />
-        </TouchableOpacity>
+        </Pressable>
         <Ionicons name="person" size={60} color="#34C759" />
         <Text style={styles.title}>Entrar na Família</Text>
         <Text style={styles.subtitle}>Insira o código fornecido pelo administrador:</Text>
@@ -342,7 +342,7 @@ export default function FamilySetupScreen({ onFamilySetup, userEmail, userName, 
           autoCapitalize="characters"
         />
 
-        <TouchableOpacity
+        <Pressable
           style={[styles.primaryButton, isLoading && styles.disabledButton]}
           onPress={handleJoinAsDependent}
           disabled={isLoading}
@@ -350,7 +350,7 @@ export default function FamilySetupScreen({ onFamilySetup, userEmail, userName, 
           <Text style={styles.primaryButtonText}>
             {isLoading ? 'Entrando...' : 'Entrar na Família'}
           </Text>
-        </TouchableOpacity>
+        </Pressable>
       </View>
     </View>
   );
