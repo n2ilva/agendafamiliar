@@ -373,7 +373,48 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       console.error('❌ Erro ao salvar dados no cache:', error);
     }
   };
-  
+
+  // Função para recarregar tarefas da família
+  const reloadFamilyTasks = async () => {
+    if (currentFamily && !isOffline) {
+      try {
+        console.log('🔄 Recarregando tarefas da família...');
+        const familyTasks = await familyService.getFamilyTasks(currentFamily.id);
+        
+        // Converter tarefas da família para o formato local
+        const convertedTasks: Task[] = familyTasks.map(familyTask => ({
+          id: familyTask.id,
+          title: familyTask.title,
+          description: familyTask.description || '',
+          completed: familyTask.completed,
+          status: familyTask.status,
+          category: familyTask.category,
+          createdAt: familyTask.createdAt,
+          dueDate: safeToDate(familyTask.dueDate),
+          dueTime: safeToDate(familyTask.dueDate),
+          repeat: {
+            type: familyTask.repeatOption === 'diario' ? RepeatType.DAILY : 
+                  familyTask.repeatOption === 'semanal' ? RepeatType.WEEKENDS :
+                  RepeatType.NONE,
+            days: []
+          },
+          userId: familyTask.userId,
+          approvalId: familyTask.approvalId,
+          createdBy: familyTask.createdBy,
+          createdByName: familyTask.createdByName,
+          editedBy: familyTask.editedBy,
+          editedByName: familyTask.editedByName,
+          editedAt: familyTask.editedAt
+        }));
+        
+        setTasks(convertedTasks);
+        console.log(`🔄 ${familyTasks.length} tarefas da família recarregadas`);
+      } catch (error) {
+        console.error('❌ Erro ao recarregar tarefas da família:', error);
+      }
+    }
+  };
+
   // Configurar notificações apenas uma vez
   useEffect(() => {
     configurarNotificacoes();
@@ -898,10 +939,19 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           await SyncService.addOfflineOperation(operationType, 'tasks', firebaseTask);
           
           // Se o usuário pertence a uma família, salvar também na família
-          if (currentFamily && !isOffline) {
+          if (currentFamily) {
             try {
-              await familyService.saveFamilyTask(firebaseTask, currentFamily.id);
-              console.log('👨‍👩‍👧‍👦 Tarefa atualizada na família');
+              if (!isOffline) {
+                await familyService.saveFamilyTask(firebaseTask, currentFamily.id);
+                console.log('👨‍👩‍👧‍👦 Tarefa atualizada na família (online)');
+              } else {
+                // Se offline, adicionar operação para sincronizar depois
+                await SyncService.addOfflineOperation(operationType, 'family_tasks', {
+                  ...firebaseTask,
+                  familyId: currentFamily.id
+                });
+                console.log('👨‍👩‍👧‍👦 Tarefa adicionada à fila para sincronização da família (offline)');
+              }
             } catch (error) {
               console.error('❌ Erro ao atualizar tarefa na família:', error);
             }
@@ -945,16 +995,32 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         await SyncService.addOfflineOperation('create', 'tasks', firebaseTask);
         
         // Se o usuário pertence a uma família, salvar também na família
-        if (currentFamily && !isOffline) {
+        if (currentFamily) {
           try {
-            await familyService.saveFamilyTask(firebaseTask, currentFamily.id);
-            console.log('👨‍👩‍👧‍👦 Nova tarefa salva na família');
+            if (!isOffline) {
+              await familyService.saveFamilyTask(firebaseTask, currentFamily.id);
+              console.log('👨‍👩‍👧‍👦 Nova tarefa salva na família (online)');
+            } else {
+              // Se offline, adicionar operação para sincronizar depois
+              await SyncService.addOfflineOperation('create', 'family_tasks', {
+                ...firebaseTask,
+                familyId: currentFamily.id
+              });
+              console.log('👨‍👩‍👧‍👦 Nova tarefa adicionada à fila para sincronização da família (offline)');
+            }
           } catch (error) {
             console.error('❌ Erro ao salvar tarefa na família:', error);
           }
         }
         
         console.log('📱 Nova tarefa criada e adicionada à fila de sincronização');
+        
+        // Recarregar tarefas da família para garantir sincronização
+        if (currentFamily && !isOffline) {
+          setTimeout(() => {
+            reloadFamilyTasks();
+          }, 1000); // Aguardar 1 segundo para garantir que a tarefa foi salva
+        }
         
         // Adicionar ao histórico
         await addToHistory('created', newTask.title, newTask.id);
