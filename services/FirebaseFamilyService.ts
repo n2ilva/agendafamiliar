@@ -319,6 +319,53 @@ class FirebaseFamilyService {
     }
   }
 
+  // Atualizar nome da família
+  async updateFamilyName(familyId: string, newName: string): Promise<void> {
+    try {
+      await updateDoc(doc(db, this.familiesCollection, familyId), {
+        name: newName
+      });
+      console.log('✅ Nome da família atualizado:', newName);
+    } catch (error) {
+      console.error('❌ Erro ao atualizar nome da família:', error);
+      throw new Error('Não foi possível atualizar o nome da família');
+    }
+  }
+
+  // Atualizar função de um membro da família
+  async updateMemberRole(familyId: string, memberId: string, newRole: 'admin' | 'dependente'): Promise<void> {
+    try {
+      // Buscar a família atual
+      const familyDoc = await getDoc(doc(db, this.familiesCollection, familyId));
+      if (!familyDoc.exists()) {
+        throw new Error('Família não encontrada');
+      }
+
+      const familyData = familyDoc.data() as any;
+      const members = familyData.members || [];
+
+      // Atualizar o role do membro específico
+      const updatedMembers = members.map((member: any) => 
+        member.id === memberId ? { ...member, role: newRole } : member
+      );
+
+      // Atualizar documento da família
+      await updateDoc(doc(db, this.familiesCollection, familyId), {
+        members: updatedMembers
+      });
+
+      // Atualizar também o documento do usuário
+      await updateDoc(doc(db, this.usersCollection, memberId), {
+        role: newRole
+      });
+
+      console.log(`✅ Função do membro ${memberId} atualizada para ${newRole}`);
+    } catch (error) {
+      console.error('❌ Erro ao atualizar função do membro:', error);
+      throw new Error('Não foi possível atualizar a função do membro');
+    }
+  }
+
   // Deletar família (apenas admin)
   async deleteFamily(familyId: string, adminId: string): Promise<void> {
     try {

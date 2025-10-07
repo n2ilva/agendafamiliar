@@ -185,6 +185,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   const [familyMembers, setFamilyMembers] = useState<FamilyUser[]>([]);
   // const [familyInvites, setFamilyInvites] = useState<FamilyInvite[]>([]);
   const [familyModalVisible, setFamilyModalVisible] = useState(false);
+  const [editingFamilyName, setEditingFamilyName] = useState(false);
+  const [newFamilyName, setNewFamilyName] = useState('');
   // const [inviteCode, setInviteCode] = useState<string>('');
 
   const [selectedColorIndex, setSelectedColorIndex] = useState(0);
@@ -1692,6 +1694,116 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     );
   };
 
+  const changeMemberRole = (memberId: string) => {
+    // Verificar se o usuário é admin
+    if (user.role !== 'admin') {
+      Alert.alert('Erro', 'Apenas administradores podem alterar funções de membros.');
+      return;
+    }
+    
+    const member = familyMembers.find(m => m.id === memberId);
+    
+    if (!member) {
+      Alert.alert('Erro', 'Membro não encontrado.');
+      return;
+    }
+    
+    if (member.id === user.id) {
+      Alert.alert('Erro', 'Você não pode alterar sua própria função.');
+      return;
+    }
+
+    const newRole: UserRole = member.role === 'admin' ? 'dependente' : 'admin';
+    const roleNames = {
+      'admin': 'Administrador',
+      'dependente': 'Dependente'
+    };
+
+    Alert.alert(
+      'Alterar Função',
+      `Deseja alterar ${member.name} de ${roleNames[member.role]} para ${roleNames[newRole]}?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Alterar',
+          onPress: async () => {
+            try {
+              // Atualizar localmente primeiro para responsividade
+              const updatedMembers = familyMembers.map(m => 
+                m.id === memberId ? { ...m, role: newRole } : m
+              );
+              setFamilyMembers(updatedMembers);
+              
+              // Atualizar também no currentFamily se necessário
+              if (currentFamily) {
+                const updatedFamily = {
+                  ...currentFamily,
+                  members: updatedMembers
+                };
+                setCurrentFamily(updatedFamily);
+                
+                // Sincronizar com Firebase
+                await familyService.updateMemberRole(currentFamily.id, memberId, newRole);
+              }
+              
+              Alert.alert('Sucesso', `${member.name} agora é ${roleNames[newRole]}.`);
+            } catch (error) {
+              console.error('Erro ao alterar função do membro:', error);
+              Alert.alert('Erro', 'Não foi possível alterar a função do membro.');
+              
+              // Reverter mudança local em caso de erro
+              const revertedMembers = familyMembers.map(m => 
+                m.id === memberId ? { ...m, role: member.role } : m
+              );
+              setFamilyMembers(revertedMembers);
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const startEditingFamilyName = () => {
+    setNewFamilyName(currentFamily?.name || '');
+    setEditingFamilyName(true);
+  };
+
+  const cancelEditingFamilyName = () => {
+    setEditingFamilyName(false);
+    setNewFamilyName('');
+  };
+
+  const saveFamilyName = async () => {
+    if (!currentFamily || !newFamilyName.trim()) {
+      Alert.alert('Erro', 'Digite um nome válido para a família.');
+      return;
+    }
+
+    if (newFamilyName.trim() === currentFamily.name) {
+      setEditingFamilyName(false);
+      return;
+    }
+
+    try {
+      // Atualizar localmente primeiro para responsividade
+      const updatedFamily = { ...currentFamily, name: newFamilyName.trim() };
+      setCurrentFamily(updatedFamily);
+      setEditingFamilyName(false);
+
+      // Sincronizar com Firebase
+      await familyService.updateFamilyName(currentFamily.id, newFamilyName.trim());
+      
+      Alert.alert('Sucesso', 'Nome da família atualizado com sucesso!');
+    } catch (error) {
+      console.error('Erro ao atualizar nome da família:', error);
+      Alert.alert('Erro', 'Não foi possível atualizar o nome da família.');
+      
+      // Reverter mudança local em caso de erro
+      setCurrentFamily(currentFamily);
+      setNewFamilyName(currentFamily.name);
+    }
+  };
+
   const handleManageFamily = async () => {
     if (!currentFamily) {
       Alert.alert('Erro', 'Nenhuma família encontrada');
@@ -1809,29 +1921,10 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   };
 
   const handleLogout = async () => {
-    if (Platform.OS === 'web') {
-      // Para web, usar confirm em vez de Alert
-      const confirmed = confirm('Tem certeza que deseja sair?');
-      if (confirmed && onLogout) {
-        await onLogout();
-      }
-    } else {
-      Alert.alert(
-        'Sair',
-        'Tem certeza que deseja sair?',
-        [
-          { text: 'Cancelar', style: 'cancel' },
-          { 
-            text: 'Sair', 
-            onPress: async () => {
-              if (onLogout) {
-                await onLogout();
-              }
-            }, 
-            style: 'destructive' 
-          },
-        ]
-      );
+    // Chamar diretamente o logout sem alerta duplicado
+    // O alerta será exibido no App.tsx
+    if (onLogout) {
+      await onLogout();
     }
   };
 
@@ -2129,13 +2222,13 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             </Text>
           </View>
         ) : (
-          <FlatList
-            data={getCurrentTasks()}
-            renderItem={renderTask}
-            keyExtractor={(item) => item.id}
+          <ScrollView
             style={styles.taskList}
-                       showsVerticalScrollIndicator={false}
-          />
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.taskListContent}
+          >
+            {getCurrentTasks().map((task) => renderTask({ item: task }))}
+          </ScrollView>
         )}
           </View>
         </PanGestureHandler>
@@ -2750,9 +2843,57 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       >
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, styles.familyModalContent]}>
-            <Text style={styles.modalTitle}>Gerenciar Família</Text>
+            <View style={styles.familyModalHeader}>
+              <Text style={styles.modalTitle}>Gerenciar Família</Text>
+            </View>
 
             <ScrollView style={styles.familyContent}>
+              {/* Seção do Nome da Família */}
+              <View style={styles.familySection}>
+                <Text style={styles.familySectionTitle}>Nome da Família</Text>
+                
+                {editingFamilyName ? (
+                  <View style={styles.editFamilyNameContainer}>
+                    <TextInput
+                      style={styles.editFamilyNameInput}
+                      value={newFamilyName}
+                      onChangeText={setNewFamilyName}
+                      placeholder="Digite o nome da família"
+                      maxLength={50}
+                      autoFocus
+                    />
+                    <View style={styles.editFamilyNameActions}>
+                      <TouchableOpacity
+                        style={[styles.editFamilyNameButton, styles.cancelButton]}
+                        onPress={cancelEditingFamilyName}
+                      >
+                        <Text style={styles.cancelButtonText}>Cancelar</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.editFamilyNameButton, styles.saveButton]}
+                        onPress={saveFamilyName}
+                      >
+                        <Text style={styles.saveButtonText}>Salvar</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ) : (
+                  <View style={styles.familyNameContainer}>
+                    <Text style={styles.currentFamilyName}>
+                      {currentFamily?.name || 'Nome não definido'}
+                    </Text>
+                    {user.role === 'admin' && (
+                      <TouchableOpacity
+                        style={styles.editFamilyNameIconButton}
+                        onPress={startEditingFamilyName}
+                      >
+                        <Ionicons name="pencil" size={16} color="#007AFF" />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
+              </View>
+
               {/* Seção do Código da Família */}
               <View style={styles.familySection}>
                 <Text style={styles.familySectionTitle}>Código da Família</Text>
@@ -2815,12 +2956,28 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                     </View>
                     
                     {member.id !== user.id && user.role === 'admin' && (
-                      <TouchableOpacity
-                        onPress={() => removeFamilyMember(member.id)}
-                        style={styles.removeMemberButton}
-                      >
-                        <Ionicons name="trash-outline" size={18} color="#e74c3c" />
-                      </TouchableOpacity>
+                      <View style={styles.memberActions}>
+                        <TouchableOpacity
+                          onPress={() => changeMemberRole(member.id)}
+                          style={styles.changeMemberRoleButton}
+                        >
+                          <Ionicons 
+                            name="swap-horizontal" 
+                            size={16} 
+                            color="#007AFF" 
+                          />
+                          <Text style={styles.changeMemberRoleButtonText}>
+                            {member.role === 'admin' ? 'Tornar Dependente' : 'Tornar Admin'}
+                          </Text>
+                        </TouchableOpacity>
+                        
+                        <TouchableOpacity
+                          onPress={() => removeFamilyMember(member.id)}
+                          style={styles.removeMemberButton}
+                        >
+                          <Ionicons name="trash-outline" size={18} color="#e74c3c" />
+                        </TouchableOpacity>
+                      </View>
                     )}
                   </View>
                 ))}
@@ -3080,6 +3237,10 @@ const styles = StyleSheet.create({
   },
   taskList: {
     flex: 1,
+  },
+  taskListContent: {
+    paddingBottom: 100, // Espaço extra no final para o FAB
+    flexGrow: 1,
   },
   taskItem: {
     backgroundColor: '#fff',
@@ -3874,6 +4035,14 @@ const styles = StyleSheet.create({
     maxHeight: '85%',
     minHeight: '70%',
   },
+  familyModalHeader: {
+    alignItems: 'center',
+    paddingVertical: 20,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+    marginBottom: 0,
+  },
   closeModalButton: {
     padding: 5,
     backgroundColor: '#007AFF',
@@ -4081,6 +4250,84 @@ const styles = StyleSheet.create({
     padding: 8,
     borderRadius: 6,
     backgroundColor: '#ffe6e6',
+  },
+  memberActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  changeMemberRoleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    backgroundColor: '#e6f3ff',
+    gap: 4,
+  },
+  changeMemberRoleButtonText: {
+    fontSize: 12,
+    color: '#007AFF',
+    fontWeight: '500',
+  },
+  // Estilos para edição do nome da família
+  familyNameContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#f8f9fa',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  currentFamilyName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    flex: 1,
+  },
+  editFamilyNameIconButton: {
+    padding: 6,
+    borderRadius: 4,
+    backgroundColor: '#e6f3ff',
+  },
+  editFamilyNameContainer: {
+    backgroundColor: '#f8f9fa',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  editFamilyNameInput: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+    marginBottom: 12,
+  },
+  editFamilyNameActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 8,
+  },
+  editFamilyNameButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 6,
+    minWidth: 80,
+    alignItems: 'center',
+  },
+  saveButton: {
+    backgroundColor: '#007AFF',
+  },
+  saveButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 14,
   },
   // Estilos para indicador de conectividade
   connectivityIndicator: {

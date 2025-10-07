@@ -147,12 +147,6 @@ export const Header: React.FC<HeaderProps> = ({
     onSettings(); // Esta função irá abrir o histórico
   };
 
-  const handleSettingsPress = () => {
-    setMenuVisible(false);
-    setSelectedRole(userRole || 'admin'); // Resetar para role atual
-    setProfileModalVisible(true);
-  };
-
   const handleRoleChange = () => {
     if (onUserRoleChange && selectedRole !== userRole) {
       onUserRoleChange(selectedRole);
@@ -242,11 +236,6 @@ export const Header: React.FC<HeaderProps> = ({
                   </>
                 )}
                 <TouchableOpacity onPress={handleHistoryPress} style={styles.menuItem}>
-                  <Ionicons name="time-outline" size={18} color="#333" />
-                  <Text style={styles.menuText}>Informações</Text>
-                </TouchableOpacity>
-                <View style={styles.menuSeparator} />
-                <TouchableOpacity onPress={handleSettingsPress} style={styles.menuItem}>
                   <Ionicons name="settings-outline" size={18} color="#333" />
                   <Text style={styles.menuText}>Configurações</Text>
                 </TouchableOpacity>
