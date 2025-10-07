@@ -2526,7 +2526,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
               <TouchableOpacity onPress={() => setHistoryModalVisible(false)}>
                 <Ionicons name="close" size={24} color="#666" />
               </TouchableOpacity>
-              <Text style={styles.modalTitle}>Histórico</Text>
+              <Text style={styles.modalTitle}>Informações</Text>
               <View style={{ width: 24 }} />
             </View>
 
@@ -2584,6 +2584,14 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                 )}
               />
             )}
+            
+            {/* Botão de fechar no final do modal */}
+            <TouchableOpacity 
+              style={styles.closeModalButton}
+              onPress={() => setHistoryModalVisible(false)}
+            >
+              <Text style={styles.closeModalButtonText}>Fechar</Text>
+            </TouchableOpacity>
           </View>
         </SafeAreaView>
       </Modal>
@@ -2597,7 +2605,12 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Solicitações de Aprovação</Text>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Solicitações de Aprovação</Text>
+              <TouchableOpacity onPress={() => setApprovalModalVisible(false)}>
+                <Ionicons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
             
             {notifications.filter(n => !n.read).length === 0 ? (
               <Text style={styles.noNotificationsText}>Nenhuma solicitação pendente</Text>
@@ -2762,6 +2775,14 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                 ))}
               </View>
             </ScrollView>
+            
+            {/* Botão de fechar no final do modal */}
+            <TouchableOpacity 
+              style={styles.closeModalButton}
+              onPress={() => setFamilyModalVisible(false)}
+            >
+              <Text style={styles.closeModalButtonText}>Fechar</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -3802,6 +3823,18 @@ const styles = StyleSheet.create({
   },
   closeModalButton: {
     padding: 5,
+    backgroundColor: '#007AFF',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    marginTop: 16,
+    marginHorizontal: 20,
+    alignItems: 'center',
+  },
+  closeModalButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
   familyContent: {
     flex: 1,

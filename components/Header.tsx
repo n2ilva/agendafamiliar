@@ -325,7 +325,15 @@ export const Header: React.FC<HeaderProps> = ({
       >
         <View style={styles.modalContainer}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Configurações de Perfil</Text>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Configurações de Perfil</Text>
+              <TouchableOpacity 
+                style={styles.modalCloseButton}
+                onPress={() => setProfileModalVisible(false)}
+              >
+                <Ionicons name="close" size={24} color="#333" />
+              </TouchableOpacity>
+            </View>
             
             <Text style={styles.roleSelectionTitle}>Escolha seu perfil:</Text>
             
@@ -637,6 +645,16 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 12,
     fontWeight: 'bold',
+  },
+  // Estilos para header de modal
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  modalCloseButton: {
+    padding: 5,
   },
   // Estilos para modal de configurações de perfil
   roleSelectionTitle: {
