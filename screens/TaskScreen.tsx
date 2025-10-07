@@ -212,6 +212,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [historyModalVisible, setHistoryModalVisible] = useState(false);
   
+  // Estado para modal de configurações
+  const [settingsModalVisible, setSettingsModalVisible] = useState(false);
+  
   // Estado para atualização automática
   const [lastUpdate, setLastUpdate] = useState(new Date());
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -1744,56 +1747,50 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   };
 
   const handleSettings = () => {
+    setSettingsModalVisible(true);
+  };
+
+  const handleShowHistory = () => {
+    setSettingsModalVisible(false);
+    setHistoryModalVisible(true);
+  };
+
+  const handleUpdateData = () => {
+    setSettingsModalVisible(false);
+    forceRefresh();
+  };
+
+  const handleSystemInfo = () => {
+    const lastUpdateTime = lastUpdate.toLocaleString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    
+    setSettingsModalVisible(false);
+    
     Alert.alert(
-      'Configurações',
-      '',
+      'Informações do Sistema',
+      `Última atualização: ${lastUpdateTime}\n\n` +
+      `Status: ${isOffline ? 'Offline' : 'Online'}\n` +
+      `Operações pendentes: ${syncStatus.pendingOperations}\n` +
+      `Sincronizando: ${syncStatus.isSyncing ? 'Sim' : 'Não'}\n\n` +
+      `Total de tarefas: ${tasks.length}\n` +
+      `Tarefas pendentes: ${tasks.filter(t => !t.completed).length}\n` +
+      `Tarefas concluídas: ${tasks.filter(t => t.completed).length}`,
       [
-        {
-          text: 'Histórico',
-          onPress: () => setHistoryModalVisible(true),
-        },
-        {
-          text: 'Atualizar Dados',
-          onPress: forceRefresh,
-        },
-        {
-          text: 'Info do Sistema',
-          onPress: () => {
-            const lastUpdateTime = lastUpdate.toLocaleString('pt-BR', {
-              day: '2-digit',
-              month: '2-digit',
-              year: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit',
-            });
-            Alert.alert(
-              'Informações do Sistema',
-              `Última atualização: ${lastUpdateTime}\n\n` +
-              `Status: ${isOffline ? 'Offline' : 'Online'}\n` +
-              `Operações pendentes: ${syncStatus.pendingOperations}\n` +
-              `Sincronizando: ${syncStatus.isSyncing ? 'Sim' : 'Não'}\n\n` +
-              `Total de tarefas: ${tasks.length}\n` +
-              `Tarefas pendentes: ${tasks.filter(t => !t.completed).length}\n` +
-              `Tarefas concluídas: ${tasks.filter(t => t.completed).length}`,
-              [
-                { text: 'OK' },
-                ...(syncStatus.pendingOperations > 0 ? [{
-                  text: 'Limpar Pendentes',
-                  onPress: async () => {
-                    await LocalStorageService.clearAllPendingOperations();
-                    await SyncService.initialize(); // Reinicializar para atualizar status
-                    Alert.alert('Debug', 'Operações pendentes foram limpa!');
-                  },
-                  style: 'destructive' as const
-                }] : [])
-              ]
-            );
+        { text: 'OK' },
+        ...(syncStatus.pendingOperations > 0 ? [{
+          text: 'Limpar Pendentes',
+          onPress: async () => {
+            await LocalStorageService.clearAllPendingOperations();
+            await SyncService.initialize(); // Reinicializar para atualizar status
+            Alert.alert('Debug', 'Operações pendentes foram limpas!');
           },
-        },
-        {
-          text: 'Cancelar',
-          style: 'cancel',
-        },
+          style: 'destructive' as const
+        }] : [])
       ]
     );
   };
@@ -2513,6 +2510,56 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           is24Hour={true}
         />
       )}
+
+      {/* Modal de Configurações */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={settingsModalVisible}
+        onRequestClose={() => setSettingsModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Configurações</Text>
+            
+            <View style={styles.settingsOptions}>
+              <TouchableOpacity 
+                style={styles.settingsOption}
+                onPress={handleShowHistory}
+              >
+                <Ionicons name="time-outline" size={24} color="#007AFF" />
+                <Text style={styles.settingsOptionText}>Histórico</Text>
+                <Ionicons name="chevron-forward" size={20} color="#ccc" />
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.settingsOption}
+                onPress={handleUpdateData}
+              >
+                <Ionicons name="refresh-outline" size={24} color="#007AFF" />
+                <Text style={styles.settingsOptionText}>Atualizar Dados</Text>
+                <Ionicons name="chevron-forward" size={20} color="#ccc" />
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.settingsOption}
+                onPress={handleSystemInfo}
+              >
+                <Ionicons name="information-circle-outline" size={24} color="#007AFF" />
+                <Text style={styles.settingsOptionText}>Info do Sistema</Text>
+                <Ionicons name="chevron-forward" size={20} color="#ccc" />
+              </TouchableOpacity>
+            </View>
+            
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={() => setSettingsModalVisible(false)}
+            >
+              <Text style={styles.closeButtonText}>Fechar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* Modal do Histórico */}
       <Modal
@@ -4138,5 +4185,26 @@ const styles = StyleSheet.create({
     bottom: 0,
     backgroundColor: 'transparent',
     zIndex: 999,
+  },
+  // Estilos para modal de configurações
+  settingsOptions: {
+    width: '100%',
+    marginVertical: 20,
+  },
+  settingsOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    backgroundColor: '#f8f9fa',
+    marginBottom: 2,
+    borderRadius: 8,
+  },
+  settingsOptionText: {
+    flex: 1,
+    fontSize: 16,
+    color: '#333',
+    marginLeft: 15,
+    fontWeight: '500',
   },
 });
