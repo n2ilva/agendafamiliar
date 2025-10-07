@@ -1843,15 +1843,13 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     const isPendingRecurring = isRecurring && !canComplete && !item.completed;
     
     return (
-      <TouchableOpacity 
-        onPress={() => toggleTask(item.id)}
+      <View 
         style={[
           styles.taskItem, 
           item.completed && styles.taskCompleted,
           isOverdue && styles.taskOverdue,
           isPendingRecurring && styles.taskPendingRecurring
         ]}
-        activeOpacity={isPendingRecurring ? 0.5 : 0.7}
       >
         {/* Header da Categoria - Topo do Card */}
         <View style={[styles.categoryHeader, { backgroundColor: categoryConfig.bgColor }]}>
@@ -2015,7 +2013,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             </View>
           )}
         </View>
-      </TouchableOpacity>
+      </View>
     );
   };
 
@@ -2044,7 +2042,11 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         
         {/* Indicador de Status de Conectividade */}
         {(isOffline || syncStatus.pendingOperations > 0) && (
-          <View style={styles.connectivityIndicator}>
+          <TouchableOpacity 
+            style={styles.connectivityIndicator}
+            onPress={forceRefresh}
+            disabled={syncStatus.isSyncing}
+          >
             <View style={styles.connectivityContent}>
               <Ionicons 
                 name={isOffline ? "cloud-offline" : "sync"} 
@@ -2064,8 +2066,16 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                   <Text style={styles.syncingDot}>•</Text>
                 </View>
               )}
+              {!syncStatus.isSyncing && (
+                <Ionicons 
+                  name="refresh" 
+                  size={14} 
+                  color={isOffline ? "#ff6b6b" : "#4CAF50"} 
+                  style={{ marginLeft: 8 }}
+                />
+              )}
             </View>
-          </View>
+          </TouchableOpacity>
         )}
         
         <PanGestureHandler onGestureEvent={handleSwipeGesture}>

@@ -8,6 +8,7 @@ import { Alert, ActivityIndicator, View, StyleSheet } from 'react-native';
 import { FamilyUser, UserRole } from './types/FamilyTypes';
 import FirebaseAuthService from './services/FirebaseAuthService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import BackgroundSyncService from './services/BackgroundSyncService';
 
 
 
@@ -69,6 +70,7 @@ export default function App() {
         setUser(firebaseUser);
         await saveUserToStorage(firebaseUser);
         await FirebaseAuthService.initializeOfflineSupport();
+        await BackgroundSyncService.registerBackgroundSyncAsync(); // Registrar tarefa de background
         // Verificar se o usuário tem família configurada
         setFamilyConfigured(!!firebaseUser.familyId);
       } else {
@@ -130,6 +132,9 @@ export default function App() {
               
               // Remover dados do usuário do storage local
               await removeUserFromStorage();
+
+              // Cancelar registro da tarefa de background
+              await BackgroundSyncService.unregisterBackgroundSyncAsync();
               
             } catch (error) {
               console.log('Erro no logout:', error);

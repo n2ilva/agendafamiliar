@@ -442,6 +442,59 @@ class SyncService {
     this.isInitialized = false;
     console.log('SyncService limpo');
   }
+
+  /**
+   * Verifica se a rede está disponível.
+   * Usado pelo serviço de background para evitar execuções desnecessárias.
+   */
+  static isNetworkAvailable(): boolean {
+    return ConnectivityService.isConnected();
+  }
+
+  /**
+   * Executa uma sincronização leve em background.
+   * Foco em processar operações pendentes e fazer downloads essenciais.
+   */
+  static async performBackgroundSync(): Promise<boolean> {
+    if (this.isSyncing || !this.isNetworkAvailable()) {
+      console.log('🔄 [BG] Sincronização em background pulada (em andamento ou offline).');
+      return false;
+    }
+
+    this.isSyncing = true;
+    console.log('🔄 [BG] Iniciando sincronização em background...');
+
+    try {
+      // 1. Processar operações pendentes
+      await this.processPendingOperations();
+
+      // 2. Baixar dados essenciais (versão leve do download)
+      const currentUser = FirebaseAuthService.getCurrentUser();
+      if (currentUser) {
+        const userFamily = await familyService.getUserFamily(currentUser.uid);
+        if (userFamily) {
+          // Apenas um exemplo de download leve: buscar tarefas
+          const familyTasks = await familyService.getFamilyTasks(userFamily.id);
+          for (const task of familyTasks) {
+            await LocalStorageService.saveTask(task);
+          }
+          console.log(`🔄 [BG] ${familyTasks.length} tarefas atualizadas.`);
+        }
+      }
+
+      // 3. Atualizar timestamp da última sincronização
+      await LocalStorageService.updateLastSync();
+      
+      console.log('✅ [BG] Sincronização em background concluída com sucesso.');
+      this.isSyncing = false;
+      return true;
+
+    } catch (error) {
+      console.error('❌ [BG] Erro na sincronização em background:', error);
+      this.isSyncing = false;
+      return false;
+    }
+  }
 }
 
 export default SyncService;

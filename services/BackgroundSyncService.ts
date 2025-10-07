@@ -1,0 +1,52 @@
+import * as BackgroundFetch from 'expo-background-fetch';
+import * as TaskManager from 'expo-task-manager';
+import SyncService from './SyncService';
+
+const BACKGROUND_SYNC_TASK = 'background-sync-task';
+
+TaskManager.defineTask(BACKGROUND_SYNC_TASK, async () => {
+  try {
+    console.log('🔄 Executando tarefa de sincronização em segundo plano...');
+    const isConnected = await SyncService.isNetworkAvailable();
+    
+    if (!isConnected) {
+      console.log('🚫 Sem conexão de rede, pulando sincronização em segundo plano.');
+      return BackgroundFetch.BackgroundFetchResult.NoData;
+    }
+
+    await SyncService.performBackgroundSync();
+    
+    console.log('✅ Sincronização em segundo plano concluída com sucesso.');
+    return BackgroundFetch.BackgroundFetchResult.NewData;
+  } catch (error) {
+    console.error('❌ Erro na sincronização em segundo plano:', error);
+    return BackgroundFetch.BackgroundFetchResult.Failed;
+  }
+});
+
+async function registerBackgroundSyncAsync() {
+  try {
+    await BackgroundFetch.registerTaskAsync(BACKGROUND_SYNC_TASK, {
+      minimumInterval: 15 * 60, // 15 minutos em segundos
+      stopOnTerminate: false,
+      startOnBoot: true,
+    });
+    console.log('👍 Tarefa de sincronização em segundo plano registrada com sucesso.');
+  } catch (error) {
+    console.error('👎 Falha ao registrar tarefa de sincronização em segundo plano:', error);
+  }
+}
+
+async function unregisterBackgroundSyncAsync() {
+  try {
+    await BackgroundFetch.unregisterTaskAsync(BACKGROUND_SYNC_TASK);
+    console.log('👋 Tarefa de sincronização em segundo plano cancelada.');
+  } catch (error) {
+    console.error('👎 Falha ao cancelar tarefa de sincronização em segundo plano:', error);
+  }
+}
+
+export default {
+  registerBackgroundSyncAsync,
+  unregisterBackgroundSyncAsync,
+};
