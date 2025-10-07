@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -215,22 +215,7 @@ export const Header: React.FC<HeaderProps> = ({
             </TouchableOpacity>
             
             {menuVisible && (
-              <>
-                {/* Modal transparente para fechar menu */}
-                <Modal
-                  animationType="none"
-                  transparent={true}
-                  visible={menuVisible}
-                  onRequestClose={() => setMenuVisible(false)}
-                >
-                  <TouchableOpacity
-                    style={styles.menuOverlayModal}
-                    onPress={() => setMenuVisible(false)}
-                    activeOpacity={1}
-                  />
-                </Modal>
-                
-                <View style={styles.dropdownMenu}>
+              <View style={styles.dropdownMenu}>
                 {onNotifications && (
                   <>
                     <TouchableOpacity onPress={() => { setMenuVisible(false); onNotifications(); }} style={styles.menuItem}>
@@ -266,7 +251,6 @@ export const Header: React.FC<HeaderProps> = ({
                   <Text style={styles.menuText}>Configurações</Text>
                 </TouchableOpacity>
               </View>
-              </>
             )}
           </View>
           
@@ -526,10 +510,6 @@ const styles = StyleSheet.create({
     bottom: 0,
     backgroundColor: 'transparent',
     zIndex: 9998,
-  },
-  menuOverlayModal: {
-    flex: 1,
-    backgroundColor: 'transparent',
   },
   dropdownMenu: {
     position: 'absolute',
