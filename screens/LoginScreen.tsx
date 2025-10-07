@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Image, Alert, TextInput, ActivityIndicator, Platform, ScrollView, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { UserRole } from '../types/FamilyTypes';
 import FirebaseAuthService from '../services/FirebaseAuthService';
 
 interface LoginScreenProps {
@@ -12,7 +11,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
   const [email, setEmail] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [name, setName] = useState<string>('');
-  const [userRole, setUserRole] = useState<UserRole>('admin');
   const [isLogin, setIsLogin] = useState<boolean>(true);
   const [loading, setLoading] = useState<boolean>(false);
   const [resetModalVisible, setResetModalVisible] = useState<boolean>(false);
@@ -56,8 +54,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
         // Login
         result = await FirebaseAuthService.loginUser(email, password);
       } else {
-        // Registro com o tipo de usuário selecionado
-        result = await FirebaseAuthService.registerUser(email, password, name, userRole);
+        // Registro com papel de admin por padrão
+        result = await FirebaseAuthService.registerUser(email, password, name, 'admin');
       }
 
       if (result.success) {
@@ -76,7 +74,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
                   setEmail('');
                   setPassword('');
                   setName('');
-                  setUserRole('admin');
                   setIsLogin(true);
                 }
               }
@@ -128,26 +125,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
     setResetLoading(false);
   };
 
-  const handleUserRoleSelection = (role: UserRole) => {
-    const roleNames = {
-      'admin': 'Administrador',
-      'dependente': 'Dependente'
-    };
-
-    Alert.alert(
-      'Tipo de Usuário Selecionado',
-      `Você escolheu: ${roleNames[role]}`,
-      [
-        {
-          text: 'OK',
-          onPress: () => {
-            setUserRole(role);
-          }
-        }
-      ]
-    );
-  };
-
   const validateInviteCode = (code: string) => {
     // Em um app real, isso validaria o código com o servidor
     // Por agora, vamos simular códigos válidos (6 caracteres alfanuméricos)
@@ -197,52 +174,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
                   autoCapitalize="words"
                   autoCorrect={false}
                 />
-              </View>
-
-              {/* Seleção de Tipo de Usuário */}
-              <View style={styles.userRoleContainer}>
-                <Text style={styles.userRoleLabel}>Tipo de Usuário:</Text>
-                <View style={styles.userRoleButtons}>
-                  <Pressable
-                    style={[
-                      styles.roleButton,
-                      userRole === 'admin' && styles.roleButtonActive
-                    ]}
-                    onPress={() => handleUserRoleSelection('admin')}
-                  >
-                    <Ionicons
-                      name="person-circle-outline"
-                      size={20}
-                      color={userRole === 'admin' ? '#fff' : '#007AFF'}
-                    />
-                    <Text style={[
-                      styles.roleButtonText,
-                      userRole === 'admin' && styles.roleButtonTextActive
-                    ]}>
-                      Administrador
-                    </Text>
-                  </Pressable>
-
-                  <Pressable
-                    style={[
-                      styles.roleButton,
-                      userRole === 'dependente' && styles.roleButtonActive
-                    ]}
-                    onPress={() => handleUserRoleSelection('dependente')}
-                  >
-                    <Ionicons
-                      name="people-outline"
-                      size={20}
-                      color={userRole === 'dependente' ? '#fff' : '#007AFF'}
-                    />
-                    <Text style={[
-                      styles.roleButtonText,
-                      userRole === 'dependente' && styles.roleButtonTextActive
-                    ]}>
-                      Dependente
-                    </Text>
-                  </Pressable>
-                </View>
               </View>
             </>
           )}
@@ -591,45 +522,5 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: 'bold',
     fontSize: 16,
-  },
-  userRoleContainer: {
-    marginBottom: 15,
-  },
-  userRoleLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 10,
-    textAlign: 'center',
-  },
-  userRoleButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  roleButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 15,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: '#007AFF',
-    backgroundColor: '#fff',
-    gap: 8,
-  },
-  roleButtonActive: {
-    backgroundColor: '#007AFF',
-  },
-  roleButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#007AFF',
-    textAlign: 'center',
-  },
-  roleButtonTextActive: {
-    color: '#fff',
   },
 });
