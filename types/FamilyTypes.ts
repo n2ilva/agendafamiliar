@@ -71,6 +71,7 @@ export interface Task {
   updatedAt: Date;
   completedAt?: Date;
   dueDate?: Date;
+  dueTime?: Date; // Adicionar campo dueTime
   repeatOption?: 'nenhum' | 'diario' | 'semanal' | 'mensal';
   userId: string;
   approvalId?: string;

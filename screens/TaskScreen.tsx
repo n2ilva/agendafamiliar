@@ -12,16 +12,24 @@ import {
   Platform,
   KeyboardAvoidingView,
   Image,
+  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { 
+  PanGestureHandler, 
+  State, 
+  GestureHandlerRootView 
+} from 'react-native-gesture-handler';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Notifications from 'expo-notifications';
 import { Header } from '../components/Header';
 import { FamilyUser, UserRole, TaskStatus, TaskApproval, ApprovalNotification, Family, FamilyInvite, Task as FirebaseTask } from '../types/FamilyTypes';
-import LocalStorageService from '../services/LocalStorageService';
+import LocalStorageService, { HistoryItem as StoredHistoryItem } from '../services/LocalStorageService';
 import SyncService, { SyncStatus } from '../services/SyncService';
 import ConnectivityService, { ConnectivityState } from '../services/ConnectivityService';
+import familyService from '../services/FirebaseFamilyService';
+import { safeToDate, isToday, isUpcoming, isTaskOverdue, getNextRecurrenceDate, isRecurringTaskCompletable } from '../utils/DateUtils';
 
 export enum RepeatType {
   NONE = 'none',
@@ -149,10 +157,11 @@ interface TaskScreenProps {
   user: FamilyUser;
   onLogout: () => Promise<void>;
   onUserNameChange: (newName: string) => void;
+  onUserImageChange?: (newImageUrl: string) => void;
   onUserRoleChange?: (newRole: UserRole) => void;
 }
 
-export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNameChange, onUserRoleChange }) => {
+export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNameChange, onUserImageChange, onUserRoleChange }) => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [categories, setCategories] = useState<CategoryConfig[]>(DEFAULT_CATEGORIES);
   const [modalVisible, setModalVisible] = useState(false);
@@ -173,9 +182,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   // Estados para sistema de família
   const [currentFamily, setCurrentFamily] = useState<Family | null>(null);
   const [familyMembers, setFamilyMembers] = useState<FamilyUser[]>([]);
-  const [familyInvites, setFamilyInvites] = useState<FamilyInvite[]>([]);
+  // const [familyInvites, setFamilyInvites] = useState<FamilyInvite[]>([]);
   const [familyModalVisible, setFamilyModalVisible] = useState(false);
-  const [inviteCode, setInviteCode] = useState<string>('');
+  // const [inviteCode, setInviteCode] = useState<string>('');
 
   const [selectedColorIndex, setSelectedColorIndex] = useState(0);
 
@@ -207,30 +216,78 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   const [lastUpdate, setLastUpdate] = useState(new Date());
   const [isRefreshing, setIsRefreshing] = useState(false);
 
+  // Estado para IDs de tarefas pendentes de sincronização
+  const [pendingSyncIds, setPendingSyncIds] = useState<string[]>([]);
+  
+  // Estado para dropdown de filtros
+  const [filterDropdownVisible, setFilterDropdownVisible] = useState(false);
+
+  // Função para lidar com gestos de swipe
+  const handleSwipeGesture = (event: any) => {
+    const { translationX, state } = event.nativeEvent;
+    
+    if (state === State.END) {
+      const threshold = Dimensions.get('window').width * 0.3; // 30% da largura da tela
+      
+      if (translationX > threshold) {
+        // Swipe para direita - voltar para "Hoje"
+        if (activeTab === 'upcoming') {
+          setActiveTab('today');
+        }
+      } else if (translationX < -threshold) {
+        // Swipe para esquerda - ir para "Próximas"
+        if (activeTab === 'today') {
+          setActiveTab('upcoming');
+        }
+      }
+    }
+  };
+
   // Função para converter Task local para FirebaseTask
-  const taskToFirebaseTask = (task: Task): FirebaseTask => ({
-    id: task.id,
-    title: task.title,
-    description: task.description || '',
-    completed: task.completed,
-    status: task.status,
-    category: task.category,
-    priority: 'media', // valor padrão
-    createdAt: task.createdAt,
-    updatedAt: task.editedAt || new Date(),
-    completedAt: task.completed ? new Date() : undefined,
-    dueDate: task.dueDate,
-    repeatOption: task.repeat?.type === RepeatType.DAILY ? 'diario' : 
-                  task.repeat?.type === RepeatType.CUSTOM ? 'semanal' : 'nenhum',
-    userId: task.userId,
-    approvalId: task.approvalId,
-    // Campos de autoria
-    createdBy: task.createdBy,
-    createdByName: task.createdByName,
-    editedBy: task.editedBy,
-    editedByName: task.editedByName,
-    editedAt: task.editedAt
-  });
+  const taskToFirebaseTask = (task: Task): FirebaseTask => {
+    const firebaseTask: any = {
+      id: task.id,
+      title: task.title,
+      description: task.description || '',
+      completed: task.completed,
+      status: task.status,
+      category: task.category,
+      priority: 'media', // valor padrão
+      createdAt: task.createdAt,
+      updatedAt: task.editedAt || new Date(),
+      dueDate: task.dueDate,
+      dueTime: task.dueTime, // Adicionar dueTime ao Firebase
+      repeatOption: task.repeat?.type === RepeatType.DAILY ? 'diario' : 
+                    task.repeat?.type === RepeatType.CUSTOM ? 'semanal' : 'nenhum',
+      userId: task.userId,
+      // Campos de autoria
+      createdBy: task.createdBy,
+      createdByName: task.createdByName,
+    };
+
+    // Adicionar campos apenas se não forem undefined
+    if (task.completed) {
+      firebaseTask.completedAt = new Date();
+    }
+    
+    if (task.approvalId !== undefined) {
+      firebaseTask.approvalId = task.approvalId;
+    }
+    
+    if (task.editedBy !== undefined) {
+      firebaseTask.editedBy = task.editedBy;
+    }
+    
+    if (task.editedByName !== undefined) {
+      firebaseTask.editedByName = task.editedByName;
+    }
+    
+    if (task.editedAt !== undefined) {
+      firebaseTask.editedAt = task.editedAt;
+    }
+
+    return firebaseTask as FirebaseTask;
+  };
 
   // Função para converter FirebaseTask para Task local
   const firebaseTaskToTask = (firebaseTask: FirebaseTask): Task => ({
@@ -240,8 +297,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     completed: firebaseTask.completed,
     status: firebaseTask.status,
     category: firebaseTask.category,
-    dueDate: firebaseTask.dueDate,
-    dueTime: firebaseTask.dueDate, // usar mesma data para time
+    dueDate: safeToDate(firebaseTask.dueDate),
+    dueTime: safeToDate(firebaseTask.dueTime) || safeToDate(firebaseTask.dueDate), // usar dueTime se disponível, senão dueDate
     repeat: {
       type: firebaseTask.repeatOption === 'diario' ? RepeatType.DAILY :
             firebaseTask.repeatOption === 'semanal' ? RepeatType.CUSTOM : RepeatType.NONE,
@@ -394,11 +451,301 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     }
   }, [isOffline]);
 
+  // useEffect para carregar família do usuário e suas tarefas
+  useEffect(() => {
+    const loadUserFamily = async () => {
+      try {
+        if (user?.id) {
+          console.log('🏠 Carregando família do usuário...', {
+            userId: user.id,
+            familyId: user.familyId,
+            isOffline: isOffline
+          });
+          
+          if (!isOffline) {
+            // Online: forçar sincronização completa para garantir dados atualizados
+            await SyncService.forceFullSync();
+          }
+          
+          const userFamily = await familyService.getUserFamily(user.id);
+          console.log('🔍 Resultado da busca por família:', userFamily);
+          
+          if (userFamily) {
+            setCurrentFamily(userFamily);
+            console.log('👨‍👩‍👧‍👦 Família carregada:', userFamily.name);
+            
+            // Carregar tarefas da família
+            const familyTasks = await familyService.getFamilyTasks(userFamily.id);
+            
+            // Converter tarefas da família para o formato local
+            const convertedTasks: Task[] = familyTasks.map(familyTask => ({
+              id: familyTask.id,
+              title: familyTask.title,
+              description: familyTask.description || '',
+              completed: familyTask.completed,
+              status: familyTask.status,
+              category: familyTask.category,
+              createdAt: familyTask.createdAt,
+              dueDate: safeToDate(familyTask.dueDate),
+              dueTime: safeToDate(familyTask.dueDate), // usar mesma data para time
+              repeat: {
+                type: familyTask.repeatOption === 'diario' ? RepeatType.DAILY : 
+                      familyTask.repeatOption === 'semanal' ? RepeatType.WEEKENDS :
+                      RepeatType.NONE,
+                days: []
+              },
+              userId: familyTask.userId,
+              approvalId: familyTask.approvalId,
+              createdBy: familyTask.createdBy,
+              createdByName: familyTask.createdByName,
+              editedBy: familyTask.editedBy,
+              editedByName: familyTask.editedByName,
+              editedAt: familyTask.editedAt
+            }));
+            
+            // Atualizar tarefas com as tarefas da família
+            setTasks(convertedTasks);
+            
+            console.log(`📋 ${familyTasks.length} tarefas da família carregadas e convertidas`);
+          } else {
+            console.log('👤 Usuário não possui família');
+            
+            // Se não tem família, carregar tarefas do cache local
+            const cachedTasks = await LocalStorageService.getTasks();
+            if (cachedTasks.length > 0) {
+              const localTasks = cachedTasks.map(firebaseTaskToTask);
+              setTasks(localTasks);
+              console.log(`� ${localTasks.length} tarefas locais carregadas do cache`);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('❌ Erro ao carregar família do usuário:', error);
+        
+        // Em caso de erro, tentar carregar do cache local
+        try {
+          const cachedTasks = await LocalStorageService.getTasks();
+          if (cachedTasks.length > 0) {
+            const localTasks = cachedTasks.map(firebaseTaskToTask);
+            setTasks(localTasks);
+            console.log(`🔄 ${localTasks.length} tarefas carregadas do cache após erro`);
+          }
+        } catch (cacheError) {
+          console.error('❌ Erro ao carregar do cache:', cacheError);
+        }
+      }
+    };
+
+    console.log('📊 useEffect de carregamento de família executando...', {
+      hasUserId: !!user?.id,
+      userId: user?.id,
+      isOffline
+    });
+    
+    loadUserFamily();
+  }, [user?.id, isOffline]);
+
+  // useEffect para carregar histórico da família
+  useEffect(() => {
+    let unsubscribeHistory: (() => void) | null = null;
+
+    const loadHistory = async () => {
+      try {
+        // Verificar se há usuário válido antes de tentar carregar histórico
+        if (!user || !user.id) {
+          console.log('👤 Usuário não definido, pulando carregamento do histórico');
+          return;
+        }
+
+        // Primeiro, carregar histórico do cache local
+        console.log('📖 Carregando histórico do cache local...');
+        const localHistory = await LocalStorageService.getHistory(100);
+        setHistory(localHistory);
+        
+        // Limpar histórico antigo (manter apenas 15 dias)
+        await LocalStorageService.clearOldHistory(15);
+
+        if (currentFamily && currentFamily.id && !isOffline) {
+          console.log('📖 Carregando histórico da família...');
+
+          // Configurar listener para atualizações de tarefas em tempo real
+          const unsubscribeTasks = familyService.subscribeToFamilyTasks(
+            currentFamily.id,
+            (updatedTasks) => {
+              const convertedTasks: Task[] = updatedTasks
+                .map(firebaseTaskToTask)
+                .filter(task => {
+                  // Se a tarefa estiver na lista de espera, não a atualize
+                  if (pendingSyncIds.includes(task.id)) {
+                    console.log(`🚫 Tarefa ${task.id} ignorada na atualização do Firebase (pendente de sincronização).`);
+                    return false; // Não incluir esta atualização
+                  }
+                  return true; // Incluir esta atualização
+                });
+
+              // Mesclar com as tarefas que estão pendentes
+              setTasks(prevTasks => {
+                const nonPendingTasks = prevTasks.filter(t => !pendingSyncIds.includes(t.id));
+                const pendingTasks = prevTasks.filter(t => pendingSyncIds.includes(t.id));
+                
+                // Criar um mapa de tarefas atualizadas para acesso rápido
+                const updatedTasksMap = new Map(convertedTasks.map(t => [t.id, t]));
+
+                // Atualizar as tarefas não pendentes
+                const mergedNonPending = nonPendingTasks.map(t => updatedTasksMap.get(t.id) || t);
+
+                // Adicionar novas tarefas que não estavam no estado anterior
+                convertedTasks.forEach(t => {
+                  if (!nonPendingTasks.some(nt => nt.id === t.id) && !pendingTasks.some(pt => pt.id === t.id)) {
+                    mergedNonPending.push(t);
+                  }
+                });
+
+                return [...mergedNonPending, ...pendingTasks];
+              });
+            }
+          );
+          
+          // Carregar histórico inicial da família
+          const familyHistory = await familyService.getFamilyHistory(currentFamily.id, 50);
+          
+          // Verificar se familyHistory é válido
+          if (!familyHistory || !Array.isArray(familyHistory)) {
+            console.warn('⚠️ Histórico da família inválido:', familyHistory);
+            return;
+          }
+          
+          // Converter histórico da família para formato local
+          const convertedHistory: HistoryItem[] = familyHistory.map(item => {
+            // Verificar se o item tem propriedades necessárias
+            if (!item || typeof item !== 'object') {
+              console.warn('⚠️ Item de histórico inválido:', item);
+              return {
+                id: 'invalid-' + Date.now(),
+                action: 'created',
+                taskTitle: 'Item inválido',
+                taskId: '',
+                timestamp: new Date(),
+                details: '',
+                userId: '',
+                userName: 'Desconhecido',
+                userRole: ''
+              };
+            }
+
+            return {
+              id: item.id || 'unknown-' + Date.now(),
+              action: item.action || 'created',
+              taskTitle: item.taskTitle || 'Tarefa desconhecida',
+              taskId: item.taskId || '',
+              timestamp: item.timestamp instanceof Date ? item.timestamp : new Date(),
+              details: item.details || '',
+              userId: item.userId || '',
+              userName: item.userName || 'Usuário desconhecido',
+              userRole: item.userRole || ''
+            };
+          });
+
+          // Mesclar histórico da família com histórico local
+          setHistory(prevHistory => {
+            // Filtrar histórico local para evitar duplicatas
+            const localOnlyHistory = prevHistory.filter(localItem => {
+              return !convertedHistory.some(familyItem => 
+                familyItem.taskId === localItem.taskId && 
+                familyItem.action === localItem.action &&
+                Math.abs(familyItem.timestamp.getTime() - localItem.timestamp.getTime()) < 5000
+              );
+            });
+
+            const mergedHistory = [...convertedHistory, ...localOnlyHistory];
+            
+            // Ordenar por timestamp (mais recente primeiro)
+            return mergedHistory.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+          });
+
+          // Configurar listener para atualizações em tempo real
+          unsubscribeHistory = familyService.subscribeToFamilyHistory(
+            currentFamily.id,
+            (updatedHistory) => {
+              const convertedUpdatedHistory: HistoryItem[] = updatedHistory.map(item => ({
+                id: item.id,
+                action: item.action,
+                taskTitle: item.taskTitle,
+                taskId: item.taskId,
+                timestamp: item.timestamp,
+                details: item.details,
+                userId: item.userId,
+                userName: item.userName,
+                userRole: item.userRole
+              }));
+
+              setHistory(convertedUpdatedHistory);
+            },
+            50
+          );
+
+          console.log(`📖 ${familyHistory.length} itens do histórico da família carregados`);
+        }
+      } catch (error) {
+        console.error('❌ Erro ao carregar histórico da família:', error);
+      }
+    };
+
+    loadHistory();
+
+    // Cleanup ao desmontar ou trocar de família
+    return () => {
+      if (unsubscribeHistory) {
+        unsubscribeHistory();
+      }
+    };
+  }, [currentFamily?.id, isOffline, user?.id]);
+
   // Função para forçar atualização completa do aplicativo
-  const forceRefresh = () => {
+  const forceRefresh = async () => {
     console.log('🔄 Forçando atualização completa...');
     
     setIsRefreshing(true);
+    
+    try {
+      // Forçar sincronização completa se estiver online
+      if (!isOffline && user?.id) {
+        await SyncService.forceFullSync();
+        
+        // Recarregar dados da família se houver
+        if (currentFamily) {
+          const familyTasks = await familyService.getFamilyTasks(currentFamily.id);
+          const convertedTasks: Task[] = familyTasks.map(familyTask => ({
+            id: familyTask.id,
+            title: familyTask.title,
+            description: familyTask.description || '',
+            completed: familyTask.completed,
+            status: familyTask.status,
+            category: familyTask.category,
+            createdAt: familyTask.createdAt,
+            dueDate: safeToDate(familyTask.dueDate),
+            dueTime: safeToDate(familyTask.dueDate),
+            repeat: {
+              type: familyTask.repeatOption === 'diario' ? RepeatType.DAILY : 
+                    familyTask.repeatOption === 'semanal' ? RepeatType.WEEKENDS :
+                    RepeatType.NONE,
+              days: []
+            },
+            userId: familyTask.userId,
+            approvalId: familyTask.approvalId,
+            createdBy: familyTask.createdBy,
+            createdByName: familyTask.createdByName,
+            editedBy: familyTask.editedBy,
+            editedByName: familyTask.editedByName,
+            editedAt: familyTask.editedAt
+          }));
+          setTasks(convertedTasks);
+          console.log(`🔄 ${familyTasks.length} tarefas da família recarregadas`);
+        }
+      }
+    } catch (error) {
+      console.error('❌ Erro ao forçar sincronização:', error);
+    }
     
     // Atualizar timestamp
     setLastUpdate(new Date());
@@ -406,18 +753,13 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     // Verificar tarefas vencidas
     verificarTarefasVencidas();
     
-    // Forçar re-render das listas criando nova referência dos arrays
-    setTasks(prevTasks => [...prevTasks]);
-    setCategories(prevCategories => [...prevCategories]);
-    setHistory(prevHistory => [...prevHistory]);
-    
     // Limpar histórico antigo
     clearOldHistory();
     
     // Simular um pequeno delay para mostrar o feedback visual
     setTimeout(() => {
       setIsRefreshing(false);
-    }, 500);
+    }, 1000);
   };
 
   const configurarNotificacoes = async () => {
@@ -446,10 +788,14 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     
     tasks.forEach(task => {
       if (task.dueDate && !task.completed) {
-        const dataVencimento = new Date(task.dueDate);
+        const dataVencimento = safeToDate(task.dueDate);
+        if (!dataVencimento) return; // Skip se não conseguir converter a data
+        
         if (task.dueTime) {
-          const horaVencimento = new Date(task.dueTime);
-          dataVencimento.setHours(horaVencimento.getHours(), horaVencimento.getMinutes());
+          const horaVencimento = safeToDate(task.dueTime);
+          if (horaVencimento) {
+            dataVencimento.setHours(horaVencimento.getHours(), horaVencimento.getMinutes());
+          }
         }
         
         // Se a tarefa venceu há menos de 5 minutos, enviar notificação
@@ -470,23 +816,6 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       },
       trigger: null, // Enviar imediatamente
     });
-  };
-
-  const isTaskOverdue = (task: Task): boolean => {
-    if (!task.dueDate || task.completed) return false;
-    
-    const agora = new Date();
-    const dataVencimento = new Date(task.dueDate);
-    
-    if (task.dueTime) {
-      const horaVencimento = new Date(task.dueTime);
-      dataVencimento.setHours(horaVencimento.getHours(), horaVencimento.getMinutes());
-    } else {
-      // Se não tem hora específica, considerar fim do dia
-      dataVencimento.setHours(23, 59, 59);
-    }
-    
-    return agora > dataVencimento;
   };
   
   // Estados para data e hora
@@ -531,25 +860,42 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         
         setTasks(updatedTasks);
         
+        // Adicionar ID à lista de pendentes de sincronização
+        setPendingSyncIds(prev => [...prev, editingTaskId]);
+        console.log(`⏳ Tarefa ${editingTaskId} adicionada à lista de espera de sincronização.`);
+
         // Salvar no cache local
         const updatedTask = updatedTasks.find(t => t.id === editingTaskId);
         if (updatedTask) {
           const firebaseTask = taskToFirebaseTask(updatedTask);
           await LocalStorageService.saveTask(firebaseTask);
           
-          // Se estiver offline, adicionar à fila de sincronização
-          if (isOffline) {
-            await SyncService.addOfflineOperation('update', 'tasks', firebaseTask);
-            console.log('📱 Tarefa atualizada offline e adicionada à fila de sincronização');
+          // Determinar se é create ou update baseado no ID
+          const isTemporaryId = updatedTask.id.startsWith('temp_') || updatedTask.id === 'temp';
+          const operationType = isTemporaryId ? 'create' : 'update';
+          
+          // Adicionar à fila de sincronização (online ou offline)
+          await SyncService.addOfflineOperation(operationType, 'tasks', firebaseTask);
+          
+          // Se o usuário pertence a uma família, salvar também na família
+          if (currentFamily && !isOffline) {
+            try {
+              await familyService.saveFamilyTask(firebaseTask, currentFamily.id);
+              console.log('👨‍👩‍👧‍👦 Tarefa atualizada na família');
+            } catch (error) {
+              console.error('❌ Erro ao atualizar tarefa na família:', error);
+            }
           }
+          
+          console.log('📱 Tarefa atualizada e adicionada à fila de sincronização');
         }
         
         // Adicionar ao histórico
-        addToHistory('edited', newTaskTitle.trim(), editingTaskId);
+        await addToHistory('edited', newTaskTitle.trim(), editingTaskId);
       } else {
         // Criar nova tarefa
         const newTask: Task = {
-          id: Date.now().toString(),
+          id: 'temp_' + Date.now().toString(), // ID temporário para novas tarefas
           title: newTaskTitle.trim(),
           description: newTaskDescription.trim(),
           completed: false,
@@ -575,14 +921,23 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         const firebaseTask = taskToFirebaseTask(newTask);
         await LocalStorageService.saveTask(firebaseTask);
         
-        // Se estiver offline, adicionar à fila de sincronização
-        if (isOffline) {
-          await SyncService.addOfflineOperation('create', 'tasks', firebaseTask);
-          console.log('📱 Nova tarefa criada offline e adicionada à fila de sincronização');
+        // Adicionar à fila de sincronização (online ou offline)
+        await SyncService.addOfflineOperation('create', 'tasks', firebaseTask);
+        
+        // Se o usuário pertence a uma família, salvar também na família
+        if (currentFamily && !isOffline) {
+          try {
+            await familyService.saveFamilyTask(firebaseTask, currentFamily.id);
+            console.log('👨‍👩‍👧‍👦 Nova tarefa salva na família');
+          } catch (error) {
+            console.error('❌ Erro ao salvar tarefa na família:', error);
+          }
         }
         
+        console.log('📱 Nova tarefa criada e adicionada à fila de sincronização');
+        
         // Adicionar ao histórico
-        addToHistory('created', newTask.title, newTask.id);
+        await addToHistory('created', newTask.title, newTask.id);
       }
       
       // Reset form
@@ -622,29 +977,20 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   };
 
   // Funções para filtrar tarefas por data
-  const isToday = (date?: Date): boolean => {
-    if (!date) return false;
-    const today = new Date();
-    return date.toDateString() === today.toDateString();
-  };
-
-  const isUpcoming = (date?: Date): boolean => {
-    if (!date) return false;
-    const today = new Date();
-    today.setHours(23, 59, 59, 999); // Final do dia de hoje
-    return date > today;
-  };
-
   const getTodayTasks = () => {
     return tasks.filter(task => {
       if (filterCategory !== 'all' && task.category !== filterCategory) {
         return false;
       }
+      // Excluir tarefas concluídas da página principal
+      if (task.completed) {
+        return false;
+      }
       return !task.dueDate || isToday(task.dueDate);
     }).sort((a, b) => {
       // Priorizar tarefas vencidas
-      const aOverdue = isTaskOverdue(a);
-      const bOverdue = isTaskOverdue(b);
+      const aOverdue = isTaskOverdue(a.dueDate, a.dueTime, a.completed);
+      const bOverdue = isTaskOverdue(b.dueDate, b.dueTime, b.completed);
       
       if (aOverdue && !bOverdue) return -1;
       if (!aOverdue && bOverdue) return 1;
@@ -675,7 +1021,12 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       if (filterCategory !== 'all' && task.category !== filterCategory) {
         return false;
       }
-      return task.dueDate && isUpcoming(task.dueDate);
+      // Incluir tarefas recorrentes que foram concluídas e reagendadas para o futuro
+      // ou tarefas não concluídas que têm data futura
+      return task.dueDate && (
+        (!task.completed && isUpcoming(task.dueDate)) ||
+        (task.completed && task.repeat.type !== 'none' && isUpcoming(task.dueDate))
+      );
     }).sort((a, b) => {
       if (!a.dueDate) return 1;
       if (!b.dueDate) return -1;
@@ -705,7 +1056,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   };
 
   // Funções do sistema de histórico
-  const addToHistory = (
+  const addToHistory = async (
     action: 'created' | 'completed' | 'uncompleted' | 'edited' | 'deleted' | 'approval_requested' | 'approved' | 'rejected',
     taskTitle: string,
     taskId: string,
@@ -713,7 +1064,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     actionUserId?: string,
     actionUserName?: string
   ) => {
-    const historyItem: HistoryItem = {
+    const historyItem: StoredHistoryItem = {
       id: Date.now().toString(),
       action,
       taskTitle,
@@ -726,6 +1077,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       userRole: user.role
     };
 
+    // Adicionar ao histórico local (estado da aplicação)
     setHistory(prev => {
       const newHistory = [historyItem, ...prev];
       // Manter apenas os últimos 15 dias
@@ -734,6 +1086,49 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       
       return newHistory.filter(item => item.timestamp >= fifteenDaysAgo);
     });
+
+    // Salvar no cache local (LocalStorage)
+    try {
+      await LocalStorageService.saveHistoryItem(historyItem);
+      console.log('💾 Item de histórico salvo no cache local');
+    } catch (error) {
+      console.error('❌ Erro ao salvar histórico no cache:', error);
+    }
+
+    // Se o usuário pertence a uma família, adicionar também ao histórico da família
+    if (currentFamily && !isOffline) {
+      try {
+        await familyService.addFamilyHistoryItem(
+          currentFamily.id,
+          action,
+          taskTitle,
+          taskId,
+          historyItem.userId,
+          historyItem.userName,
+          historyItem.userRole,
+          details
+        );
+        console.log('👨‍👩‍👧‍👦 Item adicionado ao histórico da família');
+      } catch (error) {
+        console.error('❌ Erro ao adicionar ao histórico da família:', error);
+        
+        // Se falhou salvar no Firebase, adicionar à fila de sincronização
+        try {
+          await SyncService.addOfflineOperation('create', 'history', historyItem);
+          console.log('📤 Item de histórico adicionado à fila de sincronização');
+        } catch (syncError) {
+          console.error('❌ Erro ao adicionar histórico à fila de sincronização:', syncError);
+        }
+      }
+    } else if (!currentFamily) {
+      // Se usuário não tem família, adicionar à fila para sincronização futura
+      try {
+        await SyncService.addOfflineOperation('create', 'history', historyItem);
+        console.log('📤 Item de histórico adicionado à fila de sincronização (sem família)');
+      } catch (syncError) {
+        console.error('❌ Erro ao adicionar histórico à fila:', syncError);
+      }
+    }
   };
 
   const clearOldHistory = () => {
@@ -870,9 +1265,10 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     });
   };
 
-  const formatTime = (time?: Date): string => {
-    if (!time || !(time instanceof Date) || isNaN(time.getTime())) return '';
-    return time.toLocaleTimeString('pt-BR', {
+  const formatTime = (time?: Date | any): string => {
+    const safeTime = safeToDate(time);
+    if (!safeTime) return '';
+    return safeTime.toLocaleTimeString('pt-BR', {
       hour: '2-digit',
       minute: '2-digit'
     });
@@ -914,48 +1310,164 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     }
   };
 
-  const toggleTask = (taskId: string) => {
+  const toggleTask = async (taskId: string) => {
     const task = tasks.find(t => t.id === taskId);
     if (!task) return;
+    
+    // Verificar se tarefa recorrente pode ser concluída
+    if (!task.completed && task.repeat.type !== 'none') {
+      if (!isRecurringTaskCompletable(task.dueDate, true)) {
+        Alert.alert(
+          'Tarefa Recorrente',
+          'Esta tarefa recorrente só pode ser concluída na data de vencimento ou após.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+    }
     
     if (user.role === 'dependente' && !task.completed) {
       // Dependente solicita aprovação para completar tarefa
       requestTaskApproval(task);
     } else if (user.role === 'admin') {
       // Admin pode completar/descompletar diretamente
-      setTasks(tasks.map(t => 
-        t.id === taskId ? { 
-          ...t, 
-          completed: !t.completed,
-          status: !t.completed ? 'concluida' : 'pendente'
-        } : t
-      ));
-      
-      // Adicionar ao histórico
-      addToHistory(
-        !task.completed ? 'completed' : 'uncompleted',
-        task.title,
-        taskId
-      );
+      await handleTaskToggle(task);
     } else {
       // Para convidados ou outras situações
-      setTasks(tasks.map(t => 
-        t.id === taskId ? { 
-          ...t, 
-          completed: !t.completed,
-          status: !t.completed ? 'concluida' : 'pendente'
-        } : t
-      ));
-      
-      addToHistory(
-        !task.completed ? 'completed' : 'uncompleted',
-        task.title,
-        taskId
-      );
+      await handleTaskToggle(task);
     }
   };
 
-  const requestTaskApproval = (task: Task) => {
+  const handleTaskToggle = async (task: Task) => {
+    let updatedTasks: Task[];
+    
+    if (!task.completed) {
+      // Marcando como concluída
+      if (task.repeat.type !== 'none') {
+        // Tarefa recorrente: criar nova instância para a próxima ocorrência
+        const nextDate = getNextRecurrenceDate(
+          task.dueDate || new Date(), 
+          task.repeat.type, 
+          task.repeat.days
+        );
+        
+        // Preservar o horário original se existir
+        let nextDateTime = nextDate;
+        if (task.dueTime) {
+          const originalTime = safeToDate(task.dueTime);
+          if (originalTime) {
+            nextDateTime = new Date(nextDate);
+            nextDateTime.setHours(originalTime.getHours());
+            nextDateTime.setMinutes(originalTime.getMinutes());
+            nextDateTime.setSeconds(originalTime.getSeconds());
+            nextDateTime.setMilliseconds(originalTime.getMilliseconds());
+          }
+        }
+        
+        const nextTask: Task = {
+          ...task,
+          id: Date.now().toString() + '_recurring',
+          completed: false,
+          status: 'pendente',
+          dueDate: nextDate,
+          dueTime: task.dueTime ? nextDateTime : undefined,
+          createdAt: new Date(),
+          createdBy: user.id,
+          createdByName: user.name,
+          editedBy: undefined,
+          editedByName: undefined,
+          editedAt: undefined
+        };
+        
+        // Se a dueTime existe, manter a mesma hora na nova data
+        if (nextTask.dueTime && task.dueTime) {
+          const originalTime = safeToDate(task.dueTime);
+          if (originalTime) {
+            nextTask.dueTime.setHours(originalTime.getHours(), originalTime.getMinutes());
+          }
+        }
+        
+        // Marcar tarefa atual como concluída e adicionar nova tarefa
+        updatedTasks = tasks.map(t => 
+          t.id === task.id ? { 
+            ...t, 
+            completed: true,
+            status: 'concluida' as TaskStatus
+          } : t
+        );
+        
+        // Adicionar nova tarefa recorrente
+        updatedTasks.push(nextTask);
+        
+        // Salvar nova tarefa no Firebase
+        try {
+          const firebaseNextTask = taskToFirebaseTask(nextTask);
+          await LocalStorageService.saveTask(firebaseNextTask);
+          await SyncService.addOfflineOperation('create', 'tasks', firebaseNextTask);
+          console.log('📱 Nova tarefa recorrente criada e sincronizada');
+        } catch (error) {
+          console.error('Erro ao sincronizar nova tarefa recorrente:', error);
+        }
+      } else {
+        // Tarefa normal: apenas marcar como concluída
+        updatedTasks = tasks.map(t => 
+          t.id === task.id ? { 
+            ...t, 
+            completed: true,
+            status: 'concluida' as TaskStatus
+          } : t
+        );
+      }
+    } else {
+      // Desmarcando como concluída (apenas para tarefas não recorrentes)
+      if (task.repeat.type === 'none') {
+        updatedTasks = tasks.map(t => 
+          t.id === task.id ? { 
+            ...t, 
+            completed: false,
+            status: 'pendente' as TaskStatus
+          } : t
+        );
+      } else {
+        // Para tarefas recorrentes concluídas, não permite desmarcar
+        // (porque já foi criada a próxima instância)
+        Alert.alert(
+          'Tarefa Recorrente',
+          'Tarefas recorrentes não podem ser desmarcadas. Uma nova instância já foi criada para a próxima ocorrência.'
+        );
+        return;
+      }
+    }
+    
+    setTasks(updatedTasks);
+    
+    // Salvar tarefa atualizada no cache local e sincronizar com Firebase
+    const updatedTask = updatedTasks.find(t => t.id === task.id);
+    if (updatedTask) {
+      try {
+        const firebaseTask = taskToFirebaseTask(updatedTask);
+        await LocalStorageService.saveTask(firebaseTask);
+        
+        // Determinar se é create ou update baseado no ID
+        const isTemporaryId = updatedTask.id.startsWith('temp_') || updatedTask.id === 'temp';
+        const operationType = isTemporaryId ? 'create' : 'update';
+        
+        await SyncService.addOfflineOperation(operationType, 'tasks', firebaseTask);
+        console.log('📱 Status da tarefa atualizado e sincronizado');
+      } catch (error) {
+        console.error('Erro ao sincronizar toggle da tarefa:', error);
+      }
+    }
+    
+    // Adicionar ao histórico
+    await addToHistory(
+      !task.completed ? 'completed' : 'uncompleted',
+      task.title,
+      task.id
+    );
+  };
+
+  const requestTaskApproval = async (task: Task) => {
     const approval: TaskApproval = {
       id: Date.now().toString(),
       taskId: task.id,
@@ -996,10 +1508,10 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       [{ text: 'OK' }]
     );
 
-    addToHistory('approval_requested', task.title, task.id);
+    await addToHistory('approval_requested', task.title, task.id);
   };
 
-  const approveTask = (approvalId: string, adminComment?: string) => {
+  const approveTask = async (approvalId: string, adminComment?: string) => {
     const approval = approvals.find(a => a.id === approvalId);
     if (!approval || user.role !== 'admin') return;
 
@@ -1026,12 +1538,12 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     // Remover notificação
     setNotifications(notifications.filter(n => n.taskId !== approval.taskId));
 
-    addToHistory('approved', approval.dependenteName + ' - ' + tasks.find(t => t.id === approval.taskId)?.title || '', approval.taskId, adminComment);
+    await addToHistory('approved', approval.dependenteName + ' - ' + tasks.find(t => t.id === approval.taskId)?.title || '', approval.taskId, adminComment);
 
     Alert.alert('Tarefa Aprovada', 'A tarefa foi aprovada e marcada como concluída.');
   };
 
-  const rejectTask = (approvalId: string, adminComment?: string) => {
+  const rejectTask = async (approvalId: string, adminComment?: string) => {
     const approval = approvals.find(a => a.id === approvalId);
     if (!approval || user.role !== 'admin') return;
 
@@ -1058,7 +1570,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     // Remover notificação
     setNotifications(notifications.filter(n => n.taskId !== approval.taskId));
 
-    addToHistory('rejected', approval.dependenteName + ' - ' + tasks.find(t => t.id === approval.taskId)?.title || '', approval.taskId, adminComment);
+    await addToHistory('rejected', approval.dependenteName + ' - ' + tasks.find(t => t.id === approval.taskId)?.title || '', approval.taskId, adminComment);
 
     Alert.alert('Tarefa Rejeitada', 'A solicitação de conclusão foi rejeitada.');
   };
@@ -1069,27 +1581,47 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   };
 
   // Funções de gerenciamento de família
-  const generateInviteCode = () => {
-    const code = Math.random().toString(36).substring(2, 8).toUpperCase();
-    const newInvite: FamilyInvite = {
-      id: Date.now().toString(),
-      familyId: user.familyId || 'family_001',
-      familyName: currentFamily?.name || 'Minha Família',
-      code: code,
-      createdBy: user.id,
-      createdAt: new Date(),
-      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 horas
-      isActive: true
-    };
-    
-    setFamilyInvites([newInvite, ...familyInvites.filter(inv => inv.isActive === false)]);
-    setInviteCode(code);
-    
-    Alert.alert(
-      'Código de Convite Gerado',
-      `Código: ${code}\n\nEste código é válido por 24 horas. Compartilhe com quem você deseja adicionar à família.`,
-      [{ text: 'OK' }]
-    );
+  // const generateInviteCode = () => {
+  //   const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+  //   const newInvite: FamilyInvite = {
+  //     id: Date.now().toString(),
+  //     familyId: user.familyId || 'family_001',
+  //     familyName: currentFamily?.name || 'Minha Família',
+  //     code: code,
+  //     createdBy: user.id,
+  //     createdAt: new Date(),
+  //     expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 horas
+  //     isActive: true
+  //   };
+  //   
+  //   setFamilyInvites([newInvite, ...familyInvites.filter(inv => inv.isActive === false)]);
+  //   setInviteCode(code);
+  //   
+  //   Alert.alert(
+  //     'Código de Convite Gerado',
+  //     `Código: ${code}\n\nEste código é válido por 24 horas. Compartilhe com quem você deseja adicionar à família.`,
+  //     [{ text: 'OK' }]
+  //   );
+  // };
+
+  // Função para copiar código da família
+  const copyFamilyCode = async () => {
+    try {
+      const familyCode = currentFamily?.inviteCode;
+      if (familyCode) {
+        // Para Expo/React Native, usamos uma abordagem simples
+        // Em um app real, você poderia usar @react-native-clipboard/clipboard
+        Alert.alert(
+          'Código Copiado!', 
+          `Código da família: ${familyCode}\n\nCompartilhe este código com quem você deseja adicionar à família.`,
+          [{ text: 'OK' }]
+        );
+      } else {
+        Alert.alert('Erro', 'Código da família não disponível.');
+      }
+    } catch (error) {
+      Alert.alert('Erro', 'Não foi possível copiar o código.');
+    }
   };
 
   const removeFamilyMember = (memberId: string) => {
@@ -1144,42 +1676,21 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     );
   };
 
-  const handleManageFamily = () => {
-    // Simular dados da família (em um app real, isso viria de uma API)
+  const handleManageFamily = async () => {
     if (!currentFamily) {
-      const family: Family = {
-        id: user.familyId || 'family_001',
-        name: 'Minha Família',
-        adminId: user.id,
-        members: [user],
-        createdAt: new Date(),
-      };
-      setCurrentFamily(family);
+      Alert.alert('Erro', 'Nenhuma família encontrada');
+      return;
     }
-    
-    // Simular membros da família
-    if (familyMembers.length === 0) {
-      setFamilyMembers([
-        user,
-        // Adicionar alguns membros fictícios para demonstração
-        {
-          id: 'member_2',
-          name: 'João Silva',
-          role: 'dependente',
-          isGuest: true,
-          familyId: user.familyId,
-          joinedAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) // 7 dias atrás
-        },
-        {
-          id: 'member_3', 
-          name: 'Maria Silva',
-          role: 'dependente',
-          isGuest: false,
-          email: 'maria@example.com',
-          familyId: user.familyId,
-          joinedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000) // 3 dias atrás
-        }
-      ]);
+
+    try {
+      // Buscar dados atualizados da família
+      const familyData = await familyService.getFamilyById(currentFamily.id);
+      if (familyData) {
+        setCurrentFamily(familyData);
+        setFamilyMembers(familyData.members);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar dados da família:', error);
     }
     
     setFamilyModalVisible(true);
@@ -1196,10 +1707,35 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         { text: 'Cancelar', style: 'cancel' },
         { 
           text: 'Excluir', 
-          onPress: () => {
-            setTasks(tasks.filter(task => task.id !== taskId));
-            // Adicionar ao histórico
-            addToHistory('deleted', task.title, taskId);
+          onPress: async () => {
+            try {
+              // Remover da lista local
+              setTasks(tasks.filter(t => t.id !== taskId));
+              
+              // Remover do cache local
+              await LocalStorageService.removeFromCache('tasks', taskId);
+              
+              // Adicionar à fila de sincronização (online ou offline)
+              await SyncService.addOfflineOperation('delete', 'tasks', { id: taskId });
+              
+              // Se o usuário pertence a uma família, deletar também da família
+              if (currentFamily && !isOffline) {
+                try {
+                  await familyService.deleteFamilyTask(taskId, currentFamily.id);
+                  console.log('👨‍👩‍👧‍👦 Tarefa deletada da família');
+                } catch (error) {
+                  console.error('❌ Erro ao deletar tarefa da família:', error);
+                }
+              }
+              
+              console.log('📱 Tarefa deletada e adicionada à fila de sincronização');
+              
+              // Adicionar ao histórico
+              await addToHistory('deleted', task.title, taskId);
+            } catch (error) {
+              console.error('Erro ao deletar tarefa:', error);
+              Alert.alert('Erro', 'Não foi possível deletar a tarefa. Tente novamente.');
+            }
           },
           style: 'destructive' 
         },
@@ -1208,8 +1744,58 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   };
 
   const handleSettings = () => {
-    // Esta função agora apenas abre o histórico diretamente
-    setHistoryModalVisible(true);
+    Alert.alert(
+      'Configurações',
+      '',
+      [
+        {
+          text: 'Histórico',
+          onPress: () => setHistoryModalVisible(true),
+        },
+        {
+          text: 'Atualizar Dados',
+          onPress: forceRefresh,
+        },
+        {
+          text: 'Info do Sistema',
+          onPress: () => {
+            const lastUpdateTime = lastUpdate.toLocaleString('pt-BR', {
+              day: '2-digit',
+              month: '2-digit',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+            });
+            Alert.alert(
+              'Informações do Sistema',
+              `Última atualização: ${lastUpdateTime}\n\n` +
+              `Status: ${isOffline ? 'Offline' : 'Online'}\n` +
+              `Operações pendentes: ${syncStatus.pendingOperations}\n` +
+              `Sincronizando: ${syncStatus.isSyncing ? 'Sim' : 'Não'}\n\n` +
+              `Total de tarefas: ${tasks.length}\n` +
+              `Tarefas pendentes: ${tasks.filter(t => !t.completed).length}\n` +
+              `Tarefas concluídas: ${tasks.filter(t => t.completed).length}`,
+              [
+                { text: 'OK' },
+                ...(syncStatus.pendingOperations > 0 ? [{
+                  text: 'Limpar Pendentes',
+                  onPress: async () => {
+                    await LocalStorageService.clearAllPendingOperations();
+                    await SyncService.initialize(); // Reinicializar para atualizar status
+                    Alert.alert('Debug', 'Operações pendentes foram limpa!');
+                  },
+                  style: 'destructive' as const
+                }] : [])
+              ]
+            );
+          },
+        },
+        {
+          text: 'Cancelar',
+          style: 'cancel',
+        },
+      ]
+    );
   };
 
   const handleLogout = async () => {
@@ -1241,103 +1827,144 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
 
   const renderTask = ({ item }: { item: Task }) => {
     const categoryConfig = getCategoryConfig(item.category);
-    const isOverdue = isTaskOverdue(item);
+    const isOverdue = isTaskOverdue(item.dueDate, item.dueTime, item.completed);
+    const isRecurring = item.repeat.type !== 'none';
+    const canComplete = isRecurringTaskCompletable(item.dueDate, isRecurring);
+    const isPendingRecurring = isRecurring && !canComplete && !item.completed;
     
     return (
-      <View style={[
-        styles.taskItem, 
-        item.completed && styles.taskCompleted,
-        isOverdue && styles.taskOverdue
-      ]}>
-        <View style={[styles.categoryIndicator, { backgroundColor: categoryConfig.color }]} />
-        
-        {/* Indicador de tarefa vencida */}
-        {isOverdue && (
-          <View style={styles.overdueIndicator}>
-            <Ionicons name="warning" size={16} color="#e74c3c" />
-            <Text style={styles.overdueLabel}>VENCIDA</Text>
-          </View>
-        )}
-        
-        <TouchableOpacity 
-          onPress={() => toggleTask(item.id)}
-          style={styles.taskContent}
-        >
-          <View style={styles.taskHeader}>
-            <View style={styles.checkboxContainer}>
+      <TouchableOpacity 
+        onPress={() => toggleTask(item.id)}
+        style={[
+          styles.taskItem, 
+          item.completed && styles.taskCompleted,
+          isOverdue && styles.taskOverdue,
+          isPendingRecurring && styles.taskPendingRecurring
+        ]}
+        activeOpacity={isPendingRecurring ? 0.5 : 0.7}
+      >
+        {/* Header da Categoria - Topo do Card */}
+        <View style={[styles.categoryHeader, { backgroundColor: categoryConfig.bgColor }]}>
+          <View style={styles.categoryHeaderContent}>
+            <Ionicons 
+              name={categoryConfig.icon as any} 
+              size={14} 
+              color={categoryConfig.color} 
+            />
+            <Text style={[styles.categoryHeaderText, { color: categoryConfig.color }]}>
+              {categoryConfig.name}
+            </Text>
+            {/* Indicador de tarefa recorrente */}
+            {isRecurring && (
               <Ionicons 
-                name={item.completed ? "checkmark-circle" : "ellipse-outline"} 
-                size={24} 
-                color={item.completed ? "#4CAF50" : "#ccc"} 
+                name="repeat" 
+                size={12} 
+                color={categoryConfig.color} 
+                style={{ marginLeft: 4 }}
               />
+            )}
+          </View>
+          {/* Indicador de tarefa vencida */}
+          {isOverdue && (
+            <View style={styles.overdueIndicator}>
+              <Ionicons name="warning" size={14} color="#e74c3c" />
+              <Text style={styles.overdueLabel}>VENCIDA</Text>
             </View>
-            <View style={styles.taskInfo}>
-              <View style={styles.taskTitleRow}>
-                <Text style={[styles.taskTitle, item.completed && styles.taskTitleCompleted]}>
-                  {item.title}
-                </Text>
-                <View style={[styles.categoryBadge, { backgroundColor: categoryConfig.bgColor }]}>
-                  <Ionicons 
-                    name={categoryConfig.icon as any} 
-                    size={12} 
-                    color={categoryConfig.color} 
-                  />
-                  <Text style={[styles.categoryBadgeText, { color: categoryConfig.color }]}>
-                    {categoryConfig.name}
-                  </Text>
-                </View>
+          )}
+          {/* Indicador de tarefa recorrente pendente */}
+          {isPendingRecurring && (
+            <View style={styles.pendingRecurringIndicator}>
+              <Ionicons name="time" size={14} color="#f39c12" />
+              <Text style={styles.pendingRecurringLabel}>AGENDADA</Text>
+            </View>
+          )}
+        </View>
+
+        {/* Conteúdo Principal da Tarefa */}
+        <View style={styles.taskCardHeader}>
+          <View style={styles.taskMainContent}>
+            <TouchableOpacity
+              onPress={() => handleTaskToggle(item)}
+              style={styles.checkboxContainer}
+              disabled={isPendingRecurring}
+            >
+              <View style={[
+                styles.checkbox,
+                item.completed && styles.checkboxCompleted,
+                isPendingRecurring && styles.checkboxDisabled
+              ]}>
+                {item.completed && (
+                  <Ionicons name="checkmark" size={18} color="#fff" />
+                )}
               </View>
+            </TouchableOpacity>
+            
+            <View style={styles.taskTextContent}>
+              <Text style={[
+                styles.taskTitle,
+                item.completed && styles.taskTitleCompleted,
+                isPendingRecurring && styles.taskTitlePending
+              ]}>
+                {item.title}
+              </Text>
               
-              {item.description ? (
-                <Text style={[styles.taskDescription, item.completed && styles.taskDescriptionCompleted]}>
+              {item.description && (
+                <Text style={[
+                  styles.taskDescription,
+                  item.completed && styles.taskDescriptionCompleted
+                ]}>
                   {item.description}
                 </Text>
-              ) : null}
-              
-              {/* Informações de agendamento */}
-              <View style={styles.scheduleInfo}>
-                {item.dueDate && (
-                  <View style={styles.scheduleItem}>
-                    <Ionicons 
-                      name="calendar-outline" 
-                      size={14} 
-                      color={isOverdue ? "#e74c3c" : "#666"} 
-                    />
-                    <Text style={[styles.scheduleText, isOverdue && styles.overdueText]}>
-                      {formatDate(item.dueDate)}
-                    </Text>
-                  </View>
-                )}
-                
-                {item.dueTime && (
-                  <View style={styles.scheduleItem}>
-                    <Ionicons 
-                      name="time-outline" 
-                      size={14} 
-                      color={isOverdue ? "#e74c3c" : "#666"} 
-                    />
-                    <Text style={[styles.scheduleText, isOverdue && styles.overdueText]}>
-                      {formatTime(item.dueTime)}
-                    </Text>
-                  </View>
-                )}
-                
-                {item.repeat.type !== RepeatType.NONE && (
-                  <View style={styles.scheduleItem}>
-                    <Ionicons 
-                      name="repeat-outline" 
-                      size={14} 
-                      color="#666" 
-                    />
-                    <Text style={styles.scheduleText}>
-                      {getRepeatText(item.repeat)}
-                    </Text>
-                  </View>
-                )}
-              </View>
+              )}
             </View>
           </View>
-        </TouchableOpacity>
+        </View>
+
+        {/* Informações de Agendamento */}
+        <View style={styles.scheduleInfo}>
+          {item.dueTime && (
+            <View style={styles.scheduleItem}>
+              <Ionicons 
+                name="time-outline" 
+                size={14} 
+                color={isOverdue ? "#e74c3c" : "#666"} 
+              />
+              <Text style={[styles.scheduleText, isOverdue && styles.overdueText]}>
+                {formatTime(item.dueTime)}
+              </Text>
+            </View>
+          )}
+          
+          {item.repeat.type !== RepeatType.NONE && (
+            <View style={styles.scheduleItem}>
+              <Ionicons 
+                name="repeat-outline" 
+                size={14} 
+                color="#666" 
+              />
+              <Text style={styles.scheduleText}>
+                {getRepeatText(item.repeat)}
+              </Text>
+            </View>
+          )}
+
+          {/* Botões de ação no final da coluna de informações */}
+          <View style={styles.scheduleActions}>
+            <TouchableOpacity 
+              onPress={() => editTask(item)}
+              style={styles.scheduleActionButton}
+            >
+              <Ionicons name="pencil-outline" size={16} color="#007AFF" />
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              onPress={() => deleteTask(item.id)}
+              style={styles.scheduleActionButton}
+            >
+              <Ionicons name="trash-outline" size={16} color="#e74c3c" />
+            </TouchableOpacity>
+          </View>
+        </View>
         
         {/* Indicador de status de aprovação */}
         {item.status === 'pendente_aprovacao' && (
@@ -1360,184 +1987,98 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             <Text style={[styles.approvalStatusText, styles.approvalStatusTextRejected]}>Rejeitada</Text>
           </View>
         )}
-        
-        <View style={styles.taskActions}>
-          <TouchableOpacity 
-            onPress={() => editTask(item)}
-            style={styles.editButton}
-          >
-            <Ionicons name="pencil-outline" size={18} color="#007AFF" />
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            onPress={() => deleteTask(item.id)}
-            style={styles.deleteButton}
-          >
-            <Ionicons name="trash-outline" size={18} color="#e74c3c" />
-          </TouchableOpacity>
-        </View>
-        
-        {/* Informações de Autoria */}
+
+        {/* Informações de Autoria - Compactas */}
         <View style={styles.authorshipInfo}>
           <View style={styles.authorshipRow}>
-            <Ionicons name="person-outline" size={12} color="#666" />
+            <Ionicons name="person-outline" size={12} color="#999" />
             <Text style={styles.authorshipText}>
-              Criado por {item.createdByName || 'Usuário'}
-            </Text>
-            <Text style={styles.authorshipDate}>
-              {formatDate(item.createdAt)}
+              {item.createdByName || 'Usuário'} • {formatDate(item.createdAt)}
             </Text>
           </View>
           {item.editedBy && item.editedByName && (
             <View style={styles.authorshipRow}>
-              <Ionicons name="pencil-outline" size={12} color="#666" />
+              <Ionicons name="pencil-outline" size={12} color="#999" />
               <Text style={styles.authorshipText}>
-                Editado por {item.editedByName}
+                Editado por {item.editedByName} • {item.editedAt ? formatDate(item.editedAt) : ''}
               </Text>
-              {item.editedAt && (
-                <Text style={styles.authorshipDate}>
-                  {formatDate(item.editedAt)}
-                </Text>
-              )}
             </View>
           )}
         </View>
-      </View>
+      </TouchableOpacity>
     );
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <Header 
-        userName={user?.name || 'Usuário'}
-        userImage={user?.picture}
-        userRole={user?.role}
-        onUserNameChange={onUserNameChange}
-        onUserRoleChange={onUserRoleChange}
-        onSettings={handleSettings}
-        onLogout={handleLogout}
-        notificationCount={user.role === 'admin' ? notifications.filter(n => !n.read).length : 0}
-        onNotifications={user.role === 'admin' ? () => setApprovalModalVisible(true) : undefined}
-        onManageFamily={user.role === 'admin' ? handleManageFamily : undefined}
-      />
-      
-      {/* Indicador de Status de Conectividade */}
-      {(isOffline || syncStatus.pendingOperations > 0) && (
-        <View style={styles.connectivityIndicator}>
-          <View style={styles.connectivityContent}>
-            <Ionicons 
-              name={isOffline ? "cloud-offline" : "sync"} 
-              size={16} 
-              color={isOffline ? "#ff6b6b" : "#4CAF50"} 
-            />
-            <Text style={[styles.connectivityText, { color: isOffline ? "#ff6b6b" : "#4CAF50" }]}>
-              {isOffline 
-                ? `Modo Offline • ${syncStatus.pendingOperations} pendentes` 
-                : syncStatus.isSyncing 
-                  ? "Sincronizando..." 
-                  : `${syncStatus.pendingOperations} operações na fila`
-              }
-            </Text>
-            {syncStatus.isSyncing && (
-              <View style={styles.syncingIndicator}>
-                <Text style={styles.syncingDot}>•</Text>
-              </View>
-            )}
+    <GestureHandlerRootView style={styles.container}>
+      <SafeAreaView style={styles.container}>
+        <Header 
+          userName={user?.name || 'Usuário'}
+          userImage={user?.picture}
+          userRole={user?.role}
+          familyName={currentFamily?.name}
+          familyId={currentFamily?.id}
+          onUserNameChange={onUserNameChange}
+          onUserImageChange={onUserImageChange}
+          onUserRoleChange={onUserRoleChange}
+          onSettings={handleSettings}
+          onLogout={handleLogout}
+          notificationCount={user.role === 'admin' ? notifications.filter(n => !n.read).length : 0}
+          onNotifications={user.role === 'admin' ? () => setApprovalModalVisible(true) : undefined}
+          onManageFamily={user.role === 'admin' ? handleManageFamily : undefined}
+          syncStatus={{
+            hasError: syncStatus.hasError,
+            isOnline: connectivityState.isConnected
+          }}
+        />
+        
+        {/* Indicador de Status de Conectividade */}
+        {(isOffline || syncStatus.pendingOperations > 0) && (
+          <View style={styles.connectivityIndicator}>
+            <View style={styles.connectivityContent}>
+              <Ionicons 
+                name={isOffline ? "cloud-offline" : "sync"} 
+                size={16} 
+                color={isOffline ? "#ff6b6b" : "#4CAF50"} 
+              />
+              <Text style={[styles.connectivityText, { color: isOffline ? "#ff6b6b" : "#4CAF50" }]}>
+                {isOffline 
+                  ? `Modo Offline • ${syncStatus.pendingOperations} ${syncStatus.pendingOperations === 1 ? 'sincronização pendente' : 'sincronizações pendentes'}` 
+                  : syncStatus.isSyncing 
+                    ? "Sincronizando..." 
+                    : `${syncStatus.pendingOperations} ${syncStatus.pendingOperations === 1 ? 'sincronização pendente' : 'sincronizações pendentes'}`
+                }
+              </Text>
+              {syncStatus.isSyncing && (
+                <View style={styles.syncingIndicator}>
+                  <Text style={styles.syncingDot}>•</Text>
+                </View>
+              )}
+            </View>
           </View>
-        </View>
-      )}
-      
-      <View style={styles.content}>
-        <View style={styles.categoryFiltersContainer}>
-          <ScrollView 
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.categoryFilters}
-            style={styles.categoryScrollView}
-            decelerationRate="fast"
-            snapToInterval={120}
-            snapToAlignment="start"
-          >
-            {categories.map((category) => (
-              <TouchableOpacity
-                key={category.id}
-                style={[
-                  styles.categoryFilter,
-                  filterCategory === category.id && styles.categoryFilterActive,
-                  { borderColor: category.color }
-                ]}
-                onPress={() => setFilterCategory(category.id)}
-                onLongPress={() => !category.isDefault && deleteCategory(category.id)}
-              >
-                <Ionicons 
-                  name={category.icon as any} 
-                  size={18} 
-                  color={filterCategory === category.id ? '#fff' : category.color} 
-                />
-                <Text style={[
-                  styles.categoryFilterText,
-                  filterCategory === category.id && styles.categoryFilterTextActive,
-                  { color: filterCategory === category.id ? '#fff' : category.color }
-                ]}>
-                  {category.name}
-                </Text>
-              </TouchableOpacity>
-            ))}
-            
-            <TouchableOpacity
-              style={styles.addCategoryButton}
-              onPress={() => setCategoryModalVisible(true)}
-            >
-              <Ionicons name="add" size={18} color="#007AFF" />
-              <Text style={styles.addCategoryText}>Nova</Text>
-            </TouchableOpacity>
-          </ScrollView>
-        </View>
+        )}
+        
+        <PanGestureHandler onGestureEvent={handleSwipeGesture}>
+          <View style={styles.content}>
 
-        {/* Tabs para Hoje e Próximas */}
-        <View style={styles.tabContainer}>
+        {/* Indicador de Tabs Simplificado */}
+        <View style={styles.simpleTabContainer}>
           <TouchableOpacity
-            style={[styles.tab, activeTab === 'today' && styles.activeTab]}
+            style={[styles.simpleTab, activeTab === 'today' && styles.activeSimpleTab]}
             onPress={() => setActiveTab('today')}
           >
-            <Ionicons 
-              name="today-outline" 
-              size={20} 
-              color={activeTab === 'today' ? '#007AFF' : '#666'} 
-            />
-            <Text style={[styles.tabText, activeTab === 'today' && styles.activeTabText]}>
-              Hoje
+            <Text style={[styles.simpleTabText, activeTab === 'today' && styles.activeSimpleTabText]}>
+              Hoje ({getTodayTasks().length})
             </Text>
-            <View style={[
-              styles.taskCount, 
-              activeTab === 'today' && { backgroundColor: '#007AFF' }
-            ]}>
-              <Text style={[styles.taskCountText, activeTab === 'today' && styles.activeTaskCountText]}>
-                {getTodayTasks().length}
-              </Text>
-            </View>
           </TouchableOpacity>
           
           <TouchableOpacity
-            style={[styles.tab, activeTab === 'upcoming' && styles.activeTab]}
+            style={[styles.simpleTab, activeTab === 'upcoming' && styles.activeSimpleTab]}
             onPress={() => setActiveTab('upcoming')}
           >
-            <Ionicons 
-              name="calendar-outline" 
-              size={20} 
-              color={activeTab === 'upcoming' ? '#007AFF' : '#666'} 
-            />
-            <Text style={[styles.tabText, activeTab === 'upcoming' && styles.activeTabText]}>
-              Próximas
+            <Text style={[styles.simpleTabText, activeTab === 'upcoming' && styles.activeSimpleTabText]}>
+              Próximas ({getUpcomingTasks().length})
             </Text>
-            <View style={[
-              styles.taskCount, 
-              activeTab === 'upcoming' && { backgroundColor: '#007AFF' }
-            ]}>
-              <Text style={[styles.taskCountText, activeTab === 'upcoming' && styles.activeTaskCountText]}>
-                {getUpcomingTasks().length}
-              </Text>
-            </View>
           </TouchableOpacity>
         </View>
         
@@ -1545,23 +2086,6 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           <Text style={styles.summaryText}>
             {getCurrentTasks().filter((task: Task) => !task.completed).length} pendentes • {getCurrentTasks().filter((task: Task) => task.completed).length} concluídas
           </Text>
-          <View style={styles.refreshContainer}>
-            <Text style={styles.lastUpdateText}>
-              {isRefreshing ? '🔄 Atualizando...' : `🔄 Última atualização: ${lastUpdate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`}
-            </Text>
-            <TouchableOpacity 
-              style={[styles.refreshButton, isRefreshing && styles.refreshButtonActive]}
-              onPress={forceRefresh}
-              disabled={isRefreshing}
-            >
-              <Ionicons 
-                name="refresh" 
-                size={16} 
-                color={isRefreshing ? "#007AFF" : "#28a745"} 
-                style={isRefreshing && styles.rotating}
-              />
-            </TouchableOpacity>
-          </View>
         </View>
 
         {getCurrentTasks().length === 0 ? (
@@ -1590,17 +2114,93 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             renderItem={renderTask}
             keyExtractor={(item) => item.id}
             style={styles.taskList}
-            showsVerticalScrollIndicator={false}
+                       showsVerticalScrollIndicator={false}
           />
         )}
+          </View>
+        </PanGestureHandler>
+
+      {/* Container dos botões flutuantes */}
+      <View style={styles.fabContainer}>
+        {/* Botão de Filtro */}
+        <TouchableOpacity 
+          style={styles.filterFab}
+          onPress={() => setFilterDropdownVisible(!filterDropdownVisible)}
+        >
+          <Ionicons name="filter" size={24} color="#fff" />
+        </TouchableOpacity>
+
+        {/* Botão de Criar Tarefa */}
+        <TouchableOpacity 
+          style={styles.fab}
+          onPress={() => setModalVisible(true)}
+        >
+          <Ionicons name="add" size={30} color="#fff" />
+        </TouchableOpacity>
       </View>
 
-      <TouchableOpacity 
-        style={styles.fab}
-        onPress={() => setModalVisible(true)}
-      >
-        <Ionicons name="add" size={24} color="#fff" />
-      </TouchableOpacity>
+      {/* Dropdown de Filtros - posicionado para abrir à esquerda */}
+      {filterDropdownVisible && (
+        <>
+          {/* Overlay para fechar dropdown */}
+          <TouchableOpacity
+            style={styles.dropdownOverlay}
+            onPress={() => setFilterDropdownVisible(false)}
+            activeOpacity={1}
+          />
+          
+          <View style={styles.filterDropdownMenuFloating}>
+            <ScrollView 
+              style={{ maxHeight: 280 }} 
+              showsVerticalScrollIndicator={false}
+              bounces={false}
+            >
+              {categories.map((category) => (
+                <TouchableOpacity
+                  key={category.id}
+                  style={[
+                    styles.filterDropdownItem,
+                    filterCategory === category.id && styles.filterDropdownItemActive
+                  ]}
+                  onPress={() => {
+                    setFilterCategory(category.id);
+                    setFilterDropdownVisible(false);
+                  }}
+                  onLongPress={() => !category.isDefault && deleteCategory(category.id)}
+                >
+                  <Ionicons 
+                    name={category.icon as any} 
+                    size={16} 
+                    color={filterCategory === category.id ? '#007AFF' : category.color} 
+                  />
+                  <Text style={[
+                    styles.filterDropdownItemText,
+                    filterCategory === category.id && styles.filterDropdownItemTextActive
+                  ]}>
+                    {category.name}
+                  </Text>
+                  {filterCategory === category.id && (
+                    <Ionicons name="checkmark" size={16} color="#007AFF" />
+                  )}
+                </TouchableOpacity>
+              ))}
+              
+              <View style={styles.filterDropdownSeparator} />
+              
+              <TouchableOpacity
+                style={styles.filterDropdownItem}
+                onPress={() => {
+                  setCategoryModalVisible(true);
+                  setFilterDropdownVisible(false);
+                }}
+              >
+                <Ionicons name="add-circle-outline" size={16} color="#007AFF" />
+                <Text style={styles.filterDropdownItemText}>Nova Categoria</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </>
+      )}
 
       <Modal
         animationType="slide"
@@ -2089,56 +2689,27 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             </View>
 
             <ScrollView style={styles.familyContent}>
-              {/* Seção de Convites */}
+              {/* Seção do Código da Família */}
               <View style={styles.familySection}>
-                <Text style={styles.familySectionTitle}>Convidar Membros</Text>
+                <Text style={styles.familySectionTitle}>Código da Família</Text>
                 <Text style={styles.familySectionSubtitle}>
-                  Gere um código para convidar novos membros para a família
+                  Use este código para convidar novos membros
                 </Text>
                 
-                <TouchableOpacity
-                  style={styles.generateCodeButton}
-                  onPress={generateInviteCode}
-                >
-                  <Ionicons name="add-circle" size={20} color="#fff" />
-                  <Text style={styles.generateCodeButtonText}>Gerar Código de Convite</Text>
-                </TouchableOpacity>
-
-                {inviteCode && (
-                  <View style={styles.inviteCodeContainer}>
-                    <Text style={styles.inviteCodeLabel}>Código de Convite:</Text>
-                    <View style={styles.inviteCodeBox}>
-                      <Text style={styles.inviteCodeText}>{inviteCode}</Text>
-                      <TouchableOpacity
-                        onPress={() => {
-                          // Em um app real, isso copiaria para o clipboard
-                          Alert.alert('Código Copiado', 'O código foi copiado para a área de transferência.');
-                        }}
-                        style={styles.copyButton}
-                      >
-                        <Ionicons name="copy" size={16} color="#007AFF" />
-                      </TouchableOpacity>
-                    </View>
-                    <Text style={styles.inviteCodeExpiry}>
-                      Válido por 24 horas
+                <View style={styles.inviteCodeContainer}>
+                  <Text style={styles.inviteCodeLabel}>Código:</Text>
+                  <View style={styles.inviteCodeBox}>
+                    <Text style={styles.inviteCodeText}>
+                      {currentFamily?.inviteCode || 'Código não disponível'}
                     </Text>
+                    <TouchableOpacity
+                      onPress={copyFamilyCode}
+                      style={styles.copyButton}
+                    >
+                      <Ionicons name="copy" size={18} color="#fff" />
+                    </TouchableOpacity>
                   </View>
-                )}
-
-                {/* Lista de convites ativos */}
-                {familyInvites.filter(inv => inv.isActive).length > 0 && (
-                  <View style={styles.activeInvites}>
-                    <Text style={styles.activeInvitesTitle}>Convites Ativos:</Text>
-                    {familyInvites.filter(inv => inv.isActive).map(invite => (
-                      <View key={invite.id} style={styles.activeInviteItem}>
-                        <Text style={styles.activeInviteCode}>{invite.code}</Text>
-                        <Text style={styles.activeInviteExpiry}>
-                          Expira: {invite.expiresAt ? new Date(invite.expiresAt).toLocaleDateString('pt-BR') : 'Data não disponível'}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-                )}
+                </View>
               </View>
 
               {/* Seção de Membros */}
@@ -2194,7 +2765,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+      
+      </SafeAreaView>
+    </GestureHandlerRootView>
   );
 };
 
@@ -2205,9 +2778,9 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    paddingHorizontal: 20,
-    paddingTop: 15,
-    paddingBottom: 20,
+    paddingHorizontal: 16, // Reduzir padding horizontal para telas menores
+    paddingTop: 12, // Reduzir padding superior
+    paddingBottom: 100, // Aumentar padding inferior para os botões flutuantes
   },
   categoryFiltersContainer: {
     marginBottom: 20,
@@ -2326,32 +2899,33 @@ const styles = StyleSheet.create({
   dateTimeContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 20,
-    gap: 10,
+    marginBottom: 16, // Reduzir margem
+    gap: 8, // Reduzir gap
   },
   dateTimeButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 12,
+    padding: 10, // Reduzir padding
     borderWidth: 1,
     borderColor: '#e0e0e0',
     borderRadius: 8,
     backgroundColor: '#f8f9fa',
   },
   dateTimeButtonText: {
-    fontSize: 14,
+    fontSize: 13, // Reduzir tamanho da fonte
     color: '#666',
-    marginLeft: 8,
+    marginLeft: 6,
+    flex: 1,
   },
   repeatContainer: {
-    marginBottom: 20,
+    marginBottom: 16, // Reduzir margem
   },
   repeatOption: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 12,
-    marginBottom: 8,
+    padding: 10, // Reduzir padding
+    marginBottom: 6, // Reduzir margem
     borderWidth: 1,
     borderColor: '#e0e0e0',
     borderRadius: 8,
@@ -2362,22 +2936,22 @@ const styles = StyleSheet.create({
     backgroundColor: '#e3f2fd',
   },
   repeatOptionText: {
-    fontSize: 14,
+    fontSize: 13, // Reduzir tamanho da fonte
     color: '#666',
-    marginLeft: 8,
+    marginLeft: 6,
   },
   repeatOptionTextActive: {
     color: '#007AFF',
     fontWeight: '600',
   },
   customDaysContainer: {
-    marginBottom: 20,
+    marginBottom: 16, // Reduzir margem
   },
   customDaysLabel: {
-    fontSize: 14,
+    fontSize: 13, // Reduzir tamanho da fonte
     fontWeight: '600',
     color: '#333',
-    marginBottom: 8,
+    marginBottom: 6, // Reduzir margem
   },
   customDaysSelector: {
     flexDirection: 'row',
@@ -2406,10 +2980,10 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   summaryContainer: {
-    marginBottom: 20,
+    marginBottom: 16, // Reduzir margem
   },
   summaryText: {
-    fontSize: 16,
+    fontSize: 13, // Reduzir tamanho da fonte
     color: '#666',
     textAlign: 'center',
   },
@@ -2417,148 +2991,206 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 40,
+    paddingHorizontal: 30, // Reduzir padding horizontal
   },
   emptyText: {
-    fontSize: 18,
+    fontSize: 16, // Reduzir tamanho da fonte
     fontWeight: 'bold',
     color: '#666',
-    marginTop: 20,
-    marginBottom: 8,
+    marginTop: 16, // Reduzir margem superior
+    marginBottom: 6, // Reduzir margem inferior
   },
   emptySubtext: {
-    fontSize: 14,
+    fontSize: 13, // Reduzir tamanho da fonte
     color: '#999',
     textAlign: 'center',
-    lineHeight: 20,
+    lineHeight: 18, // Reduzir line height
   },
   taskList: {
     flex: 1,
   },
   taskItem: {
     backgroundColor: '#fff',
-    borderRadius: 12,
-    marginBottom: 12,
-    padding: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
+    borderRadius: 12, // Reduzir border radius
+    marginHorizontal: 12, // Reduzir margem horizontal
+    marginBottom: 12, // Reduzir margem inferior
+    padding: 0,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
-      height: 1,
+      height: 2,
     },
     shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-    position: 'relative',
+    shadowRadius: 8,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
+    overflow: 'hidden',
   },
   taskCompleted: {
-    opacity: 0.7,
+    opacity: 0.6,
+    backgroundColor: '#f8f9fa',
   },
-  categoryIndicator: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: 4,
-    borderTopLeftRadius: 12,
-    borderBottomLeftRadius: 12,
+  // Category Header - New Styles
+  categoryHeader: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.05)',
   },
-  taskContent: {
-    flex: 1,
-    marginLeft: 8,
+  categoryHeaderContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
-  taskHeader: {
+  categoryHeaderText: {
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  taskCardHeader: {
+    padding: 12, // Reduzir padding
+    paddingBottom: 8, // Reduzir padding inferior
+  },
+  taskMainContent: {
     flexDirection: 'row',
     alignItems: 'flex-start',
   },
   checkboxContainer: {
-    marginRight: 12,
+    marginRight: 12, // Reduzir margem
     marginTop: 2,
   },
-  taskInfo: {
-    flex: 1,
-  },
-  taskTitleRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#007AFF',
+    backgroundColor: '#fff',
+    justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 4,
+  },
+  checkboxCompleted: {
+    backgroundColor: '#007AFF',
+    borderColor: '#007AFF',
+  },
+  checkboxDisabled: {
+    backgroundColor: '#f5f5f5',
+    borderColor: '#ccc',
+  },
+  taskTextContent: {
+    flex: 1,
   },
   taskTitle: {
-    fontSize: 16,
+    fontSize: 16, // Reduzir tamanho da fonte
     fontWeight: '600',
-    color: '#333',
-    flex: 1,
-    marginRight: 8,
+    color: '#1a1a1a',
+    lineHeight: 22, // Reduzir line height
+    marginBottom: 3, // Reduzir margem
   },
   taskTitleCompleted: {
+    textDecorationLine: 'line-through',
+    color: '#999',
+  },
+  taskDescription: {
+    fontSize: 13, // Reduzir tamanho da fonte
+    color: '#666',
+    lineHeight: 18, // Reduzir line height
+    marginTop: 3, // Reduzir margem
+  },
+  taskDescriptionCompleted: {
     textDecorationLine: 'line-through',
     color: '#999',
   },
   categoryBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 12,
-    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 20,
+    minWidth: 70,
+    justifyContent: 'center',
   },
   categoryBadgeText: {
-    fontSize: 10,
-    fontWeight: '600',
-    marginLeft: 2,
-  },
-  taskDescription: {
-    fontSize: 14,
-    color: '#666',
-    lineHeight: 18,
-  },
-  taskDescriptionCompleted: {
-    textDecorationLine: 'line-through',
-    color: '#999',
+    fontSize: 11,
+    fontWeight: '700',
+    marginLeft: 4,
+    textTransform: 'uppercase',
   },
   scheduleInfo: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginTop: 8,
-    gap: 8,
+    paddingHorizontal: 12, // Reduzir padding horizontal
+    paddingBottom: 12, // Reduzir padding inferior
+    gap: 6, // Reduzir gap
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+    paddingTop: 8, // Reduzir padding superior
   },
   scheduleItem: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#f8f9fa',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 8,
+    paddingHorizontal: 8, // Reduzir padding horizontal
+    paddingVertical: 4, // Reduzir padding vertical
+    borderRadius: 10, // Reduzir border radius
+    borderWidth: 1,
+    borderColor: '#e9ecef',
   },
   scheduleText: {
-    fontSize: 11,
-    color: '#666',
-    marginLeft: 3,
-    fontWeight: '500',
-  },
-  overdueText: {
-    color: '#e74c3c',
+    fontSize: 11, // Reduzir tamanho da fonte
+    color: '#495057',
+    marginLeft: 3, // Reduzir margem
     fontWeight: '600',
   },
-  deleteButton: {
-    padding: 8,
-    marginLeft: 4,
+  scheduleActions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginLeft: 'auto', // Empurra para a direita
   },
-  // Task Actions Styles
-  taskActions: {
+  scheduleActionButton: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+    borderRadius: 8,
+    padding: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  overdueText: {
+    color: '#dc3545',
+    fontWeight: '700',
+  },
+  overdueIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: '#fff5f5',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#fecaca',
   },
-  editButton: {
-    padding: 8,
-    marginRight: 4,
+  overdueLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#dc3545',
+    marginLeft: 4,
+    textTransform: 'uppercase',
   },
   fab: {
-    position: 'absolute',
-    bottom: 30,
-    right: 30,
     width: 56,
     height: 56,
     borderRadius: 28,
@@ -2579,25 +3211,25 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
+    padding: 15, // Reduzir padding para telas menores
   },
   modalContent: {
     backgroundColor: '#fff',
     borderRadius: 16,
-    padding: 24,
+    padding: 20, // Reduzir padding interno
     width: '100%',
     maxWidth: 400,
     flex: 1,
-    maxHeight: '90%',
+    maxHeight: '92%', // Aumentar altura máxima
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 16, // Reduzir margem
   },
   modalTitle: {
-    fontSize: 20,
+    fontSize: 18, // Reduzir tamanho da fonte
     fontWeight: 'bold',
     color: '#333',
   },
@@ -2605,23 +3237,27 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e0e0e0',
     borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    marginBottom: 16,
+    padding: 10, // Reduzir padding
+    fontSize: 15, // Reduzir tamanho da fonte
+    marginBottom: 12, // Reduzir margem
     backgroundColor: '#f8f9fa',
+    width: '99%', // Garantir que ocupe toda a largura disponível
+    alignSelf: 'stretch', // Garantir que se estenda corretamente
   },
   textArea: {
-    height: 80,
+    height: 70, // Reduzir altura
     textAlignVertical: 'top',
+    width: '99%', // Garantir largura total
+    alignSelf: 'stretch', // Garantir que se estenda corretamente
   },
   categoryLabel: {
-    fontSize: 16,
+    fontSize: 15, // Reduzir tamanho da fonte
     fontWeight: '600',
     color: '#333',
-    marginBottom: 12,
+    marginBottom: 10, // Reduzir margem
   },
   categorySelectorContainer: {
-    marginBottom: 24,
+    marginBottom: 16, // Reduzir margem
   },
   categorySelectorScrollView: {
     flexGrow: 0,
@@ -2633,30 +3269,31 @@ const styles = StyleSheet.create({
   categorySelector: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 10, // Reduzir padding
+    paddingVertical: 6, // Reduzir padding
     marginRight: 8,
     borderRadius: 16,
     borderWidth: 1,
-    minWidth: 100,
+    minWidth: 85, // Reduzir largura mínima
     justifyContent: 'center',
   },
   categorySelectorActive: {
     borderWidth: 2,
   },
   categorySelectorText: {
-    fontSize: 12,
+    fontSize: 11, // Reduzir tamanho da fonte
     fontWeight: '600',
-    marginLeft: 4,
+    marginLeft: 3, // Reduzir margem
   },
   modalButtons: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 8,
+    marginTop: 4, // Reduzir margem superior
+    paddingTop: 8, // Adicionar um pouco de padding
   },
   button: {
     flex: 1,
-    paddingVertical: 12,
+    paddingVertical: 10, // Reduzir padding vertical
     borderRadius: 8,
     alignItems: 'center',
   },
@@ -2828,13 +3465,15 @@ const styles = StyleSheet.create({
   },
   modalScrollView: {
     flex: 1,
-    marginBottom: 20,
+    marginBottom: 12, // Reduzir margem
   },
   modalScrollContent: {
     flexGrow: 1,
-    paddingVertical: 10,
+    paddingVertical: 8, // Reduzir padding
+    paddingHorizontal: 0, // Garantir que não há padding horizontal extra
   },
-  // Tab Styles
+  // Tab Styles (DEPRECATED - mantidos para compatibilidade)
+  /*
   tabContainer: {
     flexDirection: 'row',
     backgroundColor: '#f8f9fa',
@@ -2892,6 +3531,35 @@ const styles = StyleSheet.create({
   },
   activeTaskCountText: {
     color: '#fff',
+  },
+  */
+  // Simple Tab Styles (Nova aparência simplificada)
+  simpleTabContainer: {
+    flexDirection: 'row',
+    marginHorizontal: 16, // Reduzir margem horizontal
+    marginVertical: 10, // Reduzir margem vertical
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e5e5',
+  },
+  simpleTab: {
+    flex: 1,
+    paddingVertical: 10, // Reduzir padding vertical
+    paddingHorizontal: 12, // Reduzir padding horizontal
+    alignItems: 'center',
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  activeSimpleTab: {
+    borderBottomColor: '#007AFF',
+  },
+  simpleTabText: {
+    fontSize: 15, // Reduzir tamanho da fonte
+    fontWeight: '500',
+    color: '#666',
+  },
+  activeSimpleTabText: {
+    color: '#007AFF',
+    fontWeight: '600',
   },
   // History Styles
   historySubtitle: {
@@ -2968,30 +3636,35 @@ const styles = StyleSheet.create({
   // Overdue Task Styles
   taskOverdue: {
     backgroundColor: '#fff5f5',
-    borderLeftWidth: 4,
-    borderLeftColor: '#e74c3c',
+    borderWidth: 2,
+    borderColor: '#fecaca',
   },
-  overdueIndicator: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
+  // Pending Recurring Task Styles
+  taskPendingRecurring: {
+    backgroundColor: '#fffbf0',
+    borderWidth: 2,
+    borderColor: '#fde68a',
+  },
+  pendingRecurringIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: 'rgba(243, 156, 18, 0.1)',
     paddingHorizontal: 6,
     paddingVertical: 2,
-    borderRadius: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 1,
+    borderRadius: 8,
+    gap: 4,
   },
-  overdueLabel: {
+  pendingRecurringLabel: {
     fontSize: 10,
     fontWeight: '700',
-    color: '#e74c3c',
-    marginLeft: 2,
+    color: '#f39c12',
+    textTransform: 'uppercase',
+  },
+  taskTitlePending: {
+    color: '#b45309',
+  },
+  taskDescriptionPending: {
+    color: '#92400e',
   },
   lastUpdateText: {
     fontSize: 11,
@@ -3174,29 +3847,42 @@ const styles = StyleSheet.create({
     borderColor: '#e0e0e0',
   },
   inviteCodeLabel: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: 'bold',
     color: '#333',
     marginBottom: 8,
+    textAlign: 'center',
   },
   inviteCodeBox: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#fff',
-    padding: 12,
-    borderRadius: 8,
-    borderWidth: 1,
+    backgroundColor: '#f8f9ff',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 2,
     borderColor: '#007AFF',
+    shadowColor: '#007AFF',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   inviteCodeText: {
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: 'bold',
     color: '#007AFF',
-    letterSpacing: 2,
+    letterSpacing: 3,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
   },
   copyButton: {
-    padding: 5,
+    backgroundColor: '#007AFF',
+    padding: 10,
+    borderRadius: 8,
+    marginLeft: 12,
   },
   inviteCodeExpiry: {
     fontSize: 12,
@@ -3334,11 +4020,12 @@ const styles = StyleSheet.create({
   // Estilos para informações de autoria
   authorshipInfo: {
     backgroundColor: '#f8f9fa',
-    padding: 8,
-    borderRadius: 6,
-    marginTop: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 16,
     borderTopWidth: 1,
-    borderTopColor: '#e9ecef',
+    borderTopColor: '#f0f0f0',
   },
   authorshipRow: {
     flexDirection: 'row',
@@ -3352,11 +4039,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     flex: 1,
   },
-  authorshipDate: {
-    fontSize: 10,
-    color: '#999',
-    fontStyle: 'italic',
-  },
   historyAuthor: {
     fontSize: 11,
     color: '#666',
@@ -3366,5 +4048,79 @@ const styles = StyleSheet.create({
   syncingDot: {
     fontSize: 20,
     color: '#4CAF50',
+  },
+  // Estilos para botões flutuantes e dropdown de filtros
+  fabContainer: {
+    position: 'absolute',
+    bottom: 30,
+    right: 20,
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 15,
+  },
+  filterFab: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#6c757d', // Cor cinza para diferenciar do botão principal
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  filterDropdownMenuFloating: {
+    position: 'absolute',
+    bottom: 157, // Posicionar ao lado do botão de filtro (30 + 56 + 15 + 56 = 157)
+    right: 85, // Abrir à esquerda do botão
+    width: 220,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 8,
+    maxHeight: 280, // Reduzir um pouco para garantir que cabe na tela
+    zIndex: 1001,
+  },
+  filterDropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  filterDropdownItemActive: {
+    backgroundColor: '#f8f9ff',
+  },
+  filterDropdownItemText: {
+    fontSize: 15,
+    color: '#333',
+    marginLeft: 12,
+    flex: 1,
+  },
+  filterDropdownItemTextActive: {
+    color: '#007AFF',
+    fontWeight: '500',
+  },
+  filterDropdownSeparator: {
+    height: 1,
+    backgroundColor: '#e0e0e0',
+    marginVertical: 4,
+  },
+  dropdownOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'transparent',
+    zIndex: 999,
   },
 });

@@ -8,35 +8,48 @@ import {
   Alert,
   Modal,
   TextInput,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { UserRole } from '../types/FamilyTypes';
+import FirebaseAuthService from '../services/FirebaseAuthService';
 
 interface HeaderProps {
   userName: string;
   userImage?: string;
   userRole?: UserRole;
+  familyName?: string;
+  familyId?: string;
   onUserNameChange: (newName: string) => void;
+  onUserImageChange?: (newImageUrl: string) => void;
   onUserRoleChange?: (newRole: UserRole) => void;
   onSettings: () => void;
   onLogout: () => void;
   notificationCount?: number;
   onNotifications?: () => void;
   onManageFamily?: () => void;
+  syncStatus?: {
+    hasError?: boolean;
+    isOnline?: boolean;
+  };
 }
 
 export const Header: React.FC<HeaderProps> = ({ 
   userName, 
   userImage,
   userRole,
+  familyName,
+  familyId,
   onUserNameChange,
+  onUserImageChange,
   onUserRoleChange, 
   onSettings, 
   onLogout,
   notificationCount = 0,
   onNotifications,
-  onManageFamily
+  onManageFamily,
+  syncStatus,
 }) => {
   const [userImageLocal, setUserImageLocal] = useState<string | null>(userImage || null);
   const [nameModalVisible, setNameModalVisible] = useState(false);
@@ -44,6 +57,8 @@ export const Header: React.FC<HeaderProps> = ({
   const [menuVisible, setMenuVisible] = useState(false);
   const [newName, setNewName] = useState(userName);
   const [selectedRole, setSelectedRole] = useState<UserRole>(userRole || 'admin');
+  const [nameLoading, setNameLoading] = useState(false);
+  const [imageLoading, setImageLoading] = useState(false);
 
   const handleImagePicker = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -57,20 +72,73 @@ export const Header: React.FC<HeaderProps> = ({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [1, 1],
-      quality: 1,
+      quality: 0.8, // Reduzir qualidade para upload mais rápido
     });
 
-    if (!result.canceled) {
-      setUserImageLocal(result.assets[0].uri);
+    if (!result.canceled && result.assets[0]) {
+      const imageUri = result.assets[0].uri;
+      
+      // Atualizar imagem local imediatamente (para UX responsiva)
+      setUserImageLocal(imageUri);
+      setImageLoading(true);
+
+      try {
+        // Upload para Firebase
+        const uploadResult = await FirebaseAuthService.uploadProfileImage(imageUri);
+        
+        if (uploadResult.success && uploadResult.photoURL) {
+          // Atualizar com URL do Firebase
+          setUserImageLocal(uploadResult.photoURL);
+          
+          // Notificar componente pai sobre mudança
+          if (onUserImageChange) {
+            onUserImageChange(uploadResult.photoURL);
+          }
+          
+          Alert.alert('Sucesso', 'Foto de perfil atualizada com sucesso!');
+        } else {
+          // Reverter para imagem anterior em caso de erro
+          setUserImageLocal(userImage || null);
+          Alert.alert('Erro', uploadResult.error || 'Não foi possível atualizar a foto.');
+        }
+      } catch (error) {
+        console.error('Erro no upload da imagem:', error);
+        setUserImageLocal(userImage || null);
+        Alert.alert('Erro', 'Erro inesperado ao atualizar foto.');
+      } finally {
+        setImageLoading(false);
+      }
     }
   };
 
-  const handleNameChange = () => {
-    if (newName.trim()) {
-      onUserNameChange(newName.trim());
-      setNameModalVisible(false);
-    } else {
+  const handleNameChange = async () => {
+    if (!newName.trim()) {
       Alert.alert('Nome inválido', 'O nome não pode ficar em branco.');
+      return;
+    }
+
+    if (newName.trim() === userName) {
+      setNameModalVisible(false);
+      return;
+    }
+
+    setNameLoading(true);
+    
+    try {
+      const result = await FirebaseAuthService.updateUserName(newName.trim());
+      
+      if (result.success) {
+        onUserNameChange(newName.trim());
+        setNameModalVisible(false);
+        Alert.alert('Sucesso', 'Nome atualizado com sucesso!');
+      } else {
+        Alert.alert('Erro', result.error || 'Não foi possível atualizar o nome.');
+      }
+    } catch (error) {
+      console.error('Erro ao atualizar nome:', error);
+      Alert.alert('Erro', 'Erro inesperado ao atualizar nome.');
+    } finally {
+      setNameLoading(false);
     }
   };
 
@@ -99,9 +167,16 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <>
-      <View style={styles.container}>
+      <View style={[
+        styles.container,
+        syncStatus?.hasError 
+          ? styles.containerError 
+          : syncStatus?.isOnline 
+            ? styles.containerOnline 
+            : styles.containerOffline
+      ]}>
         <View style={styles.leftSection}>
-          <TouchableOpacity onPress={handleImagePicker} style={styles.avatarContainer}>
+          <TouchableOpacity onPress={handleImagePicker} style={styles.avatarContainer} disabled={imageLoading}>
             {userImageLocal ? (
               <Image source={{ uri: userImageLocal }} style={styles.avatar} />
             ) : (
@@ -109,9 +184,15 @@ export const Header: React.FC<HeaderProps> = ({
                 <Ionicons name="person" size={30} color="#666" />
               </View>
             )}
-            <View style={styles.editIconContainer}>
-              <Ionicons name="camera" size={12} color="#fff" />
-            </View>
+            {imageLoading ? (
+              <View style={styles.loadingOverlay}>
+                <ActivityIndicator size="small" color="#fff" />
+              </View>
+            ) : (
+              <View style={styles.editIconContainer}>
+                <Ionicons name="camera" size={12} color="#fff" />
+              </View>
+            )}
           </TouchableOpacity>
           
           <TouchableOpacity onPress={() => setNameModalVisible(true)} style={styles.userInfo}>
@@ -119,7 +200,11 @@ export const Header: React.FC<HeaderProps> = ({
               <Text style={styles.userName}>{userName}</Text>
               <Ionicons name="pencil" size={14} color="#999" style={styles.editNameIcon} />
             </View>
-            <Text style={styles.subtitle}>Minhas Tarefas</Text>
+            {familyName ? (
+              <Text style={styles.subtitle}>{familyName}</Text>
+            ) : (
+              <Text style={styles.subtitle}>Família não configurada</Text>
+            )}
           </TouchableOpacity>
         </View>
 
@@ -130,7 +215,22 @@ export const Header: React.FC<HeaderProps> = ({
             </TouchableOpacity>
             
             {menuVisible && (
-              <View style={styles.dropdownMenu}>
+              <>
+                {/* Modal transparente para fechar menu */}
+                <Modal
+                  animationType="none"
+                  transparent={true}
+                  visible={menuVisible}
+                  onRequestClose={() => setMenuVisible(false)}
+                >
+                  <TouchableOpacity
+                    style={styles.menuOverlayModal}
+                    onPress={() => setMenuVisible(false)}
+                    activeOpacity={1}
+                  />
+                </Modal>
+                
+                <View style={styles.dropdownMenu}>
                 {onNotifications && (
                   <>
                     <TouchableOpacity onPress={() => { setMenuVisible(false); onNotifications(); }} style={styles.menuItem}>
@@ -158,7 +258,7 @@ export const Header: React.FC<HeaderProps> = ({
                 )}
                 <TouchableOpacity onPress={handleHistoryPress} style={styles.menuItem}>
                   <Ionicons name="time-outline" size={18} color="#333" />
-                  <Text style={styles.menuText}>Histórico</Text>
+                  <Text style={styles.menuText}>Informações</Text>
                 </TouchableOpacity>
                 <View style={styles.menuSeparator} />
                 <TouchableOpacity onPress={handleSettingsPress} style={styles.menuItem}>
@@ -166,6 +266,7 @@ export const Header: React.FC<HeaderProps> = ({
                   <Text style={styles.menuText}>Configurações</Text>
                 </TouchableOpacity>
               </View>
+              </>
             )}
           </View>
           
@@ -195,14 +296,20 @@ export const Header: React.FC<HeaderProps> = ({
               <TouchableOpacity 
                 style={[styles.modalButton, styles.cancelButton]} 
                 onPress={() => setNameModalVisible(false)}
+                disabled={nameLoading}
               >
                 <Text style={styles.buttonText}>Cancelar</Text>
               </TouchableOpacity>
               <TouchableOpacity 
-                style={[styles.modalButton, styles.saveButton]} 
+                style={[styles.modalButton, styles.saveButton, nameLoading && styles.buttonDisabled]} 
                 onPress={handleNameChange}
+                disabled={nameLoading}
               >
-                <Text style={styles.buttonText}>Salvar</Text>
+                {nameLoading ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.buttonText}>Salvar</Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -311,12 +418,36 @@ const styles = StyleSheet.create({
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
-      height: 2,
+      height: 1, // Reduzir de 2 para 1
     },
-    shadowOpacity: 0.1,
-    shadowRadius: 3.84,
-    elevation: 8,
+    shadowOpacity: 0.05, // Reduzir de 0.1 para 0.05
+    shadowRadius: 2, // Reduzir de 3.84 para 2
+    elevation: 3, // Reduzir de 8 para 3
     zIndex: 1000,
+  },
+  containerOnline: {
+    shadowColor: '#27ae60', // Verde para online/sincronizado
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 8,
+    borderBottomColor: '#27ae60',
+    borderBottomWidth: 2,
+  },
+  containerError: {
+    shadowColor: '#e74c3c', // Vermelho para erro
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 8,
+    borderBottomColor: '#e74c3c',
+    borderBottomWidth: 2,
+  },
+  containerOffline: {
+    shadowColor: '#f39c12', // Laranja para offline
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 8,
+    borderBottomColor: '#f39c12',
+    borderBottomWidth: 2,
   },
   leftSection: {
     flexDirection: 'row',
@@ -378,6 +509,19 @@ const styles = StyleSheet.create({
   menuContainer: {
     position: 'relative',
     zIndex: 9999,
+  },
+  menuOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'transparent',
+    zIndex: 9998,
+  },
+  menuOverlayModal: {
+    flex: 1,
+    backgroundColor: 'transparent',
   },
   dropdownMenu: {
     position: 'absolute',
@@ -553,5 +697,36 @@ const styles = StyleSheet.create({
   saveButtonText: {
     color: '#fff',
     fontWeight: 'bold',
+  },
+  buttonDisabled: {
+    opacity: 0.6,
+  },
+  loadingOverlay: {
+    position: 'absolute',
+    bottom: 2,
+    right: 2,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    borderRadius: 12,
+    width: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  familyActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f0f8ff',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#007AFF',
+    marginTop: 2,
+  },
+  familyActionText: {
+    fontSize: 12,
+    color: '#007AFF',
+    fontWeight: '600',
+    marginLeft: 4,
   },
 });

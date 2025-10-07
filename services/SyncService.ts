@@ -1,6 +1,7 @@
 import LocalStorageService, { PendingOperation } from './LocalStorageService';
 import ConnectivityService from './ConnectivityService';
 import FirebaseAuthService from './FirebaseAuthService';
+import familyService from './FirebaseFamilyService';
 import { db } from '../config/firebase';
 import { 
   collection, 
@@ -10,6 +11,7 @@ import {
   getDocs, 
   updateDoc, 
   deleteDoc, 
+  addDoc, // Importar addDoc
   query, 
   where,
   onSnapshot,
@@ -46,13 +48,16 @@ class SyncService {
     if (this.isInitialized) return;
 
     try {
+      // Limpar operações pendentes antigas antes de inicializar
+      await LocalStorageService.cleanupOldOperations();
+      
       // Inicializar conectividade
       await ConnectivityService.initialize();
 
       // Escutar mudanças de conectividade
       ConnectivityService.addConnectivityListener(this.handleConnectivityChange);
 
-      // Obter status inicial
+      // Obter status inicial (após limpeza)
       const connectivityState = ConnectivityService.getCurrentState();
       const offlineData = await LocalStorageService.getOfflineData();
 
@@ -63,6 +68,8 @@ class SyncService {
         pendingOperations: offlineData.pendingOperations.length,
         hasError: false
       };
+
+      console.log(`🔄 SyncService inicializado com ${offlineData.pendingOperations.length} operações pendentes`);
 
       // Se estiver online, iniciar sincronização
       if (connectivityState.isConnected) {
@@ -158,23 +165,53 @@ class SyncService {
         await LocalStorageService.incrementOperationRetry(operation.id);
       }
     }
+
+    // Força a atualização do contador de operações pendentes
+    const remainingOps = await LocalStorageService.getPendingOperations();
+    this.updateSyncStatus({ pendingOperations: remainingOps.length });
+    console.log(`📊 Status de fila atualizado. Operações restantes: ${remainingOps.length}`);
   }
 
   // Executar operação pendente
   private static async executeOperation(operation: PendingOperation): Promise<void> {
-    const { type, collection, data } = operation;
+    const { type, collection: collectionName, data } = operation;
+    const collRef = collection(db, collectionName);
 
     switch (type) {
       case 'create':
-        await setDoc(doc(db, collection, data.id), data);
+        // Usar addDoc para que o Firebase gere o ID
+        const newDocRef = await addDoc(collRef, data);
+        console.log(`✅ Documento criado com novo ID: ${newDocRef.id}`);
+        // Opcional: atualizar o ID no cache local se necessário
         break;
       
       case 'update':
-        await updateDoc(doc(db, collection, data.id), data);
+        // Se o ID for temporário, tratar como 'create'
+        if (data.id.startsWith('temp_') || data.id === 'temp') {
+          const newDocRefFromUpdate = await addDoc(collRef, data);
+          console.log(`✅ Documento (de update) criado com novo ID: ${newDocRefFromUpdate.id}`);
+        } else {
+          // Se o ID for real, verificar se existe antes de atualizar
+          const docRef = doc(db, collectionName, data.id);
+          const docSnap = await getDoc(docRef);
+          
+          if (docSnap.exists()) {
+            await updateDoc(docRef, data);
+          } else {
+            // Se não existe, cria com o ID especificado (pode ter sido deletado)
+            console.log(`⚠️ Documento ${data.id} não encontrado para update, criando novo.`);
+            await setDoc(docRef, data);
+          }
+        }
         break;
       
       case 'delete':
-        await deleteDoc(doc(db, collection, data.id));
+        // Ignorar delete se o ID for temporário
+        if (!data.id.startsWith('temp_') && data.id !== 'temp') {
+          await deleteDoc(doc(db, collectionName, data.id));
+        } else {
+          console.log(`⚠️ Ignorando deleção de documento com ID temporário: ${data.id}`);
+        }
         break;
       
       default:
@@ -195,12 +232,12 @@ class SyncService {
       if (userDoc.exists()) {
         const userData = { id: userDoc.id, ...userDoc.data() } as FamilyUser;
         await LocalStorageService.saveUser(userData);
-      }
-
-      // Baixar dados da família se o usuário tiver uma
-      const userData = await LocalStorageService.getUser(currentUser.uid);
-      if (userData?.familyId) {
-        await this.downloadFamilyData(userData.familyId);
+        
+        // Baixar dados da família se o usuário tiver uma
+        const userFamily = await familyService.getUserFamily(currentUser.uid);
+        if (userFamily) {
+          await this.downloadFamilyData(userFamily.id);
+        }
       }
 
     } catch (error) {
@@ -212,31 +249,30 @@ class SyncService {
   // Baixar dados da família
   private static async downloadFamilyData(familyId: string): Promise<void> {
     try {
-      // Baixar família
-      const familyDoc = await getDoc(doc(db, 'families', familyId));
-      if (familyDoc.exists()) {
-        const familyData = { id: familyDoc.id, ...familyDoc.data() } as Family;
+      console.log('👨‍👩‍👧‍👦 Baixando dados da família:', familyId);
+      
+      // Baixar família usando o familyService
+      const familyData = await familyService.getFamilyById(familyId);
+      if (familyData) {
         await LocalStorageService.saveFamily(familyData);
 
         // Baixar membros da família
         for (const member of familyData.members) {
           await LocalStorageService.saveUser(member);
         }
+        
+        console.log(`👥 ${familyData.members.length} membros da família salvos no cache`);
       }
 
-      // Baixar tarefas da família
-      const tasksQuery = query(
-        collection(db, 'tasks'),
-        where('userId', 'in', [/* userIds da família */])
-      );
-      const tasksSnapshot = await getDocs(tasksQuery);
+      // Baixar tarefas da família usando o familyService
+      const familyTasks = await familyService.getFamilyTasks(familyId);
+      for (const task of familyTasks) {
+        await LocalStorageService.saveTask(task);
+      }
       
-      for (const taskDoc of tasksSnapshot.docs) {
-        const taskData = { id: taskDoc.id, ...taskDoc.data() } as Task;
-        await LocalStorageService.saveTask(taskData);
-      }
+      console.log(`📋 ${familyTasks.length} tarefas da família baixadas e salvas no cache`);
 
-      // Baixar aprovações
+      // Baixar aprovações (manter lógica existente por enquanto)
       const approvalsQuery = query(collection(db, 'approvals'));
       const approvalsSnapshot = await getDocs(approvalsQuery);
       
@@ -246,7 +282,7 @@ class SyncService {
       }
 
     } catch (error) {
-      console.error('Erro ao baixar dados da família:', error);
+      console.error('❌ Erro ao baixar dados da família:', error);
       throw error;
     }
   }
@@ -335,6 +371,39 @@ class SyncService {
   // Obter status atual
   static getSyncStatus(): SyncStatus {
     return { ...this.syncStatus };
+  }
+
+  // Forçar sincronização completa (incluindo download de dados da família)
+  static async forceFullSync(): Promise<void> {
+    if (this.isSyncing) {
+      console.log('🔄 Sincronização já em andamento');
+      return;
+    }
+
+    console.log('🔄 Iniciando sincronização completa...');
+    this.updateSyncStatus({ isSyncing: true, hasError: false });
+
+    try {
+      // Baixar dados do Firebase primeiro
+      await this.downloadFirebaseData();
+      
+      // Depois processar operações pendentes
+      await this.processPendingOperations();
+      
+      this.updateSyncStatus({ 
+        lastSync: Date.now(),
+        isSyncing: false 
+      });
+      
+      console.log('✅ Sincronização completa finalizada');
+    } catch (error) {
+      console.error('❌ Erro na sincronização completa:', error);
+      this.updateSyncStatus({ 
+        isSyncing: false, 
+        hasError: true, 
+        errorMessage: error instanceof Error ? error.message : 'Erro desconhecido' 
+      });
+    }
   }
 
   // Forçar sincronização manual

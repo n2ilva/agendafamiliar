@@ -1,26 +1,22 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, Alert, TextInput, ActivityIndicator, Platform, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image, Alert, TextInput, ActivityIndicator, Platform, ScrollView, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { UserRole } from '../types/FamilyTypes';
 import FirebaseAuthService from '../services/FirebaseAuthService';
-import * as AuthSession from 'expo-auth-session';
-import * as WebBrowser from 'expo-web-browser';
-
-// Configurar WebBrowser para mobile
-WebBrowser.maybeCompleteAuthSession();
 
 interface LoginScreenProps {
-  onGuestLogin: (role?: UserRole) => void;
-  onGoogleLogin?: (role?: UserRole) => void;
+  // Interface vazia - login agora é gerenciado internamente
 }
 
-export const LoginScreen: React.FC<LoginScreenProps> = ({ onGuestLogin, onGoogleLogin }) => {
-  const [inviteCode, setInviteCode] = useState<string>('');
+export const LoginScreen: React.FC<LoginScreenProps> = () => {
   const [email, setEmail] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [name, setName] = useState<string>('');
   const [isLogin, setIsLogin] = useState<boolean>(true);
   const [loading, setLoading] = useState<boolean>(false);
+  const [resetModalVisible, setResetModalVisible] = useState<boolean>(false);
+  const [resetEmail, setResetEmail] = useState<string>('');
+  const [resetLoading, setResetLoading] = useState<boolean>(false);
 
   const handleEmailAuth = async () => {
     // Validações mais detalhadas
@@ -76,76 +72,39 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onGuestLogin, onGoogle
     setLoading(false);
   };
 
-  const handleGoogleLogin = async () => {
-    setLoading(true);
+  const handlePasswordReset = async () => {
+    if (!resetEmail.trim()) {
+      Alert.alert('Campo obrigatório', 'Por favor, digite seu email.');
+      return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(resetEmail.trim())) {
+      Alert.alert('Email inválido', 'Por favor, digite um email válido.');
+      return;
+    }
+
+    setResetLoading(true);
+
     try {
-      let accessToken: string | undefined;
+      const result = await FirebaseAuthService.resetPassword(resetEmail.trim());
       
-      if (Platform.OS !== 'web') {
-        // Para mobile, usar expo-auth-session
-        const redirectUri = AuthSession.makeRedirectUri({
-          scheme: 'taskapp'
-        });
-        
-        console.log('Redirect URI:', redirectUri); // Para debug
-        
-        const request = new AuthSession.AuthRequest({
-          clientId: '706947026533-p95dfh9iuoakp88hqhub0nj4q1k29e1o.apps.googleusercontent.com', // Seu client ID
-          scopes: ['openid', 'profile', 'email'],
-          responseType: AuthSession.ResponseType.Token,
-          redirectUri,
-        });
-        
-        const result = await request.promptAsync({
-          authorizationEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth',
-        });
-        
-        if (result.type === 'success' && result.params.access_token) {
-          accessToken = result.params.access_token;
-        } else {
-          if (result.type === 'cancel') {
-            // Usuário cancelou o login
-            setLoading(false);
-            return;
-          }
-          throw new Error('Falha na autenticação com Google');
-        }
-      }
-      
-      // Fazer login no Firebase - sempre como admin por padrão
-      const authResult = await FirebaseAuthService.loginWithGoogle(accessToken, 'admin');
-      
-      if (authResult.success && authResult.user) {
-        console.log('Login com Google bem-sucedido:', authResult.user);
-        // O observer em App.tsx vai detectar automaticamente a mudança de estado
+      if (result.success) {
+        Alert.alert(
+          'Email enviado!', 
+          'Verifique sua caixa de entrada e spam. O link de redefinição de senha foi enviado para seu email.',
+          [{ text: 'OK', onPress: () => setResetModalVisible(false) }]
+        );
+        setResetEmail('');
       } else {
-        Alert.alert('Erro', authResult.error || 'Erro no login com Google');
+        Alert.alert('Erro', result.error);
       }
     } catch (error: any) {
-      console.error('Erro no login com Google:', error);
-      
-      let errorMessage = 'Erro inesperado no login com Google.';
-      
-      if (error.message.includes('cancelado')) {
-        return; // Não mostrar erro se o usuário cancelou
-      } else if (error.message.includes('network') || error.message.includes('conexão')) {
-        errorMessage = 'Erro de conexão. Verifique sua internet e tente novamente.';
-      } else if (error.message.includes('Falha na autenticação')) {
-        errorMessage = 'Não foi possível autenticar com Google. Tente novamente.';
-      }
-      
-      Alert.alert('Erro no Google Login', errorMessage);
-    } finally {
-      setLoading(false);
+      Alert.alert('Erro', 'Erro inesperado: ' + error.message);
     }
-  };
 
-  const handleGuestLogin = () => {
-    // Sempre entrar como admin no modo convidado
-    onGuestLogin('admin');
+    setResetLoading(false);
   };
-  
-
 
   const validateInviteCode = (code: string) => {
     // Em um app real, isso validaria o código com o servidor
@@ -243,15 +202,14 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onGuestLogin, onGoogle
           )}
         </TouchableOpacity>
 
-        <TouchableOpacity style={[styles.button, styles.googleButton]} onPress={handleGoogleLogin}>
-          <Ionicons name="logo-google" size={24} color="#fff" style={styles.buttonIcon} />
-          <Text style={styles.buttonText}>Entrar com Google</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={[styles.button, styles.guestButton]} onPress={handleGuestLogin}>
-          <Ionicons name="person" size={24} color="#333" style={styles.buttonIcon} />
-          <Text style={[styles.buttonText, styles.guestButtonText]}>Continuar como Convidado</Text>
-        </TouchableOpacity>
+        {isLogin && (
+          <TouchableOpacity 
+            style={styles.forgotPasswordButton}
+            onPress={() => setResetModalVisible(true)}
+          >
+            <Text style={styles.forgotPasswordText}>Esqueci minha senha</Text>
+          </TouchableOpacity>
+        )}
       </View>
       
       {/* Nota sobre configurações */}
@@ -266,6 +224,61 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onGuestLogin, onGoogle
         <Text style={styles.footerText}>Organize suas tarefas de forma simples e compartilhada.</Text>
       </View>
     </View>
+
+    {/* Modal de Reset de Senha */}
+    <Modal
+      animationType="fade"
+      transparent={true}
+      visible={resetModalVisible}
+      onRequestClose={() => setResetModalVisible(false)}
+    >
+      <View style={styles.modalContainer}>
+        <View style={styles.modalContent}>
+          <Text style={styles.modalTitle}>Redefinir Senha</Text>
+          <Text style={styles.modalSubtitle}>
+            Digite seu email para receber um link de redefinição de senha
+          </Text>
+          
+          <View style={styles.inputContainer}>
+            <Ionicons name="mail-outline" size={20} color="#666" style={styles.inputIcon} />
+            <TextInput
+              style={styles.input}
+              placeholder="Digite seu email"
+              value={resetEmail}
+              onChangeText={setResetEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoFocus
+            />
+          </View>
+
+          <View style={styles.modalButtons}>
+            <TouchableOpacity 
+              style={[styles.modalButton, styles.cancelButton]} 
+              onPress={() => {
+                setResetModalVisible(false);
+                setResetEmail('');
+              }}
+              disabled={resetLoading}
+            >
+              <Text style={styles.cancelButtonText}>Cancelar</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.modalButton, styles.sendButton, resetLoading && styles.buttonDisabled]} 
+              onPress={handlePasswordReset}
+              disabled={resetLoading}
+            >
+              {resetLoading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.sendButtonText}>Enviar</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
   </ScrollView>
   );
 };
@@ -318,14 +331,6 @@ const styles = StyleSheet.create({
     shadowRadius: 3.84,
     elevation: 5,
   },
-  googleButton: {
-    backgroundColor: '#4285F4',
-  },
-  guestButton: {
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#ddd',
-  },
   buttonIcon: {
     marginRight: 15,
   },
@@ -333,9 +338,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     color: '#fff',
-  },
-  guestButtonText: {
-    color: '#333',
   },
   footer: {
     marginBottom: 40,
@@ -423,5 +425,81 @@ const styles = StyleSheet.create({
   buttonDisabled: {
     backgroundColor: '#ccc',
     opacity: 0.6,
+  },
+  forgotPasswordButton: {
+    alignSelf: 'center',
+    marginTop: 10,
+    marginBottom: 15,
+  },
+  forgotPasswordText: {
+    fontSize: 14,
+    color: '#007AFF',
+    textDecorationLine: 'underline',
+  },
+  modalContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 25,
+    margin: 20,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 20,
+    lineHeight: 20,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+    marginTop: 20,
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    marginHorizontal: 5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelButton: {
+    backgroundColor: '#6c757d',
+  },
+  sendButton: {
+    backgroundColor: '#007AFF',
+  },
+  cancelButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  sendButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 16,
   },
 });

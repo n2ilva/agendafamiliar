@@ -1,13 +1,27 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { FamilyUser, Family, Task, TaskApproval } from '../types/FamilyTypes';
+import { FamilyUser, Family, Task, TaskApproval, UserRole } from '../types/FamilyTypes';
+import { safeToDate } from '../utils/DateUtils';
 
 export interface PendingOperation {
   id: string;
   type: 'create' | 'update' | 'delete';
-  collection: 'users' | 'families' | 'tasks' | 'approvals';
+  collection: 'users' | 'families' | 'tasks' | 'approvals' | 'history';
   data: any;
   timestamp: number;
   retry: number;
+}
+
+export interface HistoryItem {
+  id: string;
+  action: 'created' | 'completed' | 'uncompleted' | 'edited' | 'deleted' | 'approval_requested' | 'approved' | 'rejected';
+  taskTitle: string;
+  taskId: string;
+  timestamp: Date;
+  details?: string;
+  // Informações de autoria
+  userId: string;
+  userName: string;
+  userRole?: string;
 }
 
 export interface OfflineData {
@@ -15,13 +29,25 @@ export interface OfflineData {
   families: Record<string, Family>;
   tasks: Record<string, Task>;
   approvals: Record<string, TaskApproval>;
+  history: Record<string, HistoryItem>;
   pendingOperations: PendingOperation[];
   lastSync: number;
 }
 
 class LocalStorageService {
   private static readonly STORAGE_KEY = 'familyApp_offlineData';
-  private static readonly MAX_RETRIES = 3;
+  public static readonly MAX_RETRIES = 3;
+
+  // Helper function to fix date fields in tasks
+  private static fixTaskDates(task: any): Task {
+    return {
+      ...task,
+      dueDate: safeToDate(task.dueDate),
+      dueTime: safeToDate(task.dueTime),
+      createdAt: safeToDate(task.createdAt) || new Date(),
+      editedAt: safeToDate(task.editedAt)
+    };
+  }
 
   // Salvar dados no cache local
   static async saveOfflineData(data: Partial<OfflineData>): Promise<void> {
@@ -57,6 +83,7 @@ class LocalStorageService {
       families: {},
       tasks: {},
       approvals: {},
+      history: {},
       pendingOperations: [],
       lastSync: 0
     };
@@ -105,7 +132,7 @@ class LocalStorageService {
   // Recuperar todas as tarefas do cache
   static async getTasks(): Promise<Task[]> {
     const data = await this.getOfflineData();
-    return Object.values(data.tasks);
+    return Object.values(data.tasks).map(task => this.fixTaskDates(task));
   }
 
   // Recuperar tarefas por família
@@ -125,6 +152,56 @@ class LocalStorageService {
   static async getApprovals(): Promise<TaskApproval[]> {
     const data = await this.getOfflineData();
     return Object.values(data.approvals);
+  }
+
+  // Métodos para histórico
+  static async saveHistoryItem(historyItem: HistoryItem): Promise<void> {
+    const data = await this.getOfflineData();
+    
+    // Garantir que o objeto history existe
+    if (!data.history) {
+      data.history = {};
+    }
+    
+    data.history[historyItem.id] = historyItem;
+    await this.saveOfflineData(data);
+  }
+
+  static async getHistory(limit?: number): Promise<HistoryItem[]> {
+    const data = await this.getOfflineData();
+    const historyItems = Object.values(data.history)
+      .map(item => ({
+        ...item,
+        timestamp: safeToDate(item.timestamp) || new Date()
+      }))
+      .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+    
+    // Limitar quantidade se especificado
+    return limit ? historyItems.slice(0, limit) : historyItems;
+  }
+
+  static async clearOldHistory(daysToKeep: number = 15): Promise<void> {
+    const data = await this.getOfflineData();
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - daysToKeep);
+    
+    // Filtrar histórico mantendo apenas itens recentes
+    const filteredHistory: Record<string, HistoryItem> = {};
+    Object.entries(data.history).forEach(([id, item]) => {
+      const itemDate = safeToDate(item.timestamp);
+      if (itemDate && itemDate >= cutoffDate) {
+        filteredHistory[id] = item;
+      }
+    });
+    
+    data.history = filteredHistory;
+    await this.saveOfflineData(data);
+  }
+
+  static async getHistoryByUserId(userId: string, limit?: number): Promise<HistoryItem[]> {
+    const allHistory = await this.getHistory();
+    const userHistory = allHistory.filter(item => item.userId === userId);
+    return limit ? userHistory.slice(0, limit) : userHistory;
   }
 
   // Adicionar operação pendente
@@ -189,7 +266,8 @@ class LocalStorageService {
     const data = await this.getOfflineData();
     return Object.keys(data.users).length > 0 || 
            Object.keys(data.families).length > 0 || 
-           Object.keys(data.tasks).length > 0;
+           Object.keys(data.tasks).length > 0 ||
+           Object.keys(data.history).length > 0;
   }
 
   // Obter tamanho do cache
@@ -213,6 +291,45 @@ class LocalStorageService {
     const data = await this.getOfflineData();
     const oneHour = 60 * 60 * 1000; // 1 hora em milissegundos
     return (Date.now() - data.lastSync) > oneHour;
+  }
+
+  // Limpar operações pendentes antigas (mais de 24 horas) ou que falharam muito
+  static async cleanupOldOperations(): Promise<void> {
+    const data = await this.getOfflineData();
+    const twentyFourHours = 24 * 60 * 60 * 1000; // 24 horas em milissegundos
+    const now = Date.now();
+    
+    const initialCount = data.pendingOperations.length;
+    
+    data.pendingOperations = data.pendingOperations.filter(op => {
+      // Remover operações muito antigas (mais de 24 horas)
+      if (now - op.timestamp > twentyFourHours) {
+        console.log(`🗑️ Removendo operação antiga: ${op.type} ${op.collection} (${new Date(op.timestamp).toLocaleString()})`);
+        return false;
+      }
+      
+      // Remover operações que falharam muitas vezes
+      if (op.retry >= this.MAX_RETRIES) {
+        console.log(`🗑️ Removendo operação que falhou ${op.retry} vezes: ${op.type} ${op.collection}`);
+        return false;
+      }
+      
+      return true;
+    });
+    
+    if (data.pendingOperations.length !== initialCount) {
+      await this.saveOfflineData(data);
+      console.log(`🧹 Limpeza concluída: ${initialCount - data.pendingOperations.length} operações removidas`);
+    }
+  }
+
+  // Forçar limpeza de todas as operações pendentes (para debug)
+  static async clearAllPendingOperations(): Promise<void> {
+    const data = await this.getOfflineData();
+    const count = data.pendingOperations.length;
+    data.pendingOperations = [];
+    await this.saveOfflineData(data);
+    console.log(`🧹 Todas as ${count} operações pendentes foram removidas`);
   }
 }
 

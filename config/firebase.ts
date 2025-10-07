@@ -2,6 +2,7 @@ import { initializeApp } from 'firebase/app';
 import { getAnalytics, isSupported } from "firebase/analytics";
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
 import { Platform } from 'react-native';
 
 // Configuração do Firebase
@@ -33,10 +34,14 @@ const auth = getAuth(app);
 // Inicializar Firestore
 const db = getFirestore(app);
 
+// Inicializar Storage
+const storage = getStorage(app);
+
 // Logs para debug
 console.log('🔥 Firebase inicializado para:', Platform.OS);
 console.log('🔐 Auth inicializado:', !!auth);
 console.log('📊 Firestore inicializado:', !!db);
+console.log('💾 Storage inicializado:', !!storage);
 
-export { auth, db, analytics };
+export { auth, db, storage, analytics };
 export default app;

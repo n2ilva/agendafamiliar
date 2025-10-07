@@ -7,16 +7,55 @@ import {
   updateProfile,
   GoogleAuthProvider,
   signInWithCredential,
-  signInWithPopup
+  signInWithPopup,
+  sendPasswordResetEmail
 } from 'firebase/auth';
 import { doc, setDoc, getDoc, collection, addDoc, updateDoc } from 'firebase/firestore';
-import { auth, db } from '../config/firebase';
+import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import { auth, db, storage } from '../config/firebase';
 import { FamilyUser, Family, UserRole } from '../types/FamilyTypes';
 import { Platform } from 'react-native';
 import LocalStorageService from './LocalStorageService';
 import SyncService from './SyncService';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const USER_STORAGE_KEY = 'familyApp_currentUser';
 
 export class FirebaseAuthService {
+  // Salvar usuário no AsyncStorage
+  static async saveUserToLocalStorage(user: FamilyUser): Promise<void> {
+    try {
+      await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
+      console.log('💾 Usuário salvo no AsyncStorage');
+    } catch (error) {
+      console.error('Erro ao salvar usuário no AsyncStorage:', error);
+    }
+  }
+
+  // Remover usuário do AsyncStorage
+  static async removeUserFromLocalStorage(): Promise<void> {
+    try {
+      await AsyncStorage.removeItem(USER_STORAGE_KEY);
+      console.log('🗑️ Usuário removido do AsyncStorage');
+    } catch (error) {
+      console.error('Erro ao remover usuário do AsyncStorage:', error);
+    }
+  }
+
+  // Obter usuário do AsyncStorage
+  static async getUserFromLocalStorage(): Promise<FamilyUser | null> {
+    try {
+      const userData = await AsyncStorage.getItem(USER_STORAGE_KEY);
+      if (userData) {
+        return JSON.parse(userData);
+      }
+      return null;
+    } catch (error) {
+      console.error('Erro ao carregar usuário do AsyncStorage:', error);
+      return null;
+    }
+  }
+
   // Traduzir códigos de erro do Firebase para mensagens amigáveis
   private static translateFirebaseError(errorCode: string, errorMessage: string): string {
     const errorTranslations: { [key: string]: string } = {
@@ -96,7 +135,12 @@ export class FirebaseAuthService {
       await setDoc(doc(db, 'users', user.uid), familyUser);
       console.log('📊 Documento criado no Firestore');
 
-      return { success: true, user: { id: user.uid, ...familyUser } };
+      const fullUser = { id: user.uid, ...familyUser };
+      
+      // Salvar no AsyncStorage para persistência
+      await this.saveUserToLocalStorage(fullUser);
+
+      return { success: true, user: fullUser };
     } catch (error: any) {
       console.error('❌ Erro no registro:', error.message);
       const friendlyError = this.translateFirebaseError(error.code || '', error.message || '');
@@ -114,20 +158,37 @@ export class FirebaseAuthService {
 
       // Buscar dados completos do usuário
       const userDoc = await getDoc(doc(db, 'users', user.uid));
+      let userData;
+      
       if (userDoc.exists()) {
-        const userData = userDoc.data();
+        userData = userDoc.data();
         console.log('📊 Dados do usuário carregados:', userData.name);
-        return { 
-          success: true, 
-          user: { 
-            id: user.uid, 
-            ...userData,
-            picture: user.photoURL 
-          } as FamilyUser 
-        };
       } else {
-        throw new Error('Dados do usuário não encontrados');
+        // Se o usuário não existe na coleção users, criar com dados básicos
+        console.log('👤 Criando documento do usuário na coleção users...');
+        userData = {
+          name: user.displayName || user.email?.split('@')[0] || 'Usuário',
+          email: user.email,
+          role: 'dependente',
+          isGuest: false,
+          familyId: null
+        };
+        
+        // Salvar o usuário na coleção users
+        await setDoc(doc(db, 'users', user.uid), userData);
+        console.log('✅ Usuário criado na coleção users');
       }
+      
+      const fullUser = { 
+        id: user.uid, 
+        ...userData,
+        picture: user.photoURL 
+      } as FamilyUser;
+        
+      // Salvar no AsyncStorage para persistência
+      await this.saveUserToLocalStorage(fullUser);
+      
+      return { success: true, user: fullUser };
     } catch (error: any) {
       console.error('❌ Erro no login:', error.message);
       const friendlyError = this.translateFirebaseError(error.code || '', error.message || '');
@@ -196,6 +257,9 @@ export class FirebaseAuthService {
         familyUser = { id: user.uid, ...newUser };
       }
 
+      // Salvar no AsyncStorage para persistência
+      await this.saveUserToLocalStorage(familyUser);
+
       return { success: true, user: familyUser };
     } catch (error: any) {
       console.error('Erro detalhado no login com Google:', error);
@@ -208,6 +272,8 @@ export class FirebaseAuthService {
   static async logout() {
     try {
       await signOut(auth);
+      // Remover dados do AsyncStorage
+      await this.removeUserFromLocalStorage();
       return { success: true };
     } catch (error: any) {
       const friendlyError = this.translateFirebaseError(error.code || '', error.message || '');
@@ -426,6 +492,138 @@ export class FirebaseAuthService {
       console.log('Logout realizado com limpeza de cache');
     } catch (error) {
       console.error('Erro no logout:', error);
+    }
+  }
+
+  // Atualizar nome do usuário
+  static async updateUserName(newName: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      if (!auth.currentUser) {
+        return { success: false, error: 'Usuário não está logado' };
+      }
+
+      // Atualizar no Firebase Auth
+      await updateProfile(auth.currentUser, {
+        displayName: newName
+      });
+
+      // Atualizar no Firestore
+      const userDocRef = doc(db, 'users', auth.currentUser.uid);
+      await updateDoc(userDocRef, {
+        name: newName,
+        updatedAt: new Date()
+      });
+
+      // Atualizar cache local
+      const currentUser = await this.getUserFromLocalStorage();
+      if (currentUser) {
+        const updatedUser = { ...currentUser, name: newName };
+        await this.saveUserToLocalStorage(updatedUser);
+      }
+
+      console.log('✅ Nome do usuário atualizado com sucesso');
+      return { success: true };
+    } catch (error: any) {
+      console.error('❌ Erro ao atualizar nome:', error);
+      return { 
+        success: false, 
+        error: this.translateFirebaseError(error.code, error.message) 
+      };
+    }
+  }
+
+  // Reset de senha
+  static async resetPassword(email: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      if (!email.trim()) {
+        return { success: false, error: 'Email é obrigatório' };
+      }
+
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email.trim())) {
+        return { success: false, error: 'Email inválido' };
+      }
+
+      await sendPasswordResetEmail(auth, email.trim());
+      
+      console.log('✅ Email de reset enviado para:', email);
+      return { success: true };
+    } catch (error: any) {
+      console.error('❌ Erro ao enviar reset de senha:', error);
+      return { 
+        success: false, 
+        error: this.translateFirebaseError(error.code, error.message) 
+      };
+    }
+  }
+
+  // Upload de foto de perfil
+  static async uploadProfileImage(imageUri: string): Promise<{ success: boolean; photoURL?: string; error?: string }> {
+    try {
+      if (!auth.currentUser) {
+        return { success: false, error: 'Usuário não está logado' };
+      }
+
+      console.log('📸 Iniciando upload da foto de perfil...');
+
+      // Converter URI para blob para upload
+      const response = await fetch(imageUri);
+      const blob = await response.blob();
+
+      // Criar referência única para a imagem
+      const userId = auth.currentUser.uid;
+      const timestamp = Date.now();
+      const fileName = `profile_${userId}_${timestamp}.jpg`;
+      const imageRef = ref(storage, `profile-images/${fileName}`);
+
+      // Upload da imagem
+      console.log('📤 Fazendo upload da imagem...');
+      const uploadResult = await uploadBytes(imageRef, blob);
+      
+      // Obter URL de download
+      const photoURL = await getDownloadURL(uploadResult.ref);
+      console.log('✅ Upload concluído. URL:', photoURL);
+
+      // Atualizar Firebase Auth
+      await updateProfile(auth.currentUser, {
+        photoURL: photoURL
+      });
+
+      // Atualizar no Firestore
+      const userDocRef = doc(db, 'users', userId);
+      await updateDoc(userDocRef, {
+        picture: photoURL,
+        updatedAt: new Date()
+      });
+
+      // Atualizar cache local
+      const currentUser = await this.getUserFromLocalStorage();
+      if (currentUser) {
+        const updatedUser = { ...currentUser, picture: photoURL };
+        await this.saveUserToLocalStorage(updatedUser);
+      }
+
+      console.log('✅ Foto de perfil atualizada com sucesso');
+      return { success: true, photoURL };
+    } catch (error: any) {
+      console.error('❌ Erro ao fazer upload da foto:', error);
+      return { 
+        success: false, 
+        error: 'Erro ao fazer upload da foto. Tente novamente.' 
+      };
+    }
+  }
+
+  // Remover foto de perfil anterior (para evitar acúmulo de imagens)
+  static async deleteOldProfileImage(photoURL: string): Promise<void> {
+    try {
+      if (photoURL && photoURL.includes('firebase')) {
+        const imageRef = ref(storage, photoURL);
+        await deleteObject(imageRef);
+        console.log('🗑️ Foto anterior removida');
+      }
+    } catch (error) {
+      console.log('ℹ️ Não foi possível remover foto anterior (pode não existir)');
     }
   }
 }

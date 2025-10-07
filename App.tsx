@@ -2,96 +2,113 @@ import React, { useState, useEffect } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { TaskScreen } from './screens/TaskScreen';
 import { LoginScreen } from './screens/LoginScreen';
-import * as WebBrowser from 'expo-web-browser';
-import * as Google from 'expo-auth-session/providers/google';
+import FamilySetupScreen from './screens/FamilySetupScreen';
+
 import { Alert, ActivityIndicator, View, StyleSheet } from 'react-native';
 import { FamilyUser, UserRole } from './types/FamilyTypes';
 import FirebaseAuthService from './services/FirebaseAuthService';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-WebBrowser.maybeCompleteAuthSession();
+
+
+const USER_STORAGE_KEY = 'familyApp_currentUser';
 
 export default function App() {
   const [user, setUser] = useState<FamilyUser | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
-  const [authData, setAuthData] = useState<any>(null);
+  const [familyConfigured, setFamilyConfigured] = useState<boolean>(false);
 
-  const [request, response, promptAsync] = Google.useAuthRequest({
-    clientId: '742861794909-qtrkl3r2fhhre3734c3heb0sm1l2fatj.apps.googleusercontent.com',
-    iosClientId: '742861794909-2bmiu7tgo0tngbjfhtj31dudssjtkgpe.apps.googleusercontent.com',
-    androidClientId: '742861794909-je4328bkkcvj6ahsq6ac98piquveb6nl.apps.googleusercontent.com',
-    webClientId: '742861794909-qtrkl3r2fhhre3734c3heb0sm1l2fatj.apps.googleusercontent.com',
-  });
+
+  // Verificar se há usuário logado ao inicializar o app
+  useEffect(() => {
+    checkPersistedUser();
+  }, []);
+
+  // Verificar usuário persistido no AsyncStorage
+  const checkPersistedUser = async () => {
+    try {
+      const savedUser = await AsyncStorage.getItem(USER_STORAGE_KEY);
+      if (savedUser) {
+        const userData = JSON.parse(savedUser);
+        console.log('👤 Usuário encontrado no storage local:', userData.name);
+        setUser(userData);
+        // Verificar se o usuário já tem familyId configurado
+        setFamilyConfigured(!!userData.familyId);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar usuário salvo:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Salvar usuário no AsyncStorage
+  const saveUserToStorage = async (userData: FamilyUser) => {
+    try {
+      await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(userData));
+      console.log('💾 Usuário salvo no storage local');
+    } catch (error) {
+      console.error('Erro ao salvar usuário:', error);
+    }
+  };
+
+  // Remover usuário do AsyncStorage
+  const removeUserFromStorage = async () => {
+    try {
+      await AsyncStorage.removeItem(USER_STORAGE_KEY);
+      console.log('🗑️ Usuário removido do storage local');
+    } catch (error) {
+      console.error('Erro ao remover usuário:', error);
+    }
+  };
 
   // Observar mudanças de autenticação do Firebase
   useEffect(() => {
     const unsubscribe = FirebaseAuthService.onAuthStateChange(async (firebaseUser) => {
-      setUser(firebaseUser);
-      setLoading(false);
-      
-      // Se usuário logado, inicializar sistema offline
       if (firebaseUser) {
+        setUser(firebaseUser);
+        await saveUserToStorage(firebaseUser);
         await FirebaseAuthService.initializeOfflineSupport();
+        // Verificar se o usuário tem família configurada
+        setFamilyConfigured(!!firebaseUser.familyId);
+      } else {
+        // Só limpar o estado se não há usuário persistido
+        const savedUser = await AsyncStorage.getItem(USER_STORAGE_KEY);
+        if (!savedUser) {
+          setUser(null);
+          setFamilyConfigured(false);
+        }
       }
+      setLoading(false);
     });
 
     return unsubscribe;
   }, []);
 
-  useEffect(() => {
-    if (response?.type === 'success') {
-      const { authentication } = response;
-      if (authentication) {
-        setAuthData(authentication);
-        // Note: Role será definido no login, então precisamos armazenar temporariamente
-      }
-    }
-  }, [response]);
-
-  const fetchUserInfo = async (token: string, role: UserRole) => {
-    try {
-      const response = await fetch('https://www.googleapis.com/userinfo/v2/me', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const userInfo = await response.json();
+  const handleUserNameChange = async (newName: string) => {
+    if (user) {
+      // Atualizar estado local primeiro (para responsividade)
+      const updatedUser = { ...user, name: newName };
+      setUser(updatedUser);
       
-      const familyUser: FamilyUser = {
-        id: userInfo.id || Date.now().toString(),
-        name: userInfo.name,
-        email: userInfo.email,
-        picture: userInfo.picture,
-        role: role,
-        isGuest: false,
-        familyId: 'family_001', // Em um app real, isso seria dinâmico
-        joinedAt: new Date()
-      };
+      // Salvar no AsyncStorage
+      await saveUserToStorage(updatedUser);
       
-      setUser(familyUser);
-    } catch (error) {
-      Alert.alert('Erro', 'Não foi possível buscar as informações do usuário.');
+      console.log('✅ Nome do usuário atualizado no App.tsx');
     }
   };
 
-  const handleGuestLogin = (role: UserRole = 'admin') => {
-    const guestUser: FamilyUser = {
-      id: Date.now().toString(),
-      name: role === 'admin' ? 'Admin Convidado' : 'Dependente Convidado',
-      role: role,
-      isGuest: true,
-      familyId: 'family_001',
-      joinedAt: new Date()
-    };
-    setUser(guestUser);
-  };
-
-  const handleGoogleLogin = async (role: UserRole = 'admin') => {
-    // Função mantida para compatibilidade, mas login agora é feito diretamente no LoginScreen
-    console.log('Login com Google solicitado para role:', role);
-  };
-
-
-
-  const handleUserNameChange = (newName: string) => {
-    setUser((prev) => prev ? { ...prev, name: newName } : null);
+  const handleUserImageChange = async (newImageUrl: string) => {
+    if (user) {
+      // Atualizar estado local primeiro (para responsividade)
+      const updatedUser = { ...user, picture: newImageUrl };
+      setUser(updatedUser);
+      
+      // Salvar no AsyncStorage
+      await saveUserToStorage(updatedUser);
+      
+      console.log('✅ Foto do usuário atualizada no App.tsx');
+    }
   };
 
   const handleLogout = async () => {
@@ -111,28 +128,29 @@ export default function App() {
               // Logout do Firebase
               await FirebaseAuthService.logout();
               
-              // Revogar token do Google se existir
-              if (authData?.accessToken) {
-                await fetch(
-                  `https://oauth2.googleapis.com/revoke?token=${authData.accessToken}`,
-                  {
-                    method: 'POST',
-                    headers: {
-                      'Content-type': 'application/x-www-form-urlencoded',
-                    },
-                  }
-                );
-              }
+              // Remover dados do usuário do storage local
+              await removeUserFromStorage();
+              
             } catch (error) {
               console.log('Erro no logout:', error);
             } finally {
               setUser(null);
-              setAuthData(null);
             }
           }
         }
       ]
     );
+  };
+
+  const handleFamilySetup = async (familyId: string) => {
+    if (user) {
+      // Atualizar usuário com familyId
+      const updatedUser = { ...user, familyId };
+      setUser(updatedUser);
+      await saveUserToStorage(updatedUser);
+    }
+    setFamilyConfigured(true);
+    console.log('✅ Família configurada com sucesso');
   };
 
   const handleUserRoleChange = async (newRole: UserRole) => {
@@ -149,6 +167,7 @@ export default function App() {
           role: newRole
         };
         setUser(updatedUser);
+        await saveUserToStorage(updatedUser); // Salvar mudança de role
         
         Alert.alert(
           'Perfil Atualizado',
@@ -167,14 +186,24 @@ export default function App() {
           <ActivityIndicator size="large" color="#007AFF" />
         </View>
       ) : user ? (
-        <TaskScreen 
-          user={user}
-          onLogout={handleLogout}
-          onUserNameChange={handleUserNameChange}
-          onUserRoleChange={handleUserRoleChange}
-        />
+        familyConfigured ? (
+          <TaskScreen 
+            user={user}
+            onLogout={handleLogout}
+            onUserNameChange={handleUserNameChange}
+            onUserImageChange={handleUserImageChange}
+            onUserRoleChange={handleUserRoleChange}
+          />
+        ) : (
+          <FamilySetupScreen
+            onFamilySetup={handleFamilySetup}
+            userEmail={user.email || ''}
+            userName={user.name}
+            userId={user.id}
+          />
+        )
       ) : (
-        <LoginScreen onGuestLogin={handleGuestLogin} onGoogleLogin={handleGoogleLogin} />
+        <LoginScreen />
       )}
     </SafeAreaProvider>
   );
