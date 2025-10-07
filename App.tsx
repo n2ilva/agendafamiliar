@@ -75,12 +75,11 @@ export default function App() {
         // Verificar se o usuário tem família configurada
         setFamilyConfigured(!!firebaseUser.familyId);
       } else {
-        // Só limpar o estado se não há usuário persistido
-        const savedUser = await AsyncStorage.getItem(USER_STORAGE_KEY);
-        if (!savedUser) {
-          setUser(null);
-          setFamilyConfigured(false);
-        }
+        // Sempre limpar o estado quando o Firebase indica que não há usuário autenticado
+        console.log('🚪 Firebase Auth indica logout - limpando estado da aplicação');
+        setUser(null);
+        setFamilyConfigured(false);
+        await removeUserFromStorage(); // Garantir que o storage local também seja limpo
       }
       setLoading(false);
     });
