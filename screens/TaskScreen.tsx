@@ -13,6 +13,7 @@ import {
   KeyboardAvoidingView,
   Image,
   Dimensions,
+  AppState,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -374,7 +375,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     configurarNotificacoes();
   }, []);
 
-  // Configurar atualização automática apenas uma vez
+  // Configurar atualização automática e AppState listener
   useEffect(() => {
     verificarTarefasVencidas();
     
@@ -383,8 +384,20 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       console.log('🔄 Executando atualização automática agendada...');
       forceRefresh();
     }, 60000); // 60000ms = 1 minuto
+
+    const handleAppStateChange = (nextAppState: any) => {
+      if (nextAppState === 'active') {
+        console.log('📱 App tornou-se ativo, forçando atualização...');
+        forceRefresh();
+      }
+    };
+
+    const appStateSubscription = AppState.addEventListener('change', handleAppStateChange);
     
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      appStateSubscription.remove();
+    };
   }, []);
 
   // Verificar tarefas vencidas quando há mudanças nas tasks ou atualizações automáticas
