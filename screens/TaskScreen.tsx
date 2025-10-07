@@ -2605,12 +2605,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Solicitações de Aprovação</Text>
-              <TouchableOpacity onPress={() => setApprovalModalVisible(false)}>
-                <Ionicons name="close" size={24} color="#666" />
-              </TouchableOpacity>
-            </View>
+            <Text style={styles.modalTitle}>Solicitações de Aprovação</Text>
             
             {notifications.filter(n => !n.read).length === 0 ? (
               <Text style={styles.noNotificationsText}>Nenhuma solicitação pendente</Text>
@@ -2691,15 +2686,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       >
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, styles.familyModalContent]}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Gerenciar Família</Text>
-              <TouchableOpacity
-                onPress={() => setFamilyModalVisible(false)}
-                style={styles.closeModalButton}
-              >
-                <Ionicons name="close" size={24} color="#666" />
-              </TouchableOpacity>
-            </View>
+            <Text style={styles.modalTitle}>Gerenciar Família</Text>
 
             <ScrollView style={styles.familyContent}>
               {/* Seção do Código da Família */}
