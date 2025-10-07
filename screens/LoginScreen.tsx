@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, Alert, TextInput, ActivityIndicator, Platform, ScrollView, Modal } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Image, Alert, TextInput, ActivityIndicator, Platform, ScrollView, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { UserRole } from '../types/FamilyTypes';
 import FirebaseAuthService from '../services/FirebaseAuthService';
@@ -169,18 +169,18 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
 
         {/* Toggle Login/Registro */}
         <View style={styles.authToggle}>
-          <TouchableOpacity 
+          <Pressable
             style={[styles.toggleButton, isLogin && styles.toggleButtonActive]}
             onPress={() => setIsLogin(true)}
           >
             <Text style={[styles.toggleText, isLogin && styles.toggleTextActive]}>Entrar</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
+          </Pressable>
+          <Pressable
             style={[styles.toggleButton, !isLogin && styles.toggleButtonActive]}
             onPress={() => setIsLogin(false)}
           >
             <Text style={[styles.toggleText, !isLogin && styles.toggleTextActive]}>Registrar</Text>
-          </TouchableOpacity>
+          </Pressable>
         </View>
 
         {/* Formulário de Autenticação */}
@@ -203,17 +203,17 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
               <View style={styles.userRoleContainer}>
                 <Text style={styles.userRoleLabel}>Tipo de Usuário:</Text>
                 <View style={styles.userRoleButtons}>
-                  <TouchableOpacity
+                  <Pressable
                     style={[
                       styles.roleButton,
                       userRole === 'admin' && styles.roleButtonActive
                     ]}
                     onPress={() => handleUserRoleSelection('admin')}
                   >
-                    <Ionicons 
-                      name="person-circle-outline" 
-                      size={20} 
-                      color={userRole === 'admin' ? '#fff' : '#007AFF'} 
+                    <Ionicons
+                      name="person-circle-outline"
+                      size={20}
+                      color={userRole === 'admin' ? '#fff' : '#007AFF'}
                     />
                     <Text style={[
                       styles.roleButtonText,
@@ -221,19 +221,19 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
                     ]}>
                       Administrador
                     </Text>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity
+                  </Pressable>
+
+                  <Pressable
                     style={[
                       styles.roleButton,
                       userRole === 'dependente' && styles.roleButtonActive
                     ]}
                     onPress={() => handleUserRoleSelection('dependente')}
                   >
-                    <Ionicons 
-                      name="people-outline" 
-                      size={20} 
-                      color={userRole === 'dependente' ? '#fff' : '#007AFF'} 
+                    <Ionicons
+                      name="people-outline"
+                      size={20}
+                      color={userRole === 'dependente' ? '#fff' : '#007AFF'}
                     />
                     <Text style={[
                       styles.roleButtonText,
@@ -241,7 +241,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
                     ]}>
                       Dependente
                     </Text>
-                  </TouchableOpacity>
+                  </Pressable>
                 </View>
               </View>
             </>
@@ -275,8 +275,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
         </View>
 
         <View style={styles.buttonContainer}>
-        <TouchableOpacity 
-          style={[styles.button, styles.primaryButton, loading && styles.buttonDisabled]} 
+        <Pressable
+          style={[styles.button, styles.primaryButton, loading && styles.buttonDisabled]}
           onPress={handleEmailAuth}
           disabled={loading}
         >
@@ -290,15 +290,15 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
               </Text>
             </>
           )}
-        </TouchableOpacity>
+        </Pressable>
 
         {isLogin && (
-          <TouchableOpacity 
+          <Pressable
             style={styles.forgotPasswordButton}
             onPress={() => setResetModalVisible(true)}
           >
             <Text style={styles.forgotPasswordText}>Esqueci minha senha</Text>
-          </TouchableOpacity>
+          </Pressable>
         )}
       </View>
       
@@ -344,8 +344,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
           </View>
 
           <View style={styles.modalButtons}>
-            <TouchableOpacity 
-              style={[styles.modalButton, styles.cancelButton]} 
+            <Pressable
+              style={[styles.modalButton, styles.cancelButton]}
               onPress={() => {
                 setResetModalVisible(false);
                 setResetEmail('');
@@ -353,9 +353,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
               disabled={resetLoading}
             >
               <Text style={styles.cancelButtonText}>Cancelar</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={[styles.modalButton, styles.sendButton, resetLoading && styles.buttonDisabled]} 
+            </Pressable>
+            <Pressable
+              style={[styles.modalButton, styles.sendButton, resetLoading && styles.buttonDisabled]}
               onPress={handlePasswordReset}
               disabled={resetLoading}
             >
@@ -364,7 +364,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
               ) : (
                 <Text style={styles.sendButtonText}>Enviar</Text>
               )}
-            </TouchableOpacity>
+            </Pressable>
           </View>
         </View>
       </View>

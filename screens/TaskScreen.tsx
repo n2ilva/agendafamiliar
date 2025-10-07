@@ -4,7 +4,7 @@ import {
   Text,
   StyleSheet,
   FlatList,
-  TouchableOpacity,
+  Pressable,
   TextInput,
   Alert,
   Modal,
@@ -1984,7 +1984,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         {/* Conteúdo Principal da Tarefa */}
         <View style={styles.taskCardHeader}>
           <View style={styles.taskMainContent}>
-            <TouchableOpacity
+            <Pressable
               onPress={() => handleTaskToggle(item)}
               style={styles.checkboxContainer}
               disabled={isPendingRecurring}
@@ -1998,7 +1998,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                   <Ionicons name="checkmark" size={18} color="#fff" />
                 )}
               </View>
-            </TouchableOpacity>
+            </Pressable>
             
             <View style={styles.taskTextContent}>
               <Text style={[
@@ -2051,19 +2051,19 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
 
           {/* Botões de ação no final da coluna de informações */}
           <View style={styles.scheduleActions}>
-            <TouchableOpacity 
+            <Pressable 
               onPress={() => editTask(item)}
               style={styles.scheduleActionButton}
             >
               <Ionicons name="pencil-outline" size={16} color="#007AFF" />
-            </TouchableOpacity>
+            </Pressable>
             
-            <TouchableOpacity 
+            <Pressable 
               onPress={() => deleteTask(item.id)}
               style={styles.scheduleActionButton}
             >
               <Ionicons name="trash-outline" size={16} color="#e74c3c" />
-            </TouchableOpacity>
+            </Pressable>
           </View>
         </View>
         
@@ -2135,7 +2135,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         
         {/* Indicador de Status de Conectividade */}
         {(isOffline || syncStatus.pendingOperations > 0) && (
-          <TouchableOpacity 
+          <Pressable 
             style={styles.connectivityIndicator}
             onPress={forceRefresh}
             disabled={syncStatus.isSyncing}
@@ -2168,7 +2168,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                 />
               )}
             </View>
-          </TouchableOpacity>
+          </Pressable>
         )}
         
         <PanGestureHandler onGestureEvent={handleSwipeGesture}>
@@ -2176,23 +2176,23 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
 
         {/* Indicador de Tabs Simplificado */}
         <View style={styles.simpleTabContainer}>
-          <TouchableOpacity
+          <Pressable
             style={[styles.simpleTab, activeTab === 'today' && styles.activeSimpleTab]}
             onPress={() => setActiveTab('today')}
           >
             <Text style={[styles.simpleTabText, activeTab === 'today' && styles.activeSimpleTabText]}>
               Hoje ({getTodayTasks().length})
             </Text>
-          </TouchableOpacity>
+          </Pressable>
           
-          <TouchableOpacity
+          <Pressable
             style={[styles.simpleTab, activeTab === 'upcoming' && styles.activeSimpleTab]}
             onPress={() => setActiveTab('upcoming')}
           >
             <Text style={[styles.simpleTabText, activeTab === 'upcoming' && styles.activeSimpleTabText]}>
               Próximas ({getUpcomingTasks().length})
             </Text>
-          </TouchableOpacity>
+          </Pressable>
         </View>
         
         <View style={styles.summaryContainer}>
@@ -2236,30 +2236,29 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       {/* Container dos botões flutuantes */}
       <View style={styles.fabContainer}>
         {/* Botão de Filtro */}
-        <TouchableOpacity 
+        <Pressable 
           style={styles.filterFab}
           onPress={() => setFilterDropdownVisible(!filterDropdownVisible)}
         >
           <Ionicons name="filter" size={24} color="#fff" />
-        </TouchableOpacity>
+        </Pressable>
 
         {/* Botão de Criar Tarefa */}
-        <TouchableOpacity 
+        <Pressable 
           style={styles.fab}
           onPress={() => setModalVisible(true)}
         >
           <Ionicons name="add" size={30} color="#fff" />
-        </TouchableOpacity>
+        </Pressable>
       </View>
 
       {/* Dropdown de Filtros - posicionado para abrir à esquerda */}
       {filterDropdownVisible && (
         <>
           {/* Overlay para fechar dropdown */}
-          <TouchableOpacity
+          <Pressable
             style={styles.dropdownOverlay}
             onPress={() => setFilterDropdownVisible(false)}
-            activeOpacity={1}
           />
           
           <View style={styles.filterDropdownMenuFloating}>
@@ -2269,7 +2268,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
               bounces={false}
             >
               {categories.map((category) => (
-                <TouchableOpacity
+                <Pressable
                   key={category.id}
                   style={[
                     styles.filterDropdownItem,
@@ -2295,12 +2294,12 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                   {filterCategory === category.id && (
                     <Ionicons name="checkmark" size={16} color="#007AFF" />
                   )}
-                </TouchableOpacity>
+                </Pressable>
               ))}
               
               <View style={styles.filterDropdownSeparator} />
               
-              <TouchableOpacity
+              <Pressable
                 style={styles.filterDropdownItem}
                 onPress={() => {
                   setCategoryModalVisible(true);
@@ -2309,7 +2308,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
               >
                 <Ionicons name="add-circle-outline" size={16} color="#007AFF" />
                 <Text style={styles.filterDropdownItemText}>Nova Categoria</Text>
-              </TouchableOpacity>
+              </Pressable>
             </ScrollView>
           </View>
         </>
@@ -2329,9 +2328,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>{isEditing ? 'Editar Tarefa' : 'Nova Tarefa'}</Text>
-                <TouchableOpacity onPress={resetForm}>
+                <Pressable onPress={resetForm}>
                   <Ionicons name="close" size={24} color="#666" />
-                </TouchableOpacity>
+                </Pressable>
               </View>
 
               <ScrollView 
@@ -2368,7 +2367,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                 decelerationRate="fast"
               >
                 {categories.filter(cat => cat.id !== 'all').map((category) => (
-                  <TouchableOpacity
+                  <Pressable
                     key={category.id}
                     style={[
                       styles.categorySelector,
@@ -2391,7 +2390,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                     ]}>
                       {category.name}
                     </Text>
-                  </TouchableOpacity>
+                  </Pressable>
                 ))}
               </ScrollView>
             </View>
@@ -2400,7 +2399,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             <Text style={styles.categoryLabel}>Agendamento:</Text>
             
             <View style={styles.dateTimeContainer}>
-              <TouchableOpacity 
+              <Pressable 
                 style={styles.dateTimeButton}
                 onPress={() => setShowDatePicker(true)}
               >
@@ -2408,9 +2407,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                 <Text style={styles.dateTimeButtonText}>
                   {selectedDate ? formatDate(selectedDate) : 'Selecionar data'}
                 </Text>
-              </TouchableOpacity>
+              </Pressable>
               
-              <TouchableOpacity 
+              <Pressable 
                 style={styles.dateTimeButton}
                 onPress={() => setShowTimePicker(true)}
               >
@@ -2418,7 +2417,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                 <Text style={styles.dateTimeButtonText}>
                   {selectedTime ? formatTime(selectedTime) : 'Selecionar hora'}
                 </Text>
-              </TouchableOpacity>
+              </Pressable>
             </View>
 
             {/* Seleção de Repetição */}
@@ -2430,7 +2429,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                 { type: RepeatType.WEEKENDS, label: 'Fins de semana', icon: 'home-outline' },
                 { type: RepeatType.CUSTOM, label: 'Personalizado', icon: 'settings-outline' }
               ].map((option) => (
-                <TouchableOpacity
+                <Pressable
                   key={option.type}
                   style={[
                     styles.repeatOption,
@@ -2449,7 +2448,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                   ]}>
                     {option.label}
                   </Text>
-                </TouchableOpacity>
+                </Pressable>
               ))}
             </View>
 
@@ -2459,7 +2458,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                 <Text style={styles.customDaysLabel}>Selecione os dias:</Text>
                 <View style={styles.customDaysSelector}>
                   {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((day, index) => (
-                    <TouchableOpacity
+                    <Pressable
                       key={index}
                       style={[
                         styles.dayButton,
@@ -2473,7 +2472,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                       ]}>
                         {day}
                       </Text>
-                    </TouchableOpacity>
+                    </Pressable>
                   ))}
                 </View>
               </View>
@@ -2481,19 +2480,19 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
               </ScrollView>
 
               <View style={styles.modalButtons}>
-                <TouchableOpacity 
+                <Pressable 
                   style={[styles.button, styles.cancelButton]}
                   onPress={resetForm}
                 >
                   <Text style={styles.cancelButtonText}>Cancelar</Text>
-                </TouchableOpacity>
+                </Pressable>
                 
-                <TouchableOpacity 
+                <Pressable 
                   style={[styles.button, styles.addButton]}
                   onPress={addTask}
                 >
                   <Text style={styles.addButtonText}>{isEditing ? 'Salvar' : 'Adicionar'}</Text>
-                </TouchableOpacity>
+                </Pressable>
               </View>
             </View>
           </View>
@@ -2511,9 +2510,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Nova Categoria</Text>
-              <TouchableOpacity onPress={() => setCategoryModalVisible(false)}>
+              <Pressable onPress={() => setCategoryModalVisible(false)}>
                 <Ionicons name="close" size={24} color="#666" />
-              </TouchableOpacity>
+              </Pressable>
             </View>
 
             <TextInput
@@ -2527,7 +2526,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             <Text style={styles.categoryLabel}>Ícone:</Text>
             <View style={styles.iconSelectorContainer}>
               {AVAILABLE_ICONS.map((icon) => (
-                <TouchableOpacity
+                <Pressable
                   key={icon}
                   style={[
                     styles.iconSelector,
@@ -2540,14 +2539,14 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                     size={20} 
                     color={selectedIcon === icon ? '#007AFF' : '#666'} 
                   />
-                </TouchableOpacity>
+                </Pressable>
               ))}
             </View>
 
             <Text style={styles.categoryLabel}>Cor:</Text>
             <View style={styles.colorSelectorContainer}>
               {AVAILABLE_COLORS.map((colorConfig, index) => (
-                <TouchableOpacity
+                <Pressable
                   key={index}
                   style={[
                     styles.colorSelector,
@@ -2559,7 +2558,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                   {selectedColorIndex === index && (
                     <Ionicons name="checkmark" size={16} color="#fff" />
                   )}
-                </TouchableOpacity>
+                </Pressable>
               ))}
             </View>
 
@@ -2587,19 +2586,19 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             </View>
 
             <View style={styles.modalButtons}>
-              <TouchableOpacity 
+              <Pressable 
                 style={[styles.button, styles.cancelButton]}
                 onPress={() => setCategoryModalVisible(false)}
               >
                 <Text style={styles.cancelButtonText}>Cancelar</Text>
-              </TouchableOpacity>
+              </Pressable>
               
-              <TouchableOpacity 
+              <Pressable 
                 style={[styles.button, styles.addButton]}
                 onPress={addCategory}
               >
                 <Text style={styles.addButtonText}>Criar</Text>
-              </TouchableOpacity>
+              </Pressable>
             </View>
           </View>
         </View>
@@ -2639,40 +2638,40 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             <Text style={styles.modalTitle}>Configurações</Text>
             
             <View style={styles.settingsOptions}>
-              <TouchableOpacity 
+              <Pressable 
                 style={styles.settingsOption}
                 onPress={handleShowHistory}
               >
                 <Ionicons name="time-outline" size={24} color="#007AFF" />
                 <Text style={styles.settingsOptionText}>Histórico</Text>
                 <Ionicons name="chevron-forward" size={20} color="#ccc" />
-              </TouchableOpacity>
+              </Pressable>
               
-              <TouchableOpacity 
+              <Pressable 
                 style={styles.settingsOption}
                 onPress={handleUpdateData}
               >
                 <Ionicons name="refresh-outline" size={24} color="#007AFF" />
                 <Text style={styles.settingsOptionText}>Atualizar Dados</Text>
                 <Ionicons name="chevron-forward" size={20} color="#ccc" />
-              </TouchableOpacity>
+              </Pressable>
               
-              <TouchableOpacity 
+              <Pressable 
                 style={styles.settingsOption}
                 onPress={handleSystemInfo}
               >
                 <Ionicons name="information-circle-outline" size={24} color="#007AFF" />
                 <Text style={styles.settingsOptionText}>Info do Sistema</Text>
                 <Ionicons name="chevron-forward" size={20} color="#ccc" />
-              </TouchableOpacity>
+              </Pressable>
             </View>
             
-            <TouchableOpacity
+            <Pressable
               style={styles.closeButton}
               onPress={() => setSettingsModalVisible(false)}
             >
               <Text style={styles.closeButtonText}>Fechar</Text>
-            </TouchableOpacity>
+            </Pressable>
           </View>
         </View>
       </Modal>
@@ -2743,12 +2742,12 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             )}
             
             {/* Botão de fechar no final do modal */}
-            <TouchableOpacity 
+            <Pressable 
               style={styles.closeModalButton}
               onPress={() => setHistoryModalVisible(false)}
             >
               <Text style={styles.closeModalButtonText}>Fechar</Text>
-            </TouchableOpacity>
+            </Pressable>
           </View>
         </SafeAreaView>
       </Modal>
@@ -2792,7 +2791,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                       </Text>
                       
                       <View style={styles.approvalActions}>
-                        <TouchableOpacity
+                        <Pressable
                           style={[styles.approvalButton, styles.rejectButton]}
                           onPress={() => {
                             rejectTask(approval.id, 'Rejeitado pelo administrador');
@@ -2803,9 +2802,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                         >
                           <Ionicons name="close-circle" size={20} color="#fff" />
                           <Text style={styles.approvalButtonText}>Rejeitar</Text>
-                        </TouchableOpacity>
+                        </Pressable>
                         
-                        <TouchableOpacity
+                        <Pressable
                           style={[styles.approvalButton, styles.approveButton]}
                           onPress={() => {
                             approveTask(approval.id, 'Aprovado pelo administrador');
@@ -2816,7 +2815,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                         >
                           <Ionicons name="checkmark-circle" size={20} color="#fff" />
                           <Text style={styles.approvalButtonText}>Aprovar</Text>
-                        </TouchableOpacity>
+                        </Pressable>
                       </View>
                     </View>
                   );
@@ -2824,12 +2823,12 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
               </ScrollView>
             )}
             
-            <TouchableOpacity
+            <Pressable
               style={styles.closeButton}
               onPress={() => setApprovalModalVisible(false)}
             >
               <Text style={styles.closeButtonText}>Fechar</Text>
-            </TouchableOpacity>
+            </Pressable>
           </View>
         </View>
       </Modal>
@@ -2863,18 +2862,18 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                       autoFocus
                     />
                     <View style={styles.editFamilyNameActions}>
-                      <TouchableOpacity
+                      <Pressable
                         style={[styles.editFamilyNameButton, styles.cancelButton]}
                         onPress={cancelEditingFamilyName}
                       >
                         <Text style={styles.cancelButtonText}>Cancelar</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
+                      </Pressable>
+                      <Pressable
                         style={[styles.editFamilyNameButton, styles.saveButton]}
                         onPress={saveFamilyName}
                       >
                         <Text style={styles.saveButtonText}>Salvar</Text>
-                      </TouchableOpacity>
+                      </Pressable>
                     </View>
                   </View>
                 ) : (
@@ -2883,12 +2882,12 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                       {currentFamily?.name || 'Nome não definido'}
                     </Text>
                     {user.role === 'admin' && (
-                      <TouchableOpacity
+                      <Pressable
                         style={styles.editFamilyNameIconButton}
                         onPress={startEditingFamilyName}
                       >
                         <Ionicons name="pencil" size={16} color="#007AFF" />
-                      </TouchableOpacity>
+                      </Pressable>
                     )}
                   </View>
                 )}
@@ -2907,12 +2906,12 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                     <Text style={styles.inviteCodeText}>
                       {currentFamily?.inviteCode || 'Código não disponível'}
                     </Text>
-                    <TouchableOpacity
+                    <Pressable
                       onPress={copyFamilyCode}
                       style={styles.copyButton}
                     >
                       <Ionicons name="copy" size={18} color="#fff" />
-                    </TouchableOpacity>
+                    </Pressable>
                   </View>
                 </View>
               </View>
@@ -2957,7 +2956,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                     
                     {member.id !== user.id && user.role === 'admin' && (
                       <View style={styles.memberActions}>
-                        <TouchableOpacity
+                        <Pressable
                           onPress={() => changeMemberRole(member.id)}
                           style={styles.changeMemberRoleButton}
                         >
@@ -2969,14 +2968,14 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                           <Text style={styles.changeMemberRoleButtonText}>
                             {member.role === 'admin' ? 'Tornar Dependente' : 'Tornar Admin'}
                           </Text>
-                        </TouchableOpacity>
+                        </Pressable>
                         
-                        <TouchableOpacity
+                        <Pressable
                           onPress={() => removeFamilyMember(member.id)}
                           style={styles.removeMemberButton}
                         >
                           <Ionicons name="trash-outline" size={18} color="#e74c3c" />
-                        </TouchableOpacity>
+                        </Pressable>
                       </View>
                     )}
                   </View>
@@ -2985,12 +2984,12 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             </ScrollView>
             
             {/* Botão de fechar no final do modal */}
-            <TouchableOpacity 
+            <Pressable 
               style={styles.closeModalButton}
               onPress={() => setFamilyModalVisible(false)}
             >
               <Text style={styles.closeModalButtonText}>Fechar</Text>
-            </TouchableOpacity>
+            </Pressable>
           </View>
         </View>
       </Modal>
@@ -3436,7 +3435,7 @@ const styles = StyleSheet.create({
       height: 4,
     },
     shadowOpacity: 0.3,
-    shadowRadius: 4,
+    shadowRadius: 8,
     elevation: 8,
   },
   modalOverlay: {

@@ -3,7 +3,7 @@ import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
+  Pressable,
   Image,
   Alert,
   Modal,
@@ -170,7 +170,7 @@ export const Header: React.FC<HeaderProps> = ({
             : styles.containerOffline
       ]}>
         <View style={styles.leftSection}>
-          <TouchableOpacity onPress={handleImagePicker} style={styles.avatarContainer} disabled={imageLoading}>
+          <Pressable onPress={handleImagePicker} style={styles.avatarContainer} disabled={imageLoading}>
             {userImageLocal ? (
               <Image source={{ uri: userImageLocal }} style={styles.avatar} />
             ) : (
@@ -187,9 +187,9 @@ export const Header: React.FC<HeaderProps> = ({
                 <Ionicons name="camera" size={12} color="#fff" />
               </View>
             )}
-          </TouchableOpacity>
+          </Pressable>
           
-          <TouchableOpacity onPress={() => setNameModalVisible(true)} style={styles.userInfo}>
+          <Pressable onPress={() => setNameModalVisible(true)} style={styles.userInfo}>
             <View style={styles.nameContainer}>
               <Text style={styles.userName}>{userName}</Text>
               <Ionicons name="pencil" size={14} color="#999" style={styles.editNameIcon} />
@@ -199,20 +199,20 @@ export const Header: React.FC<HeaderProps> = ({
             ) : (
               <Text style={styles.subtitle}>Família não configurada</Text>
             )}
-          </TouchableOpacity>
+          </Pressable>
         </View>
 
         <View style={styles.rightSection}>
           <View style={styles.menuContainer}>
-            <TouchableOpacity onPress={() => setMenuVisible(!menuVisible)} style={styles.iconButton}>
+            <Pressable onPress={() => setMenuVisible(!menuVisible)} style={styles.iconButton}>
               <Ionicons name="ellipsis-vertical" size={24} color="#333" />
-            </TouchableOpacity>
+            </Pressable>
             
             {menuVisible && (
               <View style={styles.dropdownMenu}>
                 {onNotifications && (
                   <>
-                    <TouchableOpacity onPress={() => { setMenuVisible(false); onNotifications(); }} style={styles.menuItem}>
+                    <Pressable onPress={() => { setMenuVisible(false); onNotifications(); }} style={styles.menuItem}>
                       <Ionicons name="notifications-outline" size={18} color="#333" />
                       <Text style={styles.menuText}>
                         Notificações {notificationCount > 0 && `(${notificationCount})`}
@@ -222,30 +222,30 @@ export const Header: React.FC<HeaderProps> = ({
                           <Text style={styles.notificationBadgeText}>{notificationCount}</Text>
                         </View>
                       )}
-                    </TouchableOpacity>
+                    </Pressable>
                     <View style={styles.menuSeparator} />
                   </>
                 )}
                 {userRole === 'admin' && onManageFamily && (
                   <>
-                    <TouchableOpacity onPress={() => { setMenuVisible(false); onManageFamily(); }} style={styles.menuItem}>
+                    <Pressable onPress={() => { setMenuVisible(false); onManageFamily(); }} style={styles.menuItem}>
                       <Ionicons name="people-outline" size={18} color="#333" />
                       <Text style={styles.menuText}>Gerenciar Família</Text>
-                    </TouchableOpacity>
+                    </Pressable>
                     <View style={styles.menuSeparator} />
                   </>
                 )}
-                <TouchableOpacity onPress={handleHistoryPress} style={styles.menuItem}>
+                <Pressable onPress={handleHistoryPress} style={styles.menuItem}>
                   <Ionicons name="settings-outline" size={18} color="#333" />
                   <Text style={styles.menuText}>Configurações</Text>
-                </TouchableOpacity>
+                </Pressable>
               </View>
             )}
           </View>
           
-          <TouchableOpacity onPress={handleLogout} style={styles.iconButton}>
+          <Pressable onPress={handleLogout} style={styles.iconButton}>
             <Ionicons name="log-out-outline" size={24} color="#e74c3c" />
-          </TouchableOpacity>
+          </Pressable>
         </View>
       </View>
 
@@ -266,14 +266,14 @@ export const Header: React.FC<HeaderProps> = ({
               autoFocus
             />
             <View style={styles.modalButtons}>
-              <TouchableOpacity 
+              <Pressable 
                 style={[styles.modalButton, styles.cancelButton]} 
                 onPress={() => setNameModalVisible(false)}
                 disabled={nameLoading}
               >
                 <Text style={styles.buttonText}>Cancelar</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
+              </Pressable>
+              <Pressable 
                 style={[styles.modalButton, styles.saveButton, nameLoading && styles.buttonDisabled]} 
                 onPress={handleNameChange}
                 disabled={nameLoading}
@@ -283,7 +283,7 @@ export const Header: React.FC<HeaderProps> = ({
                 ) : (
                   <Text style={styles.buttonText}>Salvar</Text>
                 )}
-              </TouchableOpacity>
+              </Pressable>
             </View>
           </View>
         </View>
@@ -303,7 +303,7 @@ export const Header: React.FC<HeaderProps> = ({
             <Text style={styles.roleSelectionTitle}>Escolha seu perfil:</Text>
             
             <View style={styles.roleOptionsContainer}>
-              <TouchableOpacity 
+              <Pressable 
                 style={[
                   styles.roleOption, 
                   selectedRole === 'admin' && styles.roleOptionSelected
@@ -327,9 +327,9 @@ export const Header: React.FC<HeaderProps> = ({
                 ]}>
                   Gerencia tarefas da família
                 </Text>
-              </TouchableOpacity>
+              </Pressable>
 
-              <TouchableOpacity 
+              <Pressable 
                 style={[
                   styles.roleOption, 
                   selectedRole === 'dependente' && styles.roleOptionSelected
@@ -353,23 +353,23 @@ export const Header: React.FC<HeaderProps> = ({
                 ]}>
                   Precisa de aprovação para concluir tarefas
                 </Text>
-              </TouchableOpacity>
+              </Pressable>
             </View>
             
             <View style={styles.modalButtons}>
-              <TouchableOpacity 
+              <Pressable 
                 style={[styles.modalButton, styles.cancelButton]} 
                 onPress={() => setProfileModalVisible(false)}
               >
                 <Text style={styles.cancelButtonText}>Cancelar</Text>
-              </TouchableOpacity>
+              </Pressable>
               
-              <TouchableOpacity 
+              <Pressable 
                 style={[styles.modalButton, styles.saveButton]} 
                 onPress={handleRoleChange}
               >
                 <Text style={styles.saveButtonText}>Salvar</Text>
-              </TouchableOpacity>
+              </Pressable>
             </View>
           </View>
         </View>
