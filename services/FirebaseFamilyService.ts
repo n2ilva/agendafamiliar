@@ -418,18 +418,46 @@ class FirebaseFamilyService {
   private convertFirebaseTask(doc: any): Task {
     const data = doc.data();
     
+    console.log('🔍 Dados brutos do Firebase para tarefa:', {
+      id: doc.id,
+      title: data.title,
+      rawDueDate: data.dueDate,
+      rawDueTime: data.dueTime,
+      dueDateType: typeof data.dueDate,
+      dueTimeType: typeof data.dueTime
+    });
+    
     // Função auxiliar para converter timestamp de forma segura
     const safeTimestampToDate = (timestamp: any): Date | undefined => {
       if (!timestamp) return undefined;
+      // Firestore Timestamp
       if (timestamp.toDate && typeof timestamp.toDate === 'function') {
         try {
           return timestamp.toDate();
         } catch (error) {
-          console.warn('Erro ao converter timestamp:', error);
+          console.warn('Erro ao converter Timestamp:', error);
           return undefined;
         }
       }
-      if (timestamp instanceof Date) return timestamp;
+      // Objeto simples { seconds, nanoseconds }
+      if (
+        typeof timestamp === 'object' &&
+        timestamp !== null &&
+        'seconds' in timestamp &&
+        typeof (timestamp as any).seconds === 'number'
+      ) {
+        try {
+          const seconds = (timestamp as any).seconds as number;
+          const nanos = typeof (timestamp as any).nanoseconds === 'number' ? (timestamp as any).nanoseconds : 0;
+          return new Date(seconds * 1000 + Math.floor(nanos / 1_000_000));
+        } catch (error) {
+          console.warn('Erro ao converter objeto seconds/nanoseconds:', error);
+          return undefined;
+        }
+      }
+      // Date nativa
+      if (timestamp instanceof Date) return isNaN(timestamp.getTime()) ? undefined : timestamp;
+      // String/Number
       if (typeof timestamp === 'string' || typeof timestamp === 'number') {
         try {
           const date = new Date(timestamp);
@@ -441,14 +469,24 @@ class FirebaseFamilyService {
       return undefined;
     };
 
+    const convertedDueDate = safeTimestampToDate(data.dueDate);
+    const convertedDueTime = safeTimestampToDate(data.dueTime);
+    
+    console.log('✅ Datas convertidas do Firebase:', {
+      id: doc.id,
+      title: data.title,
+      convertedDueDate: convertedDueDate,
+      convertedDueTime: convertedDueTime
+    });
+
     return {
       ...data,
       id: doc.id,
       createdAt: safeTimestampToDate(data.createdAt) || new Date(),
       updatedAt: safeTimestampToDate(data.updatedAt) || new Date(),
       completedAt: safeTimestampToDate(data.completedAt),
-      dueDate: safeTimestampToDate(data.dueDate),
-      dueTime: safeTimestampToDate(data.dueTime),
+      dueDate: convertedDueDate,
+      dueTime: convertedDueTime,
       repeatDays: Array.isArray(data.repeatDays) ? data.repeatDays : undefined,
       editedAt: safeTimestampToDate(data.editedAt),
     };

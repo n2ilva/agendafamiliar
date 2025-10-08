@@ -255,6 +255,13 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
 
   // Função para converter Task local para FirebaseTask
   const taskToFirebaseTask = (task: Task): FirebaseTask => {
+    console.log('📤 Convertendo Local -> Firebase:', {
+      id: task.id,
+      title: task.title,
+      localDueDate: task.dueDate,
+      localDueTime: task.dueTime,
+    });
+
     const firebaseTask: any = {
       id: task.id,
       title: task.title,
@@ -265,11 +272,11 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       priority: 'media', // valor padrão
       createdAt: task.createdAt,
       updatedAt: task.editedAt || new Date(),
-  dueDate: task.dueDate,
-  dueTime: task.dueTime, // manter dueTime
-  repeatOption: task.repeat?.type === RepeatType.DAILY ? 'diario' : 
-        task.repeat?.type === RepeatType.CUSTOM ? 'semanal' : 'nenhum',
-  repeatDays: task.repeat?.type === RepeatType.CUSTOM ? (task.repeat.days || []) : null,
+      dueDate: task.dueDate || null, // Converter undefined para null para preservar no Firestore
+      dueTime: task.dueTime || null, // Converter undefined para null para preservar no Firestore
+      repeatOption: task.repeat?.type === RepeatType.DAILY ? 'diario' : 
+            task.repeat?.type === RepeatType.CUSTOM ? 'semanal' : 'nenhum',
+      repeatDays: task.repeat?.type === RepeatType.CUSTOM ? (task.repeat.days || []) : null,
       userId: task.userId,
       // Adicionar familyId se o usuário pertence a uma família
       familyId: currentFamily?.id,
@@ -277,6 +284,13 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       createdBy: task.createdBy,
       createdByName: task.createdByName,
     };
+
+    console.log('📤 Dados preparados para Firebase:', {
+      id: firebaseTask.id,
+      title: firebaseTask.title,
+      firebaseDueDate: firebaseTask.dueDate,
+      firebaseDueTime: firebaseTask.dueTime,
+    });
 
     // Adicionar campos apenas se não forem undefined
     if (task.completed) {
@@ -303,30 +317,44 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   };
 
   // Função para converter FirebaseTask para Task local
-  const firebaseTaskToTask = (firebaseTask: FirebaseTask): Task => ({
-    id: firebaseTask.id,
-    title: firebaseTask.title,
-    description: firebaseTask.description || '',
-    completed: firebaseTask.completed,
-    status: firebaseTask.status,
-    category: firebaseTask.category,
-    dueDate: safeToDate(firebaseTask.dueDate),
-    dueTime: safeToDate(firebaseTask.dueTime) || safeToDate(firebaseTask.dueDate), // usar dueTime se disponível, senão dueDate
-    repeat: {
-      type: firebaseTask.repeatOption === 'diario' ? RepeatType.DAILY :
-            firebaseTask.repeatOption === 'semanal' ? RepeatType.CUSTOM : RepeatType.NONE,
-      days: Array.isArray((firebaseTask as any).repeatDays) ? (firebaseTask as any).repeatDays : []
-    },
-    userId: firebaseTask.userId,
-    approvalId: firebaseTask.approvalId,
-    createdAt: firebaseTask.createdAt,
-    // Campos de autoria com fallback para dados antigos
-    createdBy: firebaseTask.createdBy || firebaseTask.userId,
-    createdByName: firebaseTask.createdByName || 'Usuário',
-    editedBy: firebaseTask.editedBy,
-    editedByName: firebaseTask.editedByName,
-    editedAt: firebaseTask.editedAt
-  });
+  const firebaseTaskToTask = (firebaseTask: FirebaseTask): Task => {
+    const dueDate = safeToDate(firebaseTask.dueDate);
+    const dueTime = safeToDate(firebaseTask.dueTime);
+
+    console.log('🔄 Convertendo Firebase -> Local:', {
+      id: firebaseTask.id,
+      title: firebaseTask.title,
+      firebaseDueDate: firebaseTask.dueDate,
+      firebaseDueTime: firebaseTask.dueTime,
+      convertedDueDate: dueDate,
+      convertedDueTime: dueTime,
+    });
+
+    return {
+      id: firebaseTask.id,
+      title: firebaseTask.title,
+      description: firebaseTask.description || '',
+      completed: firebaseTask.completed,
+      status: firebaseTask.status,
+      category: firebaseTask.category,
+      dueDate: dueDate,
+      dueTime: dueTime, // Conversão mais segura, sem fallback para dueDate
+      repeat: {
+        type: firebaseTask.repeatOption === 'diario' ? RepeatType.DAILY :
+              firebaseTask.repeatOption === 'semanal' ? RepeatType.CUSTOM : RepeatType.NONE,
+        days: Array.isArray((firebaseTask as any).repeatDays) ? (firebaseTask as any).repeatDays : []
+      },
+      userId: firebaseTask.userId,
+      approvalId: firebaseTask.approvalId,
+      createdAt: safeToDate(firebaseTask.createdAt) || new Date(), // Garantir que createdAt seja sempre uma data válida
+      // Campos de autoria com fallback para dados antigos
+      createdBy: firebaseTask.createdBy || firebaseTask.userId,
+      createdByName: firebaseTask.createdByName || 'Usuário',
+      editedBy: firebaseTask.editedBy,
+      editedByName: firebaseTask.editedByName,
+      editedAt: safeToDate(firebaseTask.editedAt)
+    };
+  };
 
   // Função para carregar dados do cache local
   const loadDataFromCache = async () => {
@@ -385,42 +413,57 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       try {
         console.log('🔄 Recarregando tarefas da família...');
         const familyTasks = await familyService.getFamilyTasks(currentFamily.id);
+        
         // Converter usando função centralizada para manter dueTime e repeatDays
         const convertedTasks: Task[] = familyTasks.map(firebaseTaskToTask);
         
+        console.log('📊 Tarefas convertidas do Firebase:', convertedTasks.map(t => ({ id: t.id, title: t.title, dueDate: t.dueDate, dueTime: t.dueTime })));
+
         // Fazer merge inteligente: manter tarefas locais mais recentes e adicionar novas do Firebase
         setTasks(currentTasks => {
-          const mergedTasks = [...currentTasks];
+          console.log('📊 Tarefas locais antes do merge:', currentTasks.map(t => ({ id: t.id, title: t.title, dueDate: t.dueDate, dueTime: t.dueTime })));
           
+          const mergedTasksMap = new Map(currentTasks.map(t => [t.id, t]));
+
           // Para cada tarefa do Firebase
           convertedTasks.forEach(firebaseTask => {
-            const existingIndex = mergedTasks.findIndex(t => t.id === firebaseTask.id);
+            const existingTask = mergedTasksMap.get(firebaseTask.id);
             
-            if (existingIndex === -1) {
+            if (!existingTask) {
               // Tarefa não existe localmente, adicionar
-              mergedTasks.push(firebaseTask);
+              mergedTasksMap.set(firebaseTask.id, firebaseTask);
+              console.log(`➕ Tarefa nova adicionada: ${firebaseTask.title}`);
             } else {
               // Tarefa existe, manter a versão mais recente baseada em updatedAt/editedAt
-              const existingTask = mergedTasks[existingIndex];
               const existingTime = existingTask.editedAt || existingTask.createdAt;
               const firebaseTime = firebaseTask.editedAt || firebaseTask.createdAt;
               
               if (firebaseTime > existingTime) {
                 // Versão do Firebase é mais recente
-                mergedTasks[existingIndex] = firebaseTask;
+                mergedTasksMap.set(firebaseTask.id, firebaseTask);
+                console.log(`🔄 Tarefa atualizada pelo Firebase: ${firebaseTask.title}`);
+              } else {
+                console.log(`🚫 Mantendo versão local de: ${existingTask.title} (mais recente)`);
               }
-              // Senão, manter a versão local
             }
           });
           
           // Remover tarefas locais que não existem mais no Firebase (foram deletadas)
           const firebaseIds = new Set(convertedTasks.map(t => t.id));
-          const finalTasks = mergedTasks.filter(t => firebaseIds.has(t.id));
+          currentTasks.forEach(localTask => {
+            if (!firebaseIds.has(localTask.id)) {
+              mergedTasksMap.delete(localTask.id);
+              console.log(`➖ Tarefa removida (não existe mais no Firebase): ${localTask.title}`);
+            }
+          });
+
+          const finalTasks = Array.from(mergedTasksMap.values());
+          console.log('📊 Tarefas locais após o merge:', finalTasks.map(t => ({ id: t.id, title: t.title, dueDate: t.dueDate, dueTime: t.dueTime })));
           
           return finalTasks;
         });
         
-        console.log(`🔄 ${familyTasks.length} tarefas da família sincronizadas com merge inteligente`);
+        console.log(`✅ ${familyTasks.length} tarefas da família sincronizadas com merge inteligente`);
       } catch (error) {
         console.error('❌ Erro ao recarregar tarefas da família:', error);
       }
@@ -965,7 +1008,21 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         await addToHistory('edited', newTaskTitle.trim(), editingTaskId);
       } else {
         // Criar nova tarefa
+        console.log('📝 Criando nova tarefa:', {
+          title: newTaskTitle.trim(),
+          selectedDate: selectedDate,
+          selectedTime: selectedTime,
+          repeatType: repeatType,
+          customDays: customDays
+        });
+
         const defaultDueDate = selectedDate || (repeatType !== RepeatType.NONE ? getInitialDueDateForRecurrence(repeatType, customDays) : undefined);
+        
+        console.log('📅 Data final calculada para nova tarefa:', {
+          defaultDueDate: defaultDueDate,
+          selectedTime: selectedTime
+        });
+
         const newTask: Task = {
           id: uuidv4(), // Usar UUID para garantir ID único
           title: newTaskTitle.trim(),
@@ -985,6 +1042,14 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           createdBy: user.id,
           createdByName: user.name
         };
+
+        console.log('✨ Nova tarefa criada:', {
+          id: newTask.id,
+          title: newTask.title,
+          dueDate: newTask.dueDate,
+          dueTime: newTask.dueTime,
+          repeatType: newTask.repeat.type
+        });
 
   const updatedTasks = [newTask, ...tasks];
         setTasks(updatedTasks);
@@ -1389,16 +1454,20 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   };
 
   const onDateChange = (event: any, date?: Date) => {
+    console.log('📅 onDateChange chamado:', { event, date });
     setShowDatePicker(Platform.OS === 'ios');
     if (date) {
       setSelectedDate(date);
+      console.log('📅 selectedDate atualizado para:', date);
     }
   };
 
   const onTimeChange = (event: any, time?: Date) => {
+    console.log('🕐 onTimeChange chamado:', { event, time });
     setShowTimePicker(Platform.OS === 'ios');
     if (time) {
       setSelectedTime(time);
+      console.log('🕐 selectedTime atualizado para:', time);
     }
   };
 
@@ -2868,12 +2937,14 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             type="date"
             onChange={(e: any) => {
               const val = e?.target?.value as string;
+              console.log('🌐 Web date input onChange:', val);
               if (val) {
                 // val: YYYY-MM-DD
                 const [y, m, d] = val.split('-').map((v) => parseInt(v, 10));
                 if (!isNaN(y) && !isNaN(m) && !isNaN(d)) {
                   const dt = new Date(y, m - 1, d, 0, 0, 0, 0);
                   setSelectedDate(dt);
+                  console.log('🌐 Web selectedDate atualizado para:', dt);
                 }
               }
             }}
@@ -2890,6 +2961,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             type="time"
             onChange={(e: any) => {
               const val = e?.target?.value as string; // HH:MM
+              console.log('🌐 Web time input onChange:', val);
               if (val) {
                 const [hh, mm] = val.split(':').map((v) => parseInt(v, 10));
                 if (!isNaN(hh) && !isNaN(mm)) {
@@ -2897,6 +2969,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                   const base = selectedDate ? new Date(selectedDate) : new Date();
                   base.setHours(hh, mm, 0, 0);
                   setSelectedTime(new Date(base));
+                  console.log('🌐 Web selectedTime atualizado para:', new Date(base));
                 }
               }
             }}

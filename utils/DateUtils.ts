@@ -21,6 +21,23 @@ export const safeToDate = (dateValue: any): Date | undefined => {
     }
   }
   
+  // Se é um objeto simples { seconds, nanoseconds }
+  if (
+    typeof dateValue === 'object' &&
+    dateValue !== null &&
+    'seconds' in dateValue &&
+    typeof (dateValue as any).seconds === 'number'
+  ) {
+    try {
+      const seconds = (dateValue as any).seconds as number;
+      const nanos = typeof (dateValue as any).nanoseconds === 'number' ? (dateValue as any).nanoseconds : 0;
+      return new Date(seconds * 1000 + Math.floor(nanos / 1_000_000));
+    } catch (error) {
+      console.warn('Erro ao converter objeto seconds/nanoseconds:', error);
+      return undefined;
+    }
+  }
+  
   // Se é string ou número, tenta converter
   if (typeof dateValue === 'string' || typeof dateValue === 'number') {
     try {
