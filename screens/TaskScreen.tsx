@@ -387,8 +387,40 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         const familyTasks = await familyService.getFamilyTasks(currentFamily.id);
         // Converter usando função centralizada para manter dueTime e repeatDays
         const convertedTasks: Task[] = familyTasks.map(firebaseTaskToTask);
-        setTasks(convertedTasks);
-        console.log(`🔄 ${familyTasks.length} tarefas da família recarregadas`);
+        
+        // Fazer merge inteligente: manter tarefas locais mais recentes e adicionar novas do Firebase
+        setTasks(currentTasks => {
+          const mergedTasks = [...currentTasks];
+          
+          // Para cada tarefa do Firebase
+          convertedTasks.forEach(firebaseTask => {
+            const existingIndex = mergedTasks.findIndex(t => t.id === firebaseTask.id);
+            
+            if (existingIndex === -1) {
+              // Tarefa não existe localmente, adicionar
+              mergedTasks.push(firebaseTask);
+            } else {
+              // Tarefa existe, manter a versão mais recente baseada em updatedAt/editedAt
+              const existingTask = mergedTasks[existingIndex];
+              const existingTime = existingTask.editedAt || existingTask.createdAt;
+              const firebaseTime = firebaseTask.editedAt || firebaseTask.createdAt;
+              
+              if (firebaseTime > existingTime) {
+                // Versão do Firebase é mais recente
+                mergedTasks[existingIndex] = firebaseTask;
+              }
+              // Senão, manter a versão local
+            }
+          });
+          
+          // Remover tarefas locais que não existem mais no Firebase (foram deletadas)
+          const firebaseIds = new Set(convertedTasks.map(t => t.id));
+          const finalTasks = mergedTasks.filter(t => firebaseIds.has(t.id));
+          
+          return finalTasks;
+        });
+        
+        console.log(`🔄 ${familyTasks.length} tarefas da família sincronizadas com merge inteligente`);
       } catch (error) {
         console.error('❌ Erro ao recarregar tarefas da família:', error);
       }
@@ -1535,6 +1567,17 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         const operationType = isTemporaryId ? 'create' : 'update';
         
         await SyncService.addOfflineOperation(operationType, 'tasks', firebaseTask);
+        
+        // Para tarefas da família, sincronizar imediatamente para evitar conflitos
+        if (currentFamily && !isOffline) {
+          try {
+            await familyService.saveFamilyTask(firebaseTask as any, currentFamily.id);
+            console.log('👨‍👩‍👧‍👦 Tarefa atualizada imediatamente na família');
+          } catch (error) {
+            console.error('❌ Erro ao atualizar tarefa na família:', error);
+          }
+        }
+        
         console.log('📱 Status da tarefa atualizado e sincronizado');
       } catch (error) {
         console.error('Erro ao sincronizar toggle da tarefa:', error);
@@ -2331,7 +2374,11 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.taskListContent}
           >
-            {getCurrentTasks().map((task) => renderTask({ item: task }))}
+            {getCurrentTasks().map((task) => (
+              <View key={task.id}>
+                {renderTask({ item: task })}
+              </View>
+            ))}
           </ScrollView>
         )}
           </View>
