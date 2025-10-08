@@ -18,27 +18,41 @@ export class Alert {
     if (Platform.OS === 'web') {
       // Web implementation using browser alert/confirm
       if (buttons && buttons.length > 1) {
-        // For multiple buttons, use confirm and handle accordingly
+        // Para múltiplos botões, usar confirm e mapear callbacks corretamente
+        const normalized = buttons ?? [];
+
+        const confirmKeywords = ['sair', 'excluir', 'apagar', 'deletar', 'remover', 'confirmar', 'ok', 'sim'];
+        const cancelKeywords = ['cancelar', 'não', 'nao', 'voltar', 'fechar'];
+
+        const toText = (t?: string) => (t || '').toLowerCase();
+
+        // Priorizar botão destrutivo como confirmação
+        let confirmButton = normalized.find(b => b.style === 'destructive');
+        if (!confirmButton) {
+          // Depois, tentar por palavras-chave de confirmação
+          confirmButton = normalized.find(b => confirmKeywords.some(k => toText(b.text).includes(k)));
+        }
+        if (!confirmButton) {
+          // Depois, aceitar style default
+          confirmButton = normalized.find(b => b.style === 'default');
+        }
+        if (!confirmButton) {
+          // Fallback comum: último botão é o de confirmação
+          confirmButton = normalized[normalized.length - 1];
+        }
+
+        // Cancelar: priorizar style 'cancel' ou palavras-chave
+        let cancelButton = normalized.find(b => b.style === 'cancel');
+        if (!cancelButton) {
+          cancelButton = normalized.find(b => cancelKeywords.some(k => toText(b.text).includes(k)));
+        }
+
         const confirmed = window.confirm(`${title}\n\n${message || ''}`);
-        
-        // Find the appropriate button based on confirmation
-        const yesButton = buttons.find(btn => 
-          btn.style === 'default' || 
-          btn.text?.toLowerCase().includes('sim') || 
-          btn.text?.toLowerCase().includes('ok') ||
-          btn.text?.toLowerCase().includes('confirmar')
-        );
-        
-        const noButton = buttons.find(btn => 
-          btn.style === 'cancel' || 
-          btn.text?.toLowerCase().includes('não') || 
-          btn.text?.toLowerCase().includes('cancelar')
-        );
-        
-        if (confirmed && yesButton?.onPress) {
-          yesButton.onPress();
-        } else if (!confirmed && noButton?.onPress) {
-          noButton.onPress();
+
+        if (confirmed) {
+          confirmButton?.onPress?.();
+        } else {
+          cancelButton?.onPress?.();
         }
       } else {
         // Simple alert
