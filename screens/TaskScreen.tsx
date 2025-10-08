@@ -13,6 +13,7 @@ import {
   Image,
   Dimensions,
   AppState,
+  ActivityIndicator
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -31,6 +32,7 @@ import ConnectivityService, { ConnectivityState } from '../services/Connectivity
 import Alert from '../utils/Alert';
 import familyService from '../services/FirebaseFamilyService';
 import { safeToDate, isToday, isUpcoming, isTaskOverdue, getNextRecurrenceDate, isRecurringTaskCompletable } from '../utils/DateUtils';
+import { v4 as uuidv4 } from 'uuid';
 
 export enum RepeatType {
   NONE = 'none',
@@ -224,6 +226,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
 
   // Estado para IDs de tarefas pendentes de sincronização
   const [pendingSyncIds, setPendingSyncIds] = useState<string[]>([]);
+  const [isAddingTask, setIsAddingTask] = useState(false);
   
   // Estado para dropdown de filtros
   const [filterDropdownVisible, setFilterDropdownVisible] = useState(false);
@@ -894,6 +897,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       Alert.alert('Erro', 'Por favor, insira um título para a tarefa.');
       return;
     }
+    if (isAddingTask) return; // Prevenir cliques múltiplos
+
+    setIsAddingTask(true);
 
     try {
       if (isEditing && editingTaskId) {
@@ -965,7 +971,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       } else {
         // Criar nova tarefa
         const newTask: Task = {
-          id: 'temp_' + Date.now().toString(), // ID temporário para novas tarefas
+          id: uuidv4(), // Usar UUID para garantir ID único
           title: newTaskTitle.trim(),
           description: newTaskDescription.trim(),
           completed: false,
@@ -1033,6 +1039,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     } catch (error) {
       console.error('Erro ao salvar tarefa:', error);
       Alert.alert('Erro', 'Não foi possível salvar a tarefa. Tente novamente.');
+    } finally {
+      setIsAddingTask(false); // Reabilitar o botão
     }
   };
 
@@ -1565,7 +1573,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
 
     setApprovals([...approvals, approval]);
 
-    // Atualizar tarefa para status pendente aprovação
+    // Atualizar tarefa para status pendente aprovação (local)
     setTasks(tasks.map(t => 
       t.id === task.id ? { 
         ...t, 
@@ -1573,6 +1581,19 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         approvalId: approval.id
       } : t
     ));
+
+    // Persistir alteração para sincronização/tempo real
+    try {
+      const updated = { ...task, status: 'pendente_aprovacao' as TaskStatus, approvalId: approval.id };
+      const firebaseTask = taskToFirebaseTask(updated);
+      await LocalStorageService.saveTask(firebaseTask);
+      await SyncService.addOfflineOperation('update', 'tasks', firebaseTask);
+      if (currentFamily && !isOffline) {
+        await familyService.saveFamilyTask(firebaseTask, currentFamily.id);
+      }
+    } catch (err) {
+      console.error('❌ Erro ao persistir status pendente_aprovacao:', err);
+    }
 
     // Criar notificação para admins
     const notification: ApprovalNotification = {
@@ -2556,10 +2577,15 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                 </Pressable>
                 
                 <Pressable 
-                  style={[styles.button, styles.addButton]}
+                  style={[styles.button, styles.addButton, isAddingTask && styles.buttonDisabled]}
                   onPress={addTask}
+                  disabled={isAddingTask}
                 >
-                  <Text style={styles.addButtonText}>{isEditing ? 'Salvar' : 'Adicionar'}</Text>
+                  {isAddingTask ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={styles.addButtonText}>{isEditing ? 'Salvar' : 'Adicionar'}</Text>
+                  )}
                 </Pressable>
               </View>
             </View>
@@ -3609,6 +3635,9 @@ const styles = StyleSheet.create({
   addButton: {
     backgroundColor: '#007AFF',
     marginLeft: 8,
+  },
+  buttonDisabled: {
+    backgroundColor: '#a0c8ff', // Cor mais clara para indicar que está desabilitado
   },
   addButtonText: {
     color: '#fff',

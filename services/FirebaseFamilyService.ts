@@ -447,18 +447,17 @@ class FirebaseFamilyService {
             await updateDoc(docRef, taskData);
             console.log('📝 Tarefa da família atualizada:', task.title);
           } else {
-            // Documento não existe, criar novo
-            console.log('📄 Documento não encontrado, criando nova tarefa...');
-            const newDocRef = await addDoc(collection(db, this.tasksCollection), taskData);
-            task.id = newDocRef.id;
-            console.log('✅ Nova tarefa da família criada:', task.title);
+            // Documento não existe, criar novo com o MESMO ID (idempotente)
+            console.log('📄 Documento não encontrado, criando nova tarefa com ID fornecido...');
+            await setDoc(docRef, taskData);
+            console.log('✅ Nova tarefa da família criada (ID preservado):', task.title);
           }
         } catch (updateError) {
-          console.log('❌ Erro ao atualizar, tentando criar nova tarefa...', updateError);
-          // Se falhar ao atualizar, tentar criar nova
-          const newDocRef = await addDoc(collection(db, this.tasksCollection), taskData);
-          task.id = newDocRef.id;
-          console.log('✅ Nova tarefa da família criada após erro:', task.title);
+          console.log('❌ Erro ao atualizar, tentando criar nova tarefa com ID fornecido...', updateError);
+          // Se falhar ao atualizar, criar novo documento com o ID passado
+          const docRef = doc(db, this.tasksCollection, task.id);
+          await setDoc(docRef, taskData);
+          console.log('✅ Nova tarefa da família criada com ID fornecido após erro:', task.title);
         }
       } else {
         // Criar nova tarefa (ID temporário ou inexistente)
