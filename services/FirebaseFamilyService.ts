@@ -40,6 +40,27 @@ class FirebaseFamilyService {
   private tasksCollection = 'family_tasks';
   private historyCollection = 'family_history';
 
+  // Remove chaves com valor undefined de objetos/arrays (recursivo)
+  private sanitizeForFirestore<T = any>(value: T): T {
+    if (value === null || value === undefined) {
+      return value as any;
+    }
+    if (Array.isArray(value)) {
+      return (value
+        .map((v) => this.sanitizeForFirestore(v))
+        .filter((v) => v !== undefined)) as any;
+    }
+    if (typeof value === 'object') {
+      const out: any = {};
+      for (const [k, v] of Object.entries(value as any)) {
+        if (v === undefined) continue;
+        out[k] = this.sanitizeForFirestore(v as any);
+      }
+      return out;
+    }
+    return value;
+  }
+
   // Gerar código único para a família (6 dígitos)
   private generateFamilyCode(): string {
     return Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -84,15 +105,15 @@ class FirebaseFamilyService {
       };
 
       // Converter datas para Timestamp do Firebase
-      const familyData = {
+      const familyData = this.sanitizeForFirestore({
         ...newFamily,
         createdAt: Timestamp.fromDate(newFamily.createdAt),
         inviteCodeExpiry: Timestamp.fromDate(inviteCodeExpiry),
-        members: newFamily.members.map(member => ({
+        members: newFamily.members.map(member => this.sanitizeForFirestore({
           ...member,
           joinedAt: Timestamp.fromDate(member.joinedAt),
         })),
-      };
+      });
 
       await setDoc(doc(db, this.familiesCollection, familyId), familyData);
 
@@ -224,10 +245,10 @@ class FirebaseFamilyService {
         joinedAt: new Date(),
       };
 
-      const memberData = {
+      const memberData = this.sanitizeForFirestore({
         ...newMember,
         joinedAt: Timestamp.fromDate(newMember.joinedAt),
-      };
+      });
 
       await updateDoc(doc(db, this.familiesCollection, family.id), {
         members: arrayUnion(memberData)
@@ -412,7 +433,7 @@ class FirebaseFamilyService {
   // Salvar tarefa da família
   async saveFamilyTask(task: Task, familyId: string): Promise<Task> {
     try {
-      const taskData: any = {
+      const taskDataRaw: any = {
         ...task,
         familyId,
         createdAt: task.createdAt ? Timestamp.fromDate(task.createdAt) : Timestamp.now(),
@@ -422,6 +443,7 @@ class FirebaseFamilyService {
         dueTime: task.dueTime ? Timestamp.fromDate(task.dueTime) : null,
         repeatDays: Array.isArray((task as any).repeatDays) ? (task as any).repeatDays : undefined,
       };
+      const taskData: any = this.sanitizeForFirestore(taskDataRaw);
 
       // Adicionar campos opcionais apenas se não forem undefined
       if (task.editedAt !== undefined) {
@@ -440,12 +462,7 @@ class FirebaseFamilyService {
         taskData.editedByName = task.editedByName;
       }
 
-      // Remover quaisquer campos undefined (Firestore não aceita undefined)
-      Object.keys(taskData).forEach((k) => {
-        if (taskData[k] === undefined) {
-          delete taskData[k];
-        }
-      });
+      // taskData já sanitizado
 
       if (task.id && task.id !== 'temp' && !task.id.startsWith('temp_')) {
         // Verificar se o documento existe antes de tentar atualizar
@@ -560,15 +577,17 @@ class FirebaseFamilyService {
       const syncedTasks: Task[] = [];
 
       for (const task of localTasks) {
-        const taskData = {
+        const taskData = this.sanitizeForFirestore({
           ...task,
           familyId,
           createdAt: task.createdAt ? Timestamp.fromDate(task.createdAt) : Timestamp.now(),
           updatedAt: Timestamp.now(),
           completedAt: task.completedAt ? Timestamp.fromDate(task.completedAt) : null,
           dueDate: task.dueDate ? Timestamp.fromDate(task.dueDate) : null,
+          dueTime: task.dueTime ? Timestamp.fromDate((task as any).dueTime) : null,
+          repeatDays: Array.isArray((task as any).repeatDays) ? (task as any).repeatDays : undefined,
           editedAt: task.editedAt ? Timestamp.fromDate(task.editedAt) : null,
-        };
+        });
 
         if (task.id && task.id !== 'temp') {
           // Verificar se a tarefa já existe

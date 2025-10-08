@@ -43,6 +43,27 @@ class SyncService {
   private static firebaseListeners: Unsubscribe[] = [];
   private static isInitialized = false;
 
+  // Remove chaves com valor undefined de objetos/arrays (recursivo)
+  private static sanitizeForFirestore<T = any>(value: T): T {
+    if (value === null || value === undefined) {
+      return value as any;
+    }
+    if (Array.isArray(value)) {
+      return (value
+        .map((v) => this.sanitizeForFirestore(v))
+        .filter((v) => v !== undefined)) as any;
+    }
+    if (typeof value === 'object') {
+      const out: any = {};
+      for (const [k, v] of Object.entries(value as any)) {
+        if (v === undefined) continue;
+        out[k] = this.sanitizeForFirestore(v as any);
+      }
+      return out;
+    }
+    return value;
+  }
+
   // Inicializar o serviço de sincronização
   static async initialize(): Promise<void> {
     if (this.isInitialized) return;
@@ -176,31 +197,32 @@ class SyncService {
   private static async executeOperation(operation: PendingOperation): Promise<void> {
     const { type, collection: collectionName, data } = operation;
     const collRef = collection(db, collectionName);
+    const payload: any = this.sanitizeForFirestore(data);
 
     switch (type) {
       case 'create':
         // Usar addDoc para que o Firebase gere o ID
-        const newDocRef = await addDoc(collRef, data);
+        const newDocRef = await addDoc(collRef, payload);
         console.log(`✅ Documento criado com novo ID: ${newDocRef.id}`);
         // Opcional: atualizar o ID no cache local se necessário
         break;
       
       case 'update':
         // Se o ID for temporário, tratar como 'create'
-        if (data.id.startsWith('temp_') || data.id === 'temp') {
-          const newDocRefFromUpdate = await addDoc(collRef, data);
+        if (payload.id && (payload.id.startsWith('temp_') || payload.id === 'temp')) {
+          const newDocRefFromUpdate = await addDoc(collRef, payload);
           console.log(`✅ Documento (de update) criado com novo ID: ${newDocRefFromUpdate.id}`);
         } else {
           // Se o ID for real, verificar se existe antes de atualizar
-          const docRef = doc(db, collectionName, data.id);
+          const docRef = doc(db, collectionName, payload.id);
           const docSnap = await getDoc(docRef);
           
           if (docSnap.exists()) {
-            await updateDoc(docRef, data);
+            await updateDoc(docRef, payload);
           } else {
             // Se não existe, cria com o ID especificado (pode ter sido deletado)
             console.log(`⚠️ Documento ${data.id} não encontrado para update, criando novo.`);
-            await setDoc(docRef, data);
+            await setDoc(docRef, payload);
           }
         }
         break;
