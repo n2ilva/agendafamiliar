@@ -417,16 +417,40 @@ class FirebaseFamilyService {
   // Converter dados do Firebase para objetos locais
   private convertFirebaseTask(doc: any): Task {
     const data = doc.data();
+    
+    // Função auxiliar para converter timestamp de forma segura
+    const safeTimestampToDate = (timestamp: any): Date | undefined => {
+      if (!timestamp) return undefined;
+      if (timestamp.toDate && typeof timestamp.toDate === 'function') {
+        try {
+          return timestamp.toDate();
+        } catch (error) {
+          console.warn('Erro ao converter timestamp:', error);
+          return undefined;
+        }
+      }
+      if (timestamp instanceof Date) return timestamp;
+      if (typeof timestamp === 'string' || typeof timestamp === 'number') {
+        try {
+          const date = new Date(timestamp);
+          return isNaN(date.getTime()) ? undefined : date;
+        } catch {
+          return undefined;
+        }
+      }
+      return undefined;
+    };
+
     return {
       ...data,
       id: doc.id,
-      createdAt: data.createdAt?.toDate() || new Date(),
-      updatedAt: data.updatedAt?.toDate() || new Date(),
-      completedAt: data.completedAt?.toDate(),
-      dueDate: data.dueDate?.toDate(),
-      dueTime: data.dueTime?.toDate ? data.dueTime.toDate() : (data.dueTime || undefined),
+      createdAt: safeTimestampToDate(data.createdAt) || new Date(),
+      updatedAt: safeTimestampToDate(data.updatedAt) || new Date(),
+      completedAt: safeTimestampToDate(data.completedAt),
+      dueDate: safeTimestampToDate(data.dueDate),
+      dueTime: safeTimestampToDate(data.dueTime),
       repeatDays: Array.isArray(data.repeatDays) ? data.repeatDays : undefined,
-      editedAt: data.editedAt?.toDate(),
+      editedAt: safeTimestampToDate(data.editedAt),
     };
   }
 
