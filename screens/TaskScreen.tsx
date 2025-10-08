@@ -822,6 +822,36 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   const [repeatType, setRepeatType] = useState<RepeatType>(RepeatType.NONE);
   const [customDays, setCustomDays] = useState<number[]>([]);
 
+  // Calcula uma data inicial para tarefas recorrentes quando o usuário não escolhe uma data
+  const getInitialDueDateForRecurrence = (rt: RepeatType, days: number[] = []): Date => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (rt === RepeatType.DAILY) return today;
+    if (rt === RepeatType.WEEKENDS) {
+      const dow = today.getDay(); // 0=Dom,6=Sáb
+      if (dow === 6 || dow === 0) return today;
+      const toSaturday = 6 - dow;
+      const d = new Date(today);
+      d.setDate(d.getDate() + toSaturday);
+      return d;
+    }
+    if (rt === RepeatType.CUSTOM && days.length > 0) {
+      const sorted = [...days].sort((a, b) => a - b);
+      const dow = today.getDay();
+      if (sorted.includes(dow)) return today;
+      const next = sorted.find((d) => d > dow);
+      const d = new Date(today);
+      if (next === undefined) {
+        const add = (7 - dow) + sorted[0];
+        d.setDate(d.getDate() + add);
+      } else {
+        d.setDate(d.getDate() + (next - dow));
+      }
+      return d;
+    }
+    return today;
+  };
+
   const addTask = async () => {
     if (!newTaskTitle.trim()) {
       Alert.alert('Erro', 'Por favor, insira um título para a tarefa.');
@@ -834,6 +864,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     try {
       if (isEditing && editingTaskId) {
         // Atualizar tarefa existente
+        const defaultDueDateForEdit = selectedDate || (repeatType !== RepeatType.NONE ? getInitialDueDateForRecurrence(repeatType, customDays) : undefined);
         const updatedTasks = tasks.map(task => 
           task.id === editingTaskId 
             ? {
@@ -841,7 +872,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                 title: newTaskTitle.trim(),
                 description: newTaskDescription.trim(),
                 category: selectedCategory,
-                dueDate: selectedDate,
+                dueDate: defaultDueDateForEdit,
                 dueTime: selectedTime,
                 repeat: {
                   type: repeatType,
@@ -902,6 +933,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         await addToHistory('edited', newTaskTitle.trim(), editingTaskId);
       } else {
         // Criar nova tarefa
+        const defaultDueDate = selectedDate || (repeatType !== RepeatType.NONE ? getInitialDueDateForRecurrence(repeatType, customDays) : undefined);
         const newTask: Task = {
           id: uuidv4(), // Usar UUID para garantir ID único
           title: newTaskTitle.trim(),
@@ -909,7 +941,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           completed: false,
           status: 'pendente' as TaskStatus,
           category: selectedCategory,
-          dueDate: selectedDate,
+          dueDate: defaultDueDate,
           dueTime: selectedTime,
           repeat: {
             type: repeatType,
