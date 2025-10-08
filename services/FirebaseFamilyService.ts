@@ -403,6 +403,8 @@ class FirebaseFamilyService {
       updatedAt: data.updatedAt?.toDate() || new Date(),
       completedAt: data.completedAt?.toDate(),
       dueDate: data.dueDate?.toDate(),
+      dueTime: data.dueTime?.toDate ? data.dueTime.toDate() : (data.dueTime || undefined),
+      repeatDays: Array.isArray(data.repeatDays) ? data.repeatDays : undefined,
       editedAt: data.editedAt?.toDate(),
     };
   }
@@ -417,6 +419,8 @@ class FirebaseFamilyService {
         updatedAt: Timestamp.now(),
         completedAt: task.completedAt ? Timestamp.fromDate(task.completedAt) : null,
         dueDate: task.dueDate ? Timestamp.fromDate(task.dueDate) : null,
+        dueTime: task.dueTime ? Timestamp.fromDate(task.dueTime) : null,
+        repeatDays: Array.isArray((task as any).repeatDays) ? (task as any).repeatDays : undefined,
       };
 
       // Adicionar campos opcionais apenas se não forem undefined
@@ -435,6 +439,13 @@ class FirebaseFamilyService {
       if (task.editedByName !== undefined) {
         taskData.editedByName = task.editedByName;
       }
+
+      // Remover quaisquer campos undefined (Firestore não aceita undefined)
+      Object.keys(taskData).forEach((k) => {
+        if (taskData[k] === undefined) {
+          delete taskData[k];
+        }
+      });
 
       if (task.id && task.id !== 'temp' && !task.id.startsWith('temp_')) {
         // Verificar se o documento existe antes de tentar atualizar

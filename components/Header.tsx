@@ -29,6 +29,7 @@ interface HeaderProps {
   notificationCount?: number;
   onNotifications?: () => void;
   onManageFamily?: () => void;
+  onJoinFamilyByCode?: (code: string) => Promise<void> | void;
   syncStatus?: {
     hasError?: boolean;
     isOnline?: boolean;
@@ -49,6 +50,7 @@ export const Header: React.FC<HeaderProps> = ({
   notificationCount = 0,
   onNotifications,
   onManageFamily,
+  onJoinFamilyByCode,
   syncStatus,
 }) => {
   const [userImageLocal, setUserImageLocal] = useState<string | null>(userImage || null);
@@ -59,6 +61,9 @@ export const Header: React.FC<HeaderProps> = ({
   const [selectedRole, setSelectedRole] = useState<UserRole>(userRole || 'admin');
   const [nameLoading, setNameLoading] = useState(false);
   const [imageLoading, setImageLoading] = useState(false);
+  const [joinModalVisible, setJoinModalVisible] = useState(false);
+  const [familyCode, setFamilyCode] = useState('');
+  const [joinLoading, setJoinLoading] = useState(false);
 
   const handleImagePicker = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -159,6 +164,31 @@ export const Header: React.FC<HeaderProps> = ({
     onLogout();
   };
 
+  const openJoinFamily = () => {
+    setMenuVisible(false);
+    setFamilyCode('');
+    setJoinModalVisible(true);
+  };
+
+  const handleJoinFamily = async () => {
+    if (!familyCode.trim()) {
+      Alert.alert('Código inválido', 'Digite o código da família.');
+      return;
+    }
+    if (!onJoinFamilyByCode) return;
+    setJoinLoading(true);
+    try {
+      await onJoinFamilyByCode(familyCode.trim());
+      setJoinModalVisible(false);
+      Alert.alert('Sucesso', 'Você entrou na nova família.');
+    } catch (e: any) {
+      const msg = e?.message || 'Não foi possível entrar na família.';
+      Alert.alert('Erro', msg);
+    } finally {
+      setJoinLoading(false);
+    }
+  };
+
   return (
     <>
       <View style={[
@@ -203,6 +233,24 @@ export const Header: React.FC<HeaderProps> = ({
         </View>
 
         <View style={styles.rightSection}>
+          {/* Botão de Notificações fora do menu (apenas se callback existir) */}
+          {onNotifications && (
+            <Pressable onPress={() => { setMenuVisible(false); onNotifications(); }} style={styles.iconButton} accessibilityLabel="Notificações">
+              <View style={styles.notificationIconContainer}>
+                <Ionicons
+                  name="notifications-outline"
+                  size={24}
+                  color={notificationCount > 0 ? '#f1c40f' : '#333'}
+                />
+                {notificationCount > 0 && (
+                  <View style={styles.notificationDot}>
+                    <Text style={styles.notificationDotText}>{notificationCount}</Text>
+                  </View>
+                )}
+              </View>
+            </Pressable>
+          )}
+
           <View style={styles.menuContainer}>
             <Pressable onPress={() => setMenuVisible(!menuVisible)} style={styles.iconButton}>
               <Ionicons name="ellipsis-vertical" size={24} color="#333" />
@@ -210,27 +258,20 @@ export const Header: React.FC<HeaderProps> = ({
             
             {menuVisible && (
               <View style={styles.dropdownMenu}>
-                {onNotifications && (
-                  <>
-                    <Pressable onPress={() => { setMenuVisible(false); onNotifications(); }} style={styles.menuItem}>
-                      <Ionicons name="notifications-outline" size={18} color="#333" />
-                      <Text style={styles.menuText}>
-                        Notificações {notificationCount > 0 && `(${notificationCount})`}
-                      </Text>
-                      {notificationCount > 0 && (
-                        <View style={styles.notificationBadge}>
-                          <Text style={styles.notificationBadgeText}>{notificationCount}</Text>
-                        </View>
-                      )}
-                    </Pressable>
-                    <View style={styles.menuSeparator} />
-                  </>
-                )}
                 {userRole === 'admin' && onManageFamily && (
                   <>
                     <Pressable onPress={() => { setMenuVisible(false); onManageFamily(); }} style={styles.menuItem}>
                       <Ionicons name="people-outline" size={18} color="#333" />
                       <Text style={styles.menuText}>Gerenciar Família</Text>
+                    </Pressable>
+                    <View style={styles.menuSeparator} />
+                  </>
+                )}
+                {onJoinFamilyByCode && (
+                  <>
+                    <Pressable onPress={openJoinFamily} style={styles.menuItem}>
+                      <Ionicons name="key-outline" size={18} color="#333" />
+                      <Text style={styles.menuText}>Entrar em outra família</Text>
                     </Pressable>
                     <View style={styles.menuSeparator} />
                   </>
@@ -282,6 +323,48 @@ export const Header: React.FC<HeaderProps> = ({
                   <ActivityIndicator size="small" color="#fff" />
                 ) : (
                   <Text style={styles.buttonText}>Salvar</Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal Entrar em outra família */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={joinModalVisible}
+        onRequestClose={() => setJoinModalVisible(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Entrar em outra família</Text>
+            <TextInput
+              style={styles.nameInput}
+              value={familyCode}
+              onChangeText={setFamilyCode}
+              placeholder="Código da família"
+              autoCapitalize="characters"
+              maxLength={8}
+            />
+            <View style={styles.modalButtons}>
+              <Pressable 
+                style={[styles.modalButton, styles.cancelButton]} 
+                onPress={() => setJoinModalVisible(false)}
+                disabled={joinLoading}
+              >
+                <Text style={styles.buttonText}>Cancelar</Text>
+              </Pressable>
+              <Pressable 
+                style={[styles.modalButton, styles.saveButton, joinLoading && styles.buttonDisabled]} 
+                onPress={handleJoinFamily}
+                disabled={joinLoading}
+              >
+                {joinLoading ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.buttonText}>Entrar</Text>
                 )}
               </Pressable>
             </View>
@@ -605,6 +688,30 @@ const styles = StyleSheet.create({
   notificationBadgeText: {
     color: '#fff',
     fontSize: 12,
+    fontWeight: 'bold',
+  },
+  notificationIconContainer: {
+    position: 'relative',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  notificationDot: {
+    position: 'absolute',
+    top: -4,
+    right: -2,
+    backgroundColor: '#e74c3c',
+    borderRadius: 8,
+    minWidth: 16,
+    height: 16,
+    paddingHorizontal: 3,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#fff',
+  },
+  notificationDotText: {
+    color: '#fff',
+    fontSize: 10,
     fontWeight: 'bold',
   },
   // Estilos para modal de configurações de perfil

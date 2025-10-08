@@ -71,8 +71,9 @@ export interface Task {
   updatedAt: Date;
   completedAt?: Date;
   dueDate?: Date;
-  dueTime?: Date; // Adicionar campo dueTime
+  dueTime?: Date; // horário específico da tarefa
   repeatOption?: 'nenhum' | 'diario' | 'semanal' | 'mensal';
+  repeatDays?: number[]; // dias da semana (0-6) quando repeatOption for 'semanal'
   userId: string;
   approvalId?: string;
   // Campos de autoria

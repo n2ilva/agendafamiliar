@@ -1,23 +1,15 @@
 {
   "compilerOptions": {
-    "allowSyntheticDefaultImports": true,
     "jsx": "react-native",
-    "lib": [
-      "dom",
-      "dom.iterable",
-      "es6"
-    ],
+    "moduleResolution": "bundler",
     "allowJs": true,
-    "skipLibCheck": true,
+    "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
-    "allowUmdGlobalAccess": true,
-    "moduleResolution": "node",
     "resolveJsonModule": true,
+    "skipLibCheck": true,
     "isolatedModules": true,
     "noEmit": true,
-    "strict": true,
-    "target": "es2017",
-    "module": "es2015"
+    "strict": true
   },
   "include": [
     "**/*.ts",
@@ -25,5 +17,6 @@
   ],
   "exclude": [
     "node_modules"
-  ]
+  ],
+  "extends": "expo/tsconfig.base"
 }

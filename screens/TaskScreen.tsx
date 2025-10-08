@@ -24,6 +24,7 @@ import {
 } from 'react-native-gesture-handler';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Notifications from 'expo-notifications';
+import NotificationService from '../services/NotificationService';
 import { Header } from '../components/Header';
 import { FamilyUser, UserRole, TaskStatus, TaskApproval, ApprovalNotification, Family, FamilyInvite, Task as FirebaseTask } from '../types/FamilyTypes';
 import LocalStorageService, { HistoryItem as StoredHistoryItem } from '../services/LocalStorageService';
@@ -264,10 +265,11 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       priority: 'media', // valor padrão
       createdAt: task.createdAt,
       updatedAt: task.editedAt || new Date(),
-      dueDate: task.dueDate,
-      dueTime: task.dueTime, // Adicionar dueTime ao Firebase
-      repeatOption: task.repeat?.type === RepeatType.DAILY ? 'diario' : 
-                    task.repeat?.type === RepeatType.CUSTOM ? 'semanal' : 'nenhum',
+  dueDate: task.dueDate,
+  dueTime: task.dueTime, // manter dueTime
+  repeatOption: task.repeat?.type === RepeatType.DAILY ? 'diario' : 
+        task.repeat?.type === RepeatType.CUSTOM ? 'semanal' : 'nenhum',
+  repeatDays: task.repeat?.type === RepeatType.CUSTOM ? (task.repeat.days || []) : null,
       userId: task.userId,
       // Adicionar familyId se o usuário pertence a uma família
       familyId: currentFamily?.id,
@@ -313,7 +315,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     repeat: {
       type: firebaseTask.repeatOption === 'diario' ? RepeatType.DAILY :
             firebaseTask.repeatOption === 'semanal' ? RepeatType.CUSTOM : RepeatType.NONE,
-      days: firebaseTask.repeatOption === 'semanal' ? [1, 2, 3, 4, 5] : []
+      days: Array.isArray((firebaseTask as any).repeatDays) ? (firebaseTask as any).repeatDays : []
     },
     userId: firebaseTask.userId,
     approvalId: firebaseTask.approvalId,
@@ -383,33 +385,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       try {
         console.log('🔄 Recarregando tarefas da família...');
         const familyTasks = await familyService.getFamilyTasks(currentFamily.id);
-        
-        // Converter tarefas da família para o formato local
-        const convertedTasks: Task[] = familyTasks.map(familyTask => ({
-          id: familyTask.id,
-          title: familyTask.title,
-          description: familyTask.description || '',
-          completed: familyTask.completed,
-          status: familyTask.status,
-          category: familyTask.category,
-          createdAt: familyTask.createdAt,
-          dueDate: safeToDate(familyTask.dueDate),
-          dueTime: safeToDate(familyTask.dueDate),
-          repeat: {
-            type: familyTask.repeatOption === 'diario' ? RepeatType.DAILY : 
-                  familyTask.repeatOption === 'semanal' ? RepeatType.WEEKENDS :
-                  RepeatType.NONE,
-            days: []
-          },
-          userId: familyTask.userId,
-          approvalId: familyTask.approvalId,
-          createdBy: familyTask.createdBy,
-          createdByName: familyTask.createdByName,
-          editedBy: familyTask.editedBy,
-          editedByName: familyTask.editedByName,
-          editedAt: familyTask.editedAt
-        }));
-        
+        // Converter usando função centralizada para manter dueTime e repeatDays
+        const convertedTasks: Task[] = familyTasks.map(firebaseTaskToTask);
         setTasks(convertedTasks);
         console.log(`🔄 ${familyTasks.length} tarefas da família recarregadas`);
       } catch (error) {
@@ -420,7 +397,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
 
   // Configurar notificações apenas uma vez
   useEffect(() => {
-    configurarNotificacoes();
+    NotificationService.initialize();
   }, []);
 
   // Configurar atualização automática e AppState listener
@@ -540,34 +517,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             
             // Carregar tarefas da família
             const familyTasks = await familyService.getFamilyTasks(userFamily.id);
-            
-            // Converter tarefas da família para o formato local
-            const convertedTasks: Task[] = familyTasks.map(familyTask => ({
-              id: familyTask.id,
-              title: familyTask.title,
-              description: familyTask.description || '',
-              completed: familyTask.completed,
-              status: familyTask.status,
-              category: familyTask.category,
-              createdAt: familyTask.createdAt,
-              dueDate: safeToDate(familyTask.dueDate),
-              dueTime: safeToDate(familyTask.dueDate), // usar mesma data para time
-              repeat: {
-                type: familyTask.repeatOption === 'diario' ? RepeatType.DAILY : 
-                      familyTask.repeatOption === 'semanal' ? RepeatType.WEEKENDS :
-                      RepeatType.NONE,
-                days: []
-              },
-              userId: familyTask.userId,
-              approvalId: familyTask.approvalId,
-              createdBy: familyTask.createdBy,
-              createdByName: familyTask.createdByName,
-              editedBy: familyTask.editedBy,
-              editedByName: familyTask.editedByName,
-              editedAt: familyTask.editedAt
-            }));
-            
-            // Atualizar tarefas com as tarefas da família
+            const convertedTasks: Task[] = familyTasks.map(firebaseTaskToTask);
             setTasks(convertedTasks);
             
             console.log(`📋 ${familyTasks.length} tarefas da família carregadas e convertidas`);
@@ -779,30 +729,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         // Recarregar dados da família se houver
         if (currentFamily) {
           const familyTasks = await familyService.getFamilyTasks(currentFamily.id);
-          const convertedTasks: Task[] = familyTasks.map(familyTask => ({
-            id: familyTask.id,
-            title: familyTask.title,
-            description: familyTask.description || '',
-            completed: familyTask.completed,
-            status: familyTask.status,
-            category: familyTask.category,
-            createdAt: familyTask.createdAt,
-            dueDate: safeToDate(familyTask.dueDate),
-            dueTime: safeToDate(familyTask.dueDate),
-            repeat: {
-              type: familyTask.repeatOption === 'diario' ? RepeatType.DAILY : 
-                    familyTask.repeatOption === 'semanal' ? RepeatType.WEEKENDS :
-                    RepeatType.NONE,
-              days: []
-            },
-            userId: familyTask.userId,
-            approvalId: familyTask.approvalId,
-            createdBy: familyTask.createdBy,
-            createdByName: familyTask.createdByName,
-            editedBy: familyTask.editedBy,
-            editedByName: familyTask.editedByName,
-            editedAt: familyTask.editedAt
-          }));
+          const convertedTasks: Task[] = familyTasks.map(firebaseTaskToTask);
           setTasks(convertedTasks);
           console.log(`🔄 ${familyTasks.length} tarefas da família recarregadas`);
         }
@@ -887,6 +814,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   const [selectedTime, setSelectedTime] = useState<Date | undefined>(undefined);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
+  // Refs para web fallback (inputs nativos do navegador)
+  const webDateInputRef = React.useRef<any>(null);
+  const webTimeInputRef = React.useRef<any>(null);
   
   // Estados para repetição
   const [repeatType, setRepeatType] = useState<RepeatType>(RepeatType.NONE);
@@ -936,6 +866,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         if (updatedTask) {
           const firebaseTask = taskToFirebaseTask(updatedTask);
           await LocalStorageService.saveTask(firebaseTask);
+          // reagendar lembrete
+          await NotificationService.rescheduleTaskReminder(updatedTask as any);
           
           // Determinar se é create ou update baseado no ID
           const isTemporaryId = updatedTask.id.startsWith('temp_') || updatedTask.id === 'temp';
@@ -990,8 +922,10 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           createdByName: user.name
         };
 
-        const updatedTasks = [newTask, ...tasks];
+  const updatedTasks = [newTask, ...tasks];
         setTasks(updatedTasks);
+  // agendar lembrete da nova tarefa
+  await NotificationService.scheduleTaskReminder(newTask as any);
         
         // Salvar no cache local
         const firebaseTask = taskToFirebaseTask(newTask);
@@ -1435,7 +1369,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   const handleTaskToggle = async (task: Task) => {
     let updatedTasks: Task[];
     
-    if (!task.completed) {
+      if (!task.completed) {
       // Marcando como concluída
       if (task.repeat.type !== 'none') {
         // Tarefa recorrente: criar nova instância para a próxima ocorrência
@@ -1460,7 +1394,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         
         const nextTask: Task = {
           ...task,
-          id: Date.now().toString() + '_recurring',
+          id: uuidv4(),
           completed: false,
           status: 'pendente',
           dueDate: nextDate,
@@ -1492,12 +1426,27 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         
         // Adicionar nova tarefa recorrente
         updatedTasks.push(nextTask);
+        // cancelar lembrete da tarefa atual concluída
+        await NotificationService.cancelTaskReminder(task.id);
         
-        // Salvar nova tarefa no Firebase
+        // Salvar nova tarefa no Firebase e na família
         try {
           const firebaseNextTask = taskToFirebaseTask(nextTask);
           await LocalStorageService.saveTask(firebaseNextTask);
           await SyncService.addOfflineOperation('create', 'tasks', firebaseNextTask);
+          // agendar lembrete da próxima ocorrência
+          await NotificationService.scheduleTaskReminder(nextTask as any);
+          if (currentFamily) {
+            if (!isOffline) {
+              await familyService.saveFamilyTask(firebaseNextTask as any, currentFamily.id);
+              console.log('👨‍👩‍👧‍👦 Próxima ocorrência recorrente salva na família');
+            } else {
+              await SyncService.addOfflineOperation('create', 'family_tasks', {
+                ...firebaseNextTask,
+                familyId: currentFamily.id,
+              });
+            }
+          }
           console.log('📱 Nova tarefa recorrente criada e sincronizada');
         } catch (error) {
           console.error('Erro ao sincronizar nova tarefa recorrente:', error);
@@ -1511,6 +1460,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             status: 'concluida' as TaskStatus
           } : t
         );
+        // cancelar lembrete
+        await NotificationService.cancelTaskReminder(task.id);
       }
     } else {
       // Desmarcando como concluída (apenas para tarefas não recorrentes)
@@ -1522,6 +1473,11 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             status: 'pendente' as TaskStatus
           } : t
         );
+        // reprogramar lembrete se ainda futuro
+        const t = updatedTasks.find(x => x.id === task.id);
+        if (t) {
+          await NotificationService.rescheduleTaskReminder(t as any);
+        }
       } else {
         // Para tarefas recorrentes concluídas, não permite desmarcar
         // (porque já foi criada a próxima instância)
@@ -1641,6 +1597,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         status: 'aprovada'
       } : t
     ));
+    // cancelar notificação
+    await NotificationService.cancelTaskReminder(approval.taskId);
 
     // Remover notificação
     setNotifications(notifications.filter(n => n.taskId !== approval.taskId));
@@ -1673,6 +1631,11 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         approvalId: undefined
       } : t
     ));
+    // reprogramar lembrete se necessário
+    const t = tasks.find(x => x.id === approval.taskId);
+    if (t) {
+      await NotificationService.rescheduleTaskReminder(t as any);
+    }
 
     // Remover notificação
     setNotifications(notifications.filter(n => n.taskId !== approval.taskId));
@@ -1928,6 +1891,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             try {
               // Remover da lista local
               setTasks(tasks.filter(t => t.id !== taskId));
+              // cancelar notificação agendada
+              await NotificationService.cancelTaskReminder(taskId);
               
               // Remover do cache local
               await LocalStorageService.removeFromCache('tasks', taskId);
@@ -2216,6 +2181,24 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           notificationCount={user.role === 'admin' ? notifications.filter(n => !n.read).length : 0}
           onNotifications={user.role === 'admin' ? () => setApprovalModalVisible(true) : undefined}
           onManageFamily={user.role === 'admin' ? handleManageFamily : undefined}
+          onJoinFamilyByCode={async (code: string) => {
+            try {
+              if (!user) return;
+              const newFamily = await familyService.joinFamily(code, user);
+              setCurrentFamily(newFamily);
+              // recarregar tarefas da nova família
+              const familyTasks = await familyService.getFamilyTasks(newFamily.id);
+              const convertedTasks: Task[] = familyTasks.map(firebaseTaskToTask);
+              setTasks(convertedTasks);
+              // atualizar lista de membros
+              setFamilyMembers(newFamily.members);
+              // histórico local
+              await addToHistory('created', 'Entrada em nova família', '');
+            } catch (e) {
+              console.error('Erro ao entrar na família por código:', e);
+              throw e;
+            }
+          }}
           syncStatus={{
             hasError: syncStatus.hasError,
             isOnline: connectivityState.isConnected
@@ -2487,10 +2470,26 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             {/* Seleção de Data e Hora */}
             <Text style={styles.categoryLabel}>Agendamento:</Text>
             
-            <View style={styles.dateTimeContainer}>
+            <View style={[
+              styles.dateTimeContainer,
+              Platform.OS === 'web' && styles.dateTimeContainerWeb
+            ]}>
               <Pressable 
-                style={styles.dateTimeButton}
-                onPress={() => setShowDatePicker(true)}
+                style={[
+                  styles.dateTimeButton,
+                  Platform.OS === 'web' && styles.dateTimeButtonWeb
+                ]}
+                onPress={() => {
+                  if (Platform.OS === 'web') {
+                    const el = webDateInputRef.current as any;
+                    if (el) {
+                      if (typeof el.showPicker === 'function') el.showPicker();
+                      else if (typeof el.click === 'function') el.click();
+                    }
+                  } else {
+                    setShowDatePicker(true);
+                  }
+                }}
               >
                 <Ionicons name="calendar-outline" size={16} color="#666" />
                 <Text style={styles.dateTimeButtonText}>
@@ -2499,8 +2498,21 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
               </Pressable>
               
               <Pressable 
-                style={styles.dateTimeButton}
-                onPress={() => setShowTimePicker(true)}
+                style={[
+                  styles.dateTimeButton,
+                  Platform.OS === 'web' && styles.dateTimeButtonWeb
+                ]}
+                onPress={() => {
+                  if (Platform.OS === 'web') {
+                    const el = webTimeInputRef.current as any;
+                    if (el) {
+                      if (typeof el.showPicker === 'function') el.showPicker();
+                      else if (typeof el.click === 'function') el.click();
+                    }
+                  } else {
+                    setShowTimePicker(true);
+                  }
+                }}
               >
                 <Ionicons name="time-outline" size={16} color="#666" />
                 <Text style={styles.dateTimeButtonText}>
@@ -2698,26 +2710,73 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         </View>
       </Modal>
 
-      {/* Date Picker */}
-      {showDatePicker && (
-        <DateTimePicker
-          value={selectedDate || new Date()}
-          mode="date"
-          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-          onChange={onDateChange}
-          minimumDate={new Date()}
-        />
+      {/* Date/Time pickers (mobile nativo) */}
+      {Platform.OS !== 'web' && (
+        <>
+          {showDatePicker && (
+            <DateTimePicker
+              value={selectedDate || new Date()}
+              mode="date"
+              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+              onChange={onDateChange}
+              minimumDate={new Date()}
+            />
+          )}
+          {showTimePicker && (
+            <DateTimePicker
+              value={selectedTime || new Date()}
+              mode="time"
+              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+              onChange={onTimeChange}
+              is24Hour={true}
+            />
+          )}
+        </>
       )}
 
-      {/* Time Picker */}
-      {showTimePicker && (
-        <DateTimePicker
-          value={selectedTime || new Date()}
-          mode="time"
-          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-          onChange={onTimeChange}
-          is24Hour={true}
-        />
+      {/* Fallback Web: inputs nativos ocultos */}
+      {Platform.OS === 'web' && (
+        <View style={{ height: 0, width: 0, overflow: 'hidden' }}>
+          <input
+            ref={webDateInputRef}
+            type="date"
+            onChange={(e: any) => {
+              const val = e?.target?.value as string;
+              if (val) {
+                // val: YYYY-MM-DD
+                const [y, m, d] = val.split('-').map((v) => parseInt(v, 10));
+                if (!isNaN(y) && !isNaN(m) && !isNaN(d)) {
+                  const dt = new Date(y, m - 1, d, 0, 0, 0, 0);
+                  setSelectedDate(dt);
+                }
+              }
+            }}
+            min={(() => {
+              const now = new Date();
+              const yyyy = now.getFullYear();
+              const mm = String(now.getMonth() + 1).padStart(2, '0');
+              const dd = String(now.getDate()).padStart(2, '0');
+              return `${yyyy}-${mm}-${dd}`;
+            })()}
+          />
+          <input
+            ref={webTimeInputRef}
+            type="time"
+            onChange={(e: any) => {
+              const val = e?.target?.value as string; // HH:MM
+              if (val) {
+                const [hh, mm] = val.split(':').map((v) => parseInt(v, 10));
+                if (!isNaN(hh) && !isNaN(mm)) {
+                  // basear em selectedDate ou hoje
+                  const base = selectedDate ? new Date(selectedDate) : new Date();
+                  base.setHours(hh, mm, 0, 0);
+                  setSelectedTime(new Date(base));
+                }
+              }
+            }}
+            step={60} // minutos
+          />
+        </View>
       )}
 
       {/* Modal de Configurações */}
@@ -3239,6 +3298,19 @@ const styles = StyleSheet.create({
     color: '#666',
     marginLeft: 6,
     flex: 1,
+  },
+  // Estilos específicos para Web para centralizar os botões de Data/Hora
+  dateTimeContainerWeb: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  dateTimeButtonWeb: {
+    flexGrow: 0,
+    flexShrink: 0,
+    minWidth: 160,
+    marginHorizontal: 6,
   },
   repeatContainer: {
     marginBottom: 16, // Reduzir margem
