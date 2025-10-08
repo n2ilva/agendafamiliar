@@ -1437,22 +1437,37 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       // Marcando como concluída
       if (task.repeat.type !== 'none') {
         // Tarefa recorrente: criar nova instância para a próxima ocorrência
+        console.log('🔄 Calculando próxima data para tarefa recorrente:', {
+          taskTitle: task.title,
+          currentDate: task.dueDate,
+          repeatType: task.repeat.type,
+          customDays: task.repeat.days
+        });
+        
         const nextDate = getNextRecurrenceDate(
           task.dueDate || new Date(), 
           task.repeat.type, 
           task.repeat.days
         );
         
+        console.log('📅 Próxima data calculada:', nextDate);
+        
         // Preservar o horário original se existir
-        let nextDateTime = nextDate;
+        let nextDateTime: Date | undefined = undefined;
         if (task.dueTime) {
           const originalTime = safeToDate(task.dueTime);
           if (originalTime) {
             nextDateTime = new Date(nextDate);
-            nextDateTime.setHours(originalTime.getHours());
-            nextDateTime.setMinutes(originalTime.getMinutes());
-            nextDateTime.setSeconds(originalTime.getSeconds());
-            nextDateTime.setMilliseconds(originalTime.getMilliseconds());
+            nextDateTime.setHours(
+              originalTime.getHours(),
+              originalTime.getMinutes(),
+              originalTime.getSeconds(),
+              originalTime.getMilliseconds()
+            );
+            console.log('🕐 Horário preservado:', {
+              original: originalTime,
+              next: nextDateTime
+            });
           }
         }
         
@@ -1462,58 +1477,72 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           completed: false,
           status: 'pendente',
           dueDate: nextDate,
-          dueTime: task.dueTime ? nextDateTime : undefined,
+          dueTime: nextDateTime,
           createdAt: new Date(),
           createdBy: user.id,
           createdByName: user.name,
-          editedBy: undefined,
-          editedByName: undefined,
-          editedAt: undefined
+          editedBy: user.id,
+          editedByName: user.name,
+          editedAt: new Date()
         };
         
-        // Se a dueTime existe, manter a mesma hora na nova data
-        if (nextTask.dueTime && task.dueTime) {
-          const originalTime = safeToDate(task.dueTime);
-          if (originalTime) {
-            nextTask.dueTime.setHours(originalTime.getHours(), originalTime.getMinutes());
-          }
-        }
+        console.log('✨ Nova tarefa recorrente criada:', {
+          id: nextTask.id,
+          title: nextTask.title,
+          dueDate: nextTask.dueDate,
+          dueTime: nextTask.dueTime
+        });
         
         // Marcar tarefa atual como concluída e adicionar nova tarefa
         updatedTasks = tasks.map(t => 
           t.id === task.id ? { 
             ...t, 
             completed: true,
-            status: 'concluida' as TaskStatus
+            status: 'concluida' as TaskStatus,
+            editedBy: user.id,
+            editedByName: user.name,
+            editedAt: new Date()
           } : t
         );
         
-        // Adicionar nova tarefa recorrente
+        // Adicionar nova tarefa recorrente à lista
         updatedTasks.push(nextTask);
+        
+        // Atualizar estado local imediatamente
+        setTasks(updatedTasks);
+        
         // cancelar lembrete da tarefa atual concluída
         await NotificationService.cancelTaskReminder(task.id);
         
-        // Salvar nova tarefa no Firebase e na família
+        // Salvar nova tarefa no Firebase e na família imediatamente
         try {
           const firebaseNextTask = taskToFirebaseTask(nextTask);
           await LocalStorageService.saveTask(firebaseNextTask);
           await SyncService.addOfflineOperation('create', 'tasks', firebaseNextTask);
+          
+          // Salvar imediatamente no Firebase se online
+          if (currentFamily && !isOffline) {
+            await familyService.saveFamilyTask(firebaseNextTask as any, currentFamily.id);
+            console.log('👨‍👩‍👧‍👦 Próxima ocorrência recorrente salva imediatamente na família');
+          } else if (currentFamily) {
+            await SyncService.addOfflineOperation('create', 'family_tasks', {
+              ...firebaseNextTask,
+              familyId: currentFamily.id,
+            });
+            console.log('📱 Próxima ocorrência adicionada à fila de sincronização offline');
+          }
+          
           // agendar lembrete da próxima ocorrência
           await NotificationService.scheduleTaskReminder(nextTask as any);
-          if (currentFamily) {
-            if (!isOffline) {
-              await familyService.saveFamilyTask(firebaseNextTask as any, currentFamily.id);
-              console.log('👨‍👩‍👧‍👦 Próxima ocorrência recorrente salva na família');
-            } else {
-              await SyncService.addOfflineOperation('create', 'family_tasks', {
-                ...firebaseNextTask,
-                familyId: currentFamily.id,
-              });
-            }
-          }
-          console.log('📱 Nova tarefa recorrente criada e sincronizada');
+          
+          console.log('✅ Nova tarefa recorrente criada e sincronizada com sucesso');
         } catch (error) {
-          console.error('Erro ao sincronizar nova tarefa recorrente:', error);
+          console.error('❌ Erro ao sincronizar nova tarefa recorrente:', error);
+          // Em caso de erro, manter a nova tarefa no estado local
+          Alert.alert(
+            'Aviso',
+            'A próxima tarefa foi criada localmente, mas houve um problema na sincronização. Ela será enviada quando a conexão for restabelecida.'
+          );
         }
       } else {
         // Tarefa normal: apenas marcar como concluída
@@ -1521,9 +1550,16 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           t.id === task.id ? { 
             ...t, 
             completed: true,
-            status: 'concluida' as TaskStatus
+            status: 'concluida' as TaskStatus,
+            editedBy: user.id,
+            editedByName: user.name,
+            editedAt: new Date()
           } : t
         );
+        
+        // Atualizar estado local imediatamente
+        setTasks(updatedTasks);
+        
         // cancelar lembrete
         await NotificationService.cancelTaskReminder(task.id);
       }
@@ -1534,9 +1570,16 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           t.id === task.id ? { 
             ...t, 
             completed: false,
-            status: 'pendente' as TaskStatus
+            status: 'pendente' as TaskStatus,
+            editedBy: user.id,
+            editedByName: user.name,
+            editedAt: new Date()
           } : t
         );
+        
+        // Atualizar estado local imediatamente
+        setTasks(updatedTasks);
+        
         // reprogramar lembrete se ainda futuro
         const t = updatedTasks.find(x => x.id === task.id);
         if (t) {
@@ -1552,8 +1595,6 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         return;
       }
     }
-    
-    setTasks(updatedTasks);
     
     // Salvar tarefa atualizada no cache local e sincronizar com Firebase
     const updatedTask = updatedTasks.find(t => t.id === task.id);
@@ -1576,11 +1617,17 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           } catch (error) {
             console.error('❌ Erro ao atualizar tarefa na família:', error);
           }
+        } else if (currentFamily) {
+          await SyncService.addOfflineOperation(operationType, 'family_tasks', {
+            ...firebaseTask,
+            familyId: currentFamily.id,
+          });
+          console.log('📱 Atualização adicionada à fila de sincronização offline');
         }
         
-        console.log('📱 Status da tarefa atualizado e sincronizado');
+        console.log('✅ Status da tarefa atualizado e sincronizado');
       } catch (error) {
-        console.error('Erro ao sincronizar toggle da tarefa:', error);
+        console.error('❌ Erro ao sincronizar toggle da tarefa:', error);
       }
     }
     

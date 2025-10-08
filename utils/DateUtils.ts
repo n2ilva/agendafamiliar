@@ -103,10 +103,20 @@ export const isRecurringTaskCompletable = (dueDate?: Date | any, isRecurring: bo
  */
 export const getNextRecurrenceDate = (currentDate: Date, repeatType: string, customDays?: number[]): Date => {
   const nextDate = new Date(currentDate);
+  const today = new Date();
+  
+  console.log('🔄 Calculando próxima recorrência:', {
+    currentDate: currentDate,
+    repeatType: repeatType,
+    customDays: customDays,
+    today: today
+  });
   
   switch (repeatType) {
     case 'daily':
+      // Para tarefa diária, sempre adiciona 1 dia
       nextDate.setDate(nextDate.getDate() + 1);
+      console.log('📅 Próxima data (diária):', nextDate);
       break;
       
     case 'weekends':
@@ -121,6 +131,7 @@ export const getNextRecurrenceDate = (currentDate: Date, repeatType: string, cus
         const daysUntilSaturday = 6 - currentDay;
         nextDate.setDate(nextDate.getDate() + daysUntilSaturday);
       }
+      console.log('📅 Próxima data (fins de semana):', nextDate);
       break;
       
     case 'custom':
@@ -137,16 +148,26 @@ export const getNextRecurrenceDate = (currentDate: Date, repeatType: string, cus
           // Próximo dia na mesma semana
           nextDate.setDate(nextDate.getDate() + (nextDay - currentDay));
         }
+        console.log('📅 Próxima data (personalizada):', nextDate);
       } else {
         // Fallback: próximo dia
         nextDate.setDate(nextDate.getDate() + 1);
+        console.log('📅 Próxima data (personalizada - fallback):', nextDate);
       }
       break;
       
     default:
       // Não recorrente, não faz nada
+      console.warn('⚠️ Tipo de recorrência não reconhecido:', repeatType);
       break;
   }
   
+  // Garantir que a próxima data seja sempre no futuro
+  if (nextDate <= today) {
+    console.warn('⚠️ Data calculada não está no futuro, ajustando...');
+    nextDate.setDate(today.getDate() + 1);
+  }
+  
+  console.log('✅ Data final calculada:', nextDate);
   return nextDate;
 };
