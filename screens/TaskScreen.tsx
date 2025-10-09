@@ -3406,6 +3406,11 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
               <Text style={styles.manualListItem}>• Aprovações: admins recebem solicitações na campainha; aprove ou rejeite pela lista.</Text>
               <Text style={styles.manualListItem}>• Lembretes: permita notificações no dispositivo para receber alertas.</Text>
 
+              <Text style={styles.manualSubtitle}>Nova funcionalidade: Tarefas Privadas</Text>
+              <Text style={styles.manualListItem}>• Ao criar/editar uma tarefa há a opção <Text style={{fontWeight: '700'}}>Privado</Text>.</Text>
+              <Text style={styles.manualListItem}>• Tarefas marcadas como privadas só são visíveis para o usuário que as criou — outros membros da família não as verão.</Text>
+              <Text style={styles.manualListItem}>• A visibilidade privada é preservada ao editar e ao sincronizar com a família; lembre-se que a privacidade é aplicada no cliente e exibida apenas para o criador.</Text>
+
               <Text style={styles.manualSubtitle}>Dicas rápidas</Text>
               <Text style={styles.manualListItem}>• Toque em uma tarefa para ver detalhes e ações (concluir, editar, excluir).</Text>
               <Text style={styles.manualListItem}>• Dependentes podem solicitar aprovação de conclusão.</Text>
