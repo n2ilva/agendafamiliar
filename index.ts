@@ -1,6 +1,15 @@
 import 'react-native-get-random-values';
 import { registerRootComponent } from 'expo';
 
+// Silenciar logs verbosos em produção/dev para reduzir ruído no console.
+// Mantemos apenas warnings e errors.
+const noop = () => {};
+if (typeof console !== 'undefined') {
+	console.log = noop;
+	console.info = noop;
+	console.debug = noop;
+}
+
 import App from './App';
 
 // registerRootComponent calls AppRegistry.registerComponent('main', () => App);

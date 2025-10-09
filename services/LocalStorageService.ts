@@ -32,6 +32,8 @@ export interface OfflineData {
   history: Record<string, HistoryItem>;
   pendingOperations: PendingOperation[];
   lastSync: number;
+  // Mapa de notificações lidas (por id de notificação/approval)
+  notificationReads?: Record<string, boolean>;
 }
 
 class LocalStorageService {
@@ -71,7 +73,10 @@ class LocalStorageService {
     try {
       const data = await AsyncStorage.getItem(this.STORAGE_KEY);
       if (data) {
-        return JSON.parse(data);
+        const parsed = JSON.parse(data);
+        // garantir estrutura do novo campo
+        if (!parsed.notificationReads) parsed.notificationReads = {};
+        return parsed;
       }
     } catch (error) {
       console.error('Erro ao recuperar dados offline:', error);
@@ -85,7 +90,8 @@ class LocalStorageService {
       approvals: {},
       history: {},
       pendingOperations: [],
-      lastSync: 0
+      lastSync: 0,
+      notificationReads: {}
     };
   }
 
@@ -113,7 +119,11 @@ class LocalStorageService {
   // Salvar aprovação no cache
   static async saveApproval(approval: TaskApproval): Promise<void> {
     const data = await this.getOfflineData();
-    data.approvals[approval.id] = approval;
+    data.approvals[approval.id] = {
+      ...approval,
+      requestedAt: approval.requestedAt instanceof Date ? approval.requestedAt : (approval.requestedAt ? new Date(approval.requestedAt as any) : new Date()),
+      resolvedAt: approval.resolvedAt instanceof Date ? approval.resolvedAt : (approval.resolvedAt ? new Date(approval.resolvedAt as any) : undefined)
+    } as any;
     await this.saveOfflineData(data);
   }
 
@@ -151,7 +161,11 @@ class LocalStorageService {
   // Recuperar aprovações do cache
   static async getApprovals(): Promise<TaskApproval[]> {
     const data = await this.getOfflineData();
-    return Object.values(data.approvals);
+    return Object.values(data.approvals).map((a: any) => ({
+      ...a,
+      requestedAt: safeToDate(a.requestedAt) || new Date(),
+      resolvedAt: safeToDate(a.resolvedAt)
+    }));
   }
 
   // Métodos para histórico
@@ -284,6 +298,22 @@ class LocalStorageService {
   // Atualizar timestamp da última sincronização
   static async updateLastSync(): Promise<void> {
     await this.saveOfflineData({ lastSync: Date.now() });
+  }
+
+  // ================== Notificações (estado lido) ==================
+  static async getNotificationReads(): Promise<Record<string, boolean>> {
+    const data = await this.getOfflineData();
+    return data.notificationReads || {};
+  }
+
+  static async setNotificationsRead(ids: string[], read: boolean = true): Promise<void> {
+    const data = await this.getOfflineData();
+    const reads = { ...(data.notificationReads || {}) };
+    ids.forEach(id => {
+      reads[id] = read;
+    });
+    data.notificationReads = reads;
+    await this.saveOfflineData(data);
   }
 
   // Verificar se os dados estão desatualizados (mais de 1 hora)

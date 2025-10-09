@@ -28,6 +28,7 @@ if (Platform.OS === 'web') {
     }
   });
 }
+
 // Inicializar Auth
 const auth = getAuth(app);
 
@@ -37,11 +38,8 @@ const db = getFirestore(app);
 // Inicializar Storage
 const storage = getStorage(app);
 
-// Logs para debug
-console.log('🔥 Firebase inicializado para:', Platform.OS);
-console.log('🔐 Auth inicializado:', !!auth);
-console.log('📊 Firestore inicializado:', !!db);
-console.log('💾 Storage inicializado:', !!storage);
+// Logs reduzidos para evitar ruído; mantenha erros via console.error em casos de falha
+// console.log('Firebase inicializado para:', Platform.OS);
 
 export { auth, db, storage, analytics };
 export default app;

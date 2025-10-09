@@ -15,7 +15,12 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.n2ilva.taskapp"
+      "bundleIdentifier": "com.n2ilva.taskapp",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Este app precisa de acesso à câmera para tirar fotos de perfil.",
+        "NSPhotoLibraryUsageDescription": "Este app precisa de acesso à galeria para selecionar fotos de perfil.",
+        "NSPhotoLibraryAddUsageDescription": "Este app precisa de acesso para salvar fotos na galeria."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -27,7 +32,10 @@
       "permissions": [
         "RECEIVE_BOOT_COMPLETED",
         "VIBRATE",
-        "WAKE_LOCK"
+        "WAKE_LOCK",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "CAMERA"
       ],
       "package": "com.n2ilva.taskapp"
     },

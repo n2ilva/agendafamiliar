@@ -46,6 +46,8 @@ export interface TaskApproval {
   requestedAt: Date;
   resolvedAt?: Date;
   adminComment?: string;
+  // ID da família para facilitar filtros e listeners em tempo real
+  familyId?: string;
 }
 
 export interface ApprovalNotification {

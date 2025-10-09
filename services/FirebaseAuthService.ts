@@ -560,15 +560,59 @@ export class FirebaseAuthService {
   // Upload de foto de perfil
   static async uploadProfileImage(imageUri: string): Promise<{ success: boolean; photoURL?: string; error?: string }> {
     try {
+      console.log('🔐 Verificando estado de autenticação...');
+      
+      // Aguardar um pouco para garantir que o estado de auth esteja atualizado
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      console.log('🔐 auth.currentUser:', auth.currentUser ? 'Logado' : 'Não logado');
+      console.log('🔐 UID do usuário:', auth.currentUser?.uid);
+      
       if (!auth.currentUser) {
-        return { success: false, error: 'Usuário não está logado' };
+        console.error('❌ Usuário não está logado no Firebase Auth');
+        
+        // Tentar buscar usuário do cache local como fallback
+        const cachedUser = await this.getUserFromLocalStorage();
+        if (cachedUser) {
+          console.log('🔄 Tentando usar usuário do cache local:', cachedUser.name);
+          // Se temos usuário no cache, o problema pode ser timing
+          // Vamos tentar novamente após um delay maior
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          if (auth.currentUser) {
+            console.log('✅ Auth recuperado após delay');
+          } else {
+            return { success: false, error: 'Usuário não está logado. Faça login novamente.' };
+          }
+        } else {
+          return { success: false, error: 'Usuário não está logado. Faça login novamente.' };
+        }
       }
 
       console.log('📸 Iniciando upload da foto de perfil...');
+      console.log('📸 URI recebida:', imageUri);
+      console.log('📸 URI recebida:', imageUri);
+
+      // Verificar se a URI é válida
+      if (!imageUri || (!imageUri.startsWith('file://') && !imageUri.startsWith('http'))) {
+        return { success: false, error: 'URI da imagem inválida' };
+      }
 
       // Converter URI para blob para upload
+      console.log('📤 Convertendo URI para blob...');
       const response = await fetch(imageUri);
+      
+      if (!response.ok) {
+        console.error('❌ Erro na resposta fetch:', response.status, response.statusText);
+        return { success: false, error: 'Não foi possível acessar a imagem' };
+      }
+
       const blob = await response.blob();
+      console.log('📤 Blob criado, tamanho:', blob.size, 'bytes');
+
+      if (blob.size === 0) {
+        return { success: false, error: 'Imagem vazia ou corrompida' };
+      }
 
       // Criar referência única para a imagem
       const userId = auth.currentUser.uid;
@@ -576,20 +620,25 @@ export class FirebaseAuthService {
       const fileName = `profile_${userId}_${timestamp}.jpg`;
       const imageRef = ref(storage, `profile-images/${fileName}`);
 
+      console.log('📤 Fazendo upload para Firebase Storage...');
+      console.log('📤 Caminho:', `profile-images/${fileName}`);
+
       // Upload da imagem
-      console.log('📤 Fazendo upload da imagem...');
       const uploadResult = await uploadBytes(imageRef, blob);
-      
+      console.log('📤 Upload concluído, bytes transferidos:', uploadResult.metadata.size);
+
       // Obter URL de download
       const photoURL = await getDownloadURL(uploadResult.ref);
-      console.log('✅ Upload concluído. URL:', photoURL);
+      console.log('✅ URL de download obtida:', photoURL);
 
       // Atualizar Firebase Auth
+      console.log('👤 Atualizando perfil no Firebase Auth...');
       await updateProfile(auth.currentUser, {
         photoURL: photoURL
       });
 
       // Atualizar no Firestore
+      console.log('📊 Atualizando documento no Firestore...');
       const userDocRef = doc(db, 'users', userId);
       await updateDoc(userDocRef, {
         picture: photoURL,
@@ -606,10 +655,28 @@ export class FirebaseAuthService {
       console.log('✅ Foto de perfil atualizada com sucesso');
       return { success: true, photoURL };
     } catch (error: any) {
-      console.error('❌ Erro ao fazer upload da foto:', error);
-      return { 
-        success: false, 
-        error: 'Erro ao fazer upload da foto. Tente novamente.' 
+      console.error('❌ Erro detalhado no upload da foto:', error);
+      console.error('❌ Código do erro:', error.code);
+      console.error('❌ Mensagem do erro:', error.message);
+
+      // Traduzir erros comuns do Firebase Storage
+      let friendlyError = 'Erro ao fazer upload da foto. Tente novamente.';
+
+      if (error.code === 'storage/unauthorized') {
+        friendlyError = 'Permissão negada. Verifique as regras de segurança do Firebase Storage.';
+      } else if (error.code === 'storage/canceled') {
+        friendlyError = 'Upload cancelado.';
+      } else if (error.code === 'storage/quota-exceeded') {
+        friendlyError = 'Limite de armazenamento excedido.';
+      } else if (error.code === 'storage/invalid-format') {
+        friendlyError = 'Formato de imagem inválido.';
+      } else if (error.message && error.message.includes('network')) {
+        friendlyError = 'Erro de conexão. Verifique sua internet.';
+      }
+
+      return {
+        success: false,
+        error: friendlyError
       };
     }
   }

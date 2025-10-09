@@ -66,53 +66,68 @@ export const Header: React.FC<HeaderProps> = ({
   const [joinLoading, setJoinLoading] = useState(false);
 
   const handleImagePicker = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    console.log('📸 Iniciando seleção de imagem...');
+    console.log('👤 Props recebidas no Header:', { userName, userImage, userRole, familyName });
     
-    if (status !== 'granted') {
-      Alert.alert('Permissão negada', 'Precisamos de acesso à galeria para alterar a foto.');
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8, // Reduzir qualidade para upload mais rápido
-    });
-
-    if (!result.canceled && result.assets[0]) {
-      const imageUri = result.assets[0].uri;
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      console.log('📸 Status das permissões:', status);
       
-      // Atualizar imagem local imediatamente (para UX responsiva)
-      setUserImageLocal(imageUri);
-      setImageLoading(true);
-
-      try {
-        // Upload para Firebase
-        const uploadResult = await FirebaseAuthService.uploadProfileImage(imageUri);
-        
-        if (uploadResult.success && uploadResult.photoURL) {
-          // Atualizar com URL do Firebase
-          setUserImageLocal(uploadResult.photoURL);
-          
-          // Notificar componente pai sobre mudança
-          if (onUserImageChange) {
-            onUserImageChange(uploadResult.photoURL);
-          }
-          
-          Alert.alert('Sucesso', 'Foto de perfil atualizada com sucesso!');
-        } else {
-          // Reverter para imagem anterior em caso de erro
-          setUserImageLocal(userImage || null);
-          Alert.alert('Erro', uploadResult.error || 'Não foi possível atualizar a foto.');
-        }
-      } catch (error) {
-        console.error('Erro no upload da imagem:', error);
-        setUserImageLocal(userImage || null);
-        Alert.alert('Erro', 'Erro inesperado ao atualizar foto.');
-      } finally {
-        setImageLoading(false);
+      if (status !== 'granted') {
+        Alert.alert('Permissão negada', 'Precisamos de acesso à galeria para alterar a foto.');
+        return;
       }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8, // Reduzir qualidade para upload mais rápido
+      });
+
+      console.log('📸 Resultado do picker:', result.canceled ? 'Cancelado' : 'Imagem selecionada');
+
+      if (!result.canceled && result.assets[0]) {
+        const imageUri = result.assets[0].uri;
+        console.log('📸 URI da imagem:', imageUri);
+        
+        // Atualizar imagem local imediatamente (para UX responsiva)
+        setUserImageLocal(imageUri);
+        setImageLoading(true);
+
+        try {
+          console.log('📤 Iniciando upload para Firebase...');
+          // Upload para Firebase
+          const uploadResult = await FirebaseAuthService.uploadProfileImage(imageUri);
+          
+          console.log('📤 Resultado do upload:', uploadResult);
+          
+          if (uploadResult.success && uploadResult.photoURL) {
+            // Atualizar com URL do Firebase
+            setUserImageLocal(uploadResult.photoURL);
+            
+            // Notificar componente pai sobre mudança
+            if (onUserImageChange) {
+              onUserImageChange(uploadResult.photoURL);
+            }
+            
+            Alert.alert('Sucesso', 'Foto de perfil atualizada com sucesso!');
+          } else {
+            // Reverter para imagem anterior em caso de erro
+            setUserImageLocal(userImage || null);
+            Alert.alert('Erro', uploadResult.error || 'Não foi possível atualizar a foto.');
+          }
+        } catch (error) {
+          console.error('❌ Erro no upload da imagem:', error);
+          setUserImageLocal(userImage || null);
+          Alert.alert('Erro', 'Erro inesperado ao atualizar foto.');
+        } finally {
+          setImageLoading(false);
+        }
+      }
+    } catch (error) {
+      console.error('❌ Erro geral no handleImagePicker:', error);
+      Alert.alert('Erro', 'Erro ao acessar a galeria de imagens.');
     }
   };
 
@@ -252,12 +267,24 @@ export const Header: React.FC<HeaderProps> = ({
           )}
 
           <View style={styles.menuContainer}>
-            <Pressable onPress={() => setMenuVisible(!menuVisible)} style={styles.iconButton}>
+            <Pressable onPress={() => setMenuVisible(true)} style={styles.iconButton}>
               <Ionicons name="ellipsis-vertical" size={24} color="#333" />
             </Pressable>
-            
-            {menuVisible && (
-              <View style={styles.dropdownMenu}>
+          </View>
+
+          {/* Menu em Modal para capturar toque fora em toda a tela */}
+          <Modal
+            animationType="fade"
+            transparent={true}
+            visible={menuVisible}
+            onRequestClose={() => setMenuVisible(false)}
+          >
+            <View style={styles.modalRoot}>
+              {/* Overlay para fechar ao clicar fora */}
+              <Pressable style={styles.fullscreenOverlay} onPress={() => setMenuVisible(false)} />
+
+              {/* Dropdown alinhado ao canto superior direito */}
+              <View style={styles.dropdownMenuModal}>
                 {userRole === 'admin' && onManageFamily && (
                   <>
                     <Pressable onPress={() => { setMenuVisible(false); onManageFamily(); }} style={styles.menuItem}>
@@ -280,13 +307,15 @@ export const Header: React.FC<HeaderProps> = ({
                   <Ionicons name="settings-outline" size={18} color="#333" />
                   <Text style={styles.menuText}>Configurações</Text>
                 </Pressable>
+                <View style={styles.menuSeparator} />
+                {/* Logout no final do menu */}
+                <Pressable onPress={() => { setMenuVisible(false); handleLogout(); }} style={styles.menuItem}>
+                  <Ionicons name="log-out-outline" size={18} color="#e74c3c" />
+                  <Text style={[styles.menuText, { color: '#e74c3c' }]}>Sair</Text>
+                </Pressable>
               </View>
-            )}
-          </View>
-          
-          <Pressable onPress={handleLogout} style={styles.iconButton}>
-            <Ionicons name="log-out-outline" size={24} color="#e74c3c" />
-          </Pressable>
+            </View>
+          </Modal>
         </View>
       </View>
 
@@ -566,6 +595,18 @@ const styles = StyleSheet.create({
     position: 'relative',
     zIndex: 9999,
   },
+  modalRoot: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
+  fullscreenOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'transparent',
+  },
   menuOverlay: {
     position: 'absolute',
     top: 0,
@@ -592,6 +633,23 @@ const styles = StyleSheet.create({
     shadowRadius: 3.84,
     elevation: 10,
     zIndex: 9999,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  // Dropdown usado dentro do Modal (alinhado ao topo à direita)
+  dropdownMenuModal: {
+    position: 'absolute',
+    top: 60,
+    right: 20,
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    paddingVertical: 8,
+    minWidth: 180,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 10,
     borderWidth: 1,
     borderColor: '#e0e0e0',
   },

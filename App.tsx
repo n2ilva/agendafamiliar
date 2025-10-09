@@ -137,7 +137,7 @@ export default function App() {
               await BackgroundSyncService.unregisterBackgroundSyncAsync();
               
             } catch (error) {
-              console.log('Erro no logout:', error);
+              console.error('Erro no logout:', error);
             } finally {
               setUser(null);
             }

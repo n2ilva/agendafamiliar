@@ -22,8 +22,8 @@ import {
   State, 
   GestureHandlerRootView 
 } from 'react-native-gesture-handler';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Notifications from 'expo-notifications';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import NotificationService from '../services/NotificationService';
 import { Header } from '../components/Header';
 import { FamilyUser, UserRole, TaskStatus, TaskApproval, ApprovalNotification, Family, FamilyInvite, Task as FirebaseTask } from '../types/FamilyTypes';
@@ -220,6 +220,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   
   // Estado para modal de configurações
   const [settingsModalVisible, setSettingsModalVisible] = useState(false);
+  const [manualModalVisible, setManualModalVisible] = useState(false);
   
   // Estado para atualização automática
   const [lastUpdate, setLastUpdate] = useState(new Date());
@@ -789,6 +790,19 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       }
     };
   }, [currentFamily?.id, isOffline, user?.id]);
+
+  // Assinar atualizações de approvals em tempo real
+  useEffect(() => {
+    const unsubscribe = SyncService.addApprovalsListener((items) => {
+      // Atualizar apenas se usuário for admin ou se o approval pertencer ao usuário (dependente)
+      if (user.role === 'admin') {
+        setApprovals(items);
+      } else {
+        setApprovals(items.filter(a => a.dependenteId === user.id));
+      }
+    });
+    return () => unsubscribe();
+  }, [user.role, user.id]);
 
   // Função para forçar atualização completa do aplicativo
   const forceRefresh = async () => {
@@ -1751,6 +1765,10 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       dependenteName: user.name,
       status: 'pendente',
       requestedAt: new Date(),
+      // Vincular familyId usando currentFamily ou fallback para user.familyId
+      ...(currentFamily?.id
+        ? { familyId: currentFamily.id } as any
+        : (user.familyId ? { familyId: user.familyId } as any : {})),
     };
 
     setApprovals([...approvals, approval]);
@@ -1773,23 +1791,25 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       if (currentFamily && !isOffline) {
         await familyService.saveFamilyTask(firebaseTask, currentFamily.id);
       }
+      // Persistir a aprovação (Firestore + cache + fila)
+      await LocalStorageService.saveApproval(approval as any);
+      // Garantir que familyId esteja no payload enviado para o Firestore; se não houver, tentar buscar
+      let familyIdToSend = approval.familyId;
+      if (!familyIdToSend) {
+        try {
+          const fam = await familyService.getUserFamily(user.id);
+          familyIdToSend = fam?.id;
+        } catch {}
+      }
+      await SyncService.addOfflineOperation('create', 'approvals', {
+        ...approval,
+        ...(familyIdToSend ? { familyId: familyIdToSend } : {}),
+      });
     } catch (err) {
       console.error('❌ Erro ao persistir status pendente_aprovacao:', err);
     }
 
-    // Criar notificação para admins
-    const notification: ApprovalNotification = {
-      id: Date.now().toString(),
-      type: 'task_approval_request',
-      taskId: task.id,
-      taskTitle: task.title,
-      dependenteId: user.id,
-      dependenteName: user.name,
-      createdAt: new Date(),
-      read: false,
-    };
-
-    setNotifications([...notifications, notification]);
+    // Notificações para admin serão derivadas de approvals (ver useEffect abaixo)
 
     Alert.alert(
       'Solicitação Enviada',
@@ -1799,6 +1819,48 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
 
     await addToHistory('approval_requested', task.title, task.id);
   };
+
+  // Derivar notificações a partir das aprovações pendentes (apenas para admins)
+  useEffect(() => {
+    if (user.role !== 'admin') return;
+    const pending = approvals.filter(a => a.status === 'pendente');
+    setNotifications(prev => {
+      const existing = new Map(prev.map(n => [n.id, n]));
+      const derived: ApprovalNotification[] = [];
+      for (const a of pending) {
+        const notifId = a.id || `${a.taskId}:${a.dependenteId}`;
+        if (existing.has(notifId)) {
+          // manter estado (inclui read)
+          derived.push(existing.get(notifId)!);
+        } else {
+          const t = tasks.find(t => t.id === a.taskId);
+          derived.push({
+            id: notifId,
+            type: 'task_approval_request',
+            taskId: a.taskId,
+            taskTitle: t?.title || 'Tarefa',
+            dependenteId: a.dependenteId,
+            dependenteName: a.dependenteName,
+            createdAt: a.requestedAt || new Date(),
+            read: false,
+          });
+        }
+      }
+      return derived;
+    });
+  }, [approvals, user.role, tasks]);
+
+  // Ao montar, recuperar estado de leitura do cache
+  useEffect(() => {
+    let mounted = true;
+    const loadReads = async () => {
+      const reads = await LocalStorageService.getNotificationReads();
+      if (!mounted) return;
+      setNotifications(prev => prev.map(n => ({ ...n, read: !!reads[n.id] })));
+    };
+    loadReads();
+    return () => { mounted = false; };
+  }, []);
 
   const approveTask = async (approvalId: string, adminComment?: string) => {
     const approval = approvals.find(a => a.id === approvalId);
@@ -1830,8 +1892,49 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       console.warn('[Notifications] cancelTaskReminder falhou (ignorado):', e);
     }
 
-    // Remover notificação
-    setNotifications(notifications.filter(n => n.taskId !== approval.taskId));
+    // Persistir aprovação e atualizar tarefa (cache + fila + família)
+    try {
+      const updatedApproval = {
+        ...approval,
+        status: 'aprovada' as const,
+        adminId: user.id,
+        resolvedAt: new Date(),
+        adminComment
+      };
+      await LocalStorageService.saveApproval(updatedApproval as any);
+      await SyncService.addOfflineOperation('update', 'approvals', updatedApproval);
+
+      const t = tasks.find(t => t.id === approval.taskId);
+      if (t) {
+        const updatedTask = {
+          ...t,
+          completed: true,
+          status: 'aprovada' as TaskStatus,
+          completedAt: new Date(),
+          editedAt: new Date(),
+          editedBy: user.id,
+          editedByName: user.name,
+        };
+        const firebaseTask = taskToFirebaseTask(updatedTask);
+        await LocalStorageService.saveTask(firebaseTask);
+        await SyncService.addOfflineOperation('update', 'tasks', firebaseTask);
+        if (currentFamily && !isOffline) {
+          await familyService.saveFamilyTask(firebaseTask as any, currentFamily.id);
+        }
+      }
+    } catch (e) {
+      console.error('Erro ao persistir aprovação/tarefa aprovada:', e);
+    }
+
+  // Remover notificação e a própria aprovação (local e remoto)
+  setNotifications(notifications.filter(n => n.taskId !== approval.taskId));
+    setApprovals(prev => prev.filter(a => a.id !== approvalId));
+    try {
+      await LocalStorageService.removeFromCache('approvals' as any, approvalId);
+      await SyncService.addOfflineOperation('delete', 'approvals', { id: approvalId });
+    } catch (e) {
+      console.error('Erro ao remover aprovação após aprovar:', e);
+    }
 
     await addToHistory('approved', approval.dependenteName + ' - ' + tasks.find(t => t.id === approval.taskId)?.title || '', approval.taskId, adminComment);
 
@@ -1871,8 +1974,48 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       }
     }
 
-    // Remover notificação
-    setNotifications(notifications.filter(n => n.taskId !== approval.taskId));
+    // Persistir aprovação rejeitada e atualizar tarefa (cache + fila + família)
+    try {
+      const updatedApproval = {
+        ...approval,
+        status: 'rejeitada' as const,
+        adminId: user.id,
+        resolvedAt: new Date(),
+        adminComment
+      };
+      await LocalStorageService.saveApproval(updatedApproval as any);
+      await SyncService.addOfflineOperation('update', 'approvals', updatedApproval);
+
+      const t2 = tasks.find(x => x.id === approval.taskId);
+      if (t2) {
+        const updatedTask = {
+          ...t2,
+          status: 'rejeitada' as TaskStatus,
+          approvalId: undefined,
+          editedAt: new Date(),
+          editedBy: user.id,
+          editedByName: user.name,
+        };
+        const firebaseTask = taskToFirebaseTask(updatedTask);
+        await LocalStorageService.saveTask(firebaseTask);
+        await SyncService.addOfflineOperation('update', 'tasks', firebaseTask);
+        if (currentFamily && !isOffline) {
+          await familyService.saveFamilyTask(firebaseTask as any, currentFamily.id);
+        }
+      }
+    } catch (e) {
+      console.error('Erro ao persistir aprovação/tarefa rejeitada:', e);
+    }
+
+  // Remover notificação e a própria aprovação (local e remoto)
+  setNotifications(notifications.filter(n => n.taskId !== approval.taskId));
+    setApprovals(prev => prev.filter(a => a.id !== approvalId));
+    try {
+      await LocalStorageService.removeFromCache('approvals' as any, approvalId);
+      await SyncService.addOfflineOperation('delete', 'approvals', { id: approvalId });
+    } catch (e) {
+      console.error('Erro ao remover aprovação após rejeitar:', e);
+    }
 
     await addToHistory('rejected', approval.dependenteName + ' - ' + tasks.find(t => t.id === approval.taskId)?.title || '', approval.taskId, adminComment);
 
@@ -2173,6 +2316,14 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     forceRefresh();
   };
 
+  const handleOpenManual = () => {
+    setSettingsModalVisible(false);
+    setManualModalVisible(true);
+  };
+  const handleCloseManual = () => {
+    setManualModalVisible(false);
+  };
+
   const handleSystemInfo = () => {
     const lastUpdateTime = lastUpdate.toLocaleString('pt-BR', {
       day: '2-digit',
@@ -2413,7 +2564,15 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           onSettings={handleSettings}
           onLogout={handleLogout}
           notificationCount={user.role === 'admin' ? notifications.filter(n => !n.read).length : 0}
-          onNotifications={user.role === 'admin' ? () => setApprovalModalVisible(true) : undefined}
+          onNotifications={user.role === 'admin' ? async () => {
+            // marcar como lidas no estado e persistir
+            setNotifications((prev: ApprovalNotification[]) => prev.map(n => ({ ...n, read: true })));
+            try {
+              const ids = notifications.map(n => n.id);
+              await LocalStorageService.setNotificationsRead(ids, true);
+            } catch {}
+            setApprovalModalVisible(true);
+          } : undefined}
           onManageFamily={user.role === 'admin' ? handleManageFamily : undefined}
           onJoinFamilyByCode={async (code: string) => {
             try {
@@ -2545,6 +2704,13 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
 
       {/* Container dos botões flutuantes */}
       <View style={styles.fabContainer}>
+        {/* Botão Atualizar Dados (novo) */}
+        <Pressable 
+          style={[styles.filterFab, styles.updateFab]}
+          onPress={handleUpdateData}
+        >
+          <Ionicons name="refresh" size={24} color="#fff" />
+        </Pressable>
         {/* Botão de Filtro */}
         <Pressable 
           style={styles.filterFab}
@@ -3029,40 +3195,39 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         onRequestClose={() => setSettingsModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, styles.settingsModalContent]}>
             <Text style={styles.modalTitle}>Configurações</Text>
-            
-            <View style={styles.settingsOptions}>
-              <Pressable 
-                style={styles.settingsOption}
-                onPress={handleShowHistory}
-              >
-                <Ionicons name="time-outline" size={24} color="#007AFF" />
-                <Text style={styles.settingsOptionText}>Histórico</Text>
-                <Ionicons name="chevron-forward" size={20} color="#ccc" />
-              </Pressable>
-              
-              <Pressable 
-                style={styles.settingsOption}
-                onPress={handleUpdateData}
-              >
-                <Ionicons name="refresh-outline" size={24} color="#007AFF" />
-                <Text style={styles.settingsOptionText}>Atualizar Dados</Text>
-                <Ionicons name="chevron-forward" size={20} color="#ccc" />
-              </Pressable>
-              
-              <Pressable 
-                style={styles.settingsOption}
-                onPress={handleSystemInfo}
-              >
-                <Ionicons name="information-circle-outline" size={24} color="#007AFF" />
-                <Text style={styles.settingsOptionText}>Info do Sistema</Text>
-                <Ionicons name="chevron-forward" size={20} color="#ccc" />
-              </Pressable>
-            </View>
-            
+
+            <ScrollView
+              style={{ flexGrow: 0 }}
+              contentContainerStyle={{ paddingBottom: 150 }}
+              showsVerticalScrollIndicator={true}
+            >
+              <View style={styles.settingsOptions}>
+                <Pressable 
+                  style={styles.settingsOption}
+                  onPress={handleShowHistory}
+                >
+                  <Ionicons name="time-outline" size={24} color="#007AFF" />
+                  <Text style={styles.settingsOptionText}>Histórico</Text>
+                  <Ionicons name="chevron-forward" size={20} color="#ccc" />
+                </Pressable>
+
+                <Pressable 
+                  style={styles.settingsOption}
+                  onPress={handleOpenManual}
+                >
+                  <Ionicons name="book-outline" size={24} color="#007AFF" />
+                  <Text style={styles.settingsOptionText}>Manual</Text>
+                  <Ionicons name="chevron-forward" size={20} color="#ccc" />
+                </Pressable>
+              </View>
+            </ScrollView>
+
+            {/* Botão de atualizar removido do modal de Configurações (foi movido para a tela principal) */}
+
             <Pressable
-              style={styles.closeButton}
+              style={[styles.closeButton, styles.closeButtonFixed]}
               onPress={() => setSettingsModalVisible(false)}
             >
               <Text style={styles.closeButtonText}>Fechar</Text>
@@ -3147,6 +3312,48 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         </SafeAreaView>
       </Modal>
 
+      {/* Modal do Manual */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={manualModalVisible}
+        onRequestClose={handleCloseManual}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, styles.manualModalContent]}>
+            <Text style={styles.modalTitle}>Manual de Uso</Text>
+
+            <ScrollView
+              style={styles.manualScroll}
+              contentContainerStyle={styles.manualContent}
+              showsVerticalScrollIndicator={true}
+            >
+              <Text style={styles.manualParagraph}>
+                Bem-vindo ao Agenda Familiar! Aqui você pode organizar as tarefas da família, aprovar pedidos dos dependentes e acompanhar o histórico de ações.
+              </Text>
+              <Text style={styles.manualSubtitle}>Navegação básica</Text>
+              <Text style={styles.manualListItem}>• Hoje/Próximas: mude a aba para ver as tarefas do dia ou as próximas.</Text>
+              <Text style={styles.manualListItem}>• Criar tarefa: use o botão + para adicionar uma nova tarefa.</Text>
+              <Text style={styles.manualListItem}>• Categorias: filtre por categoria no botão de filtro; crie novas com "Nova Categoria".</Text>
+              <Text style={styles.manualListItem}>• Aprovações: admins recebem solicitações na campainha; aprove ou rejeite pela lista.</Text>
+              <Text style={styles.manualListItem}>• Lembretes: permita notificações no dispositivo para receber alertas.</Text>
+
+              <Text style={styles.manualSubtitle}>Dicas rápidas</Text>
+              <Text style={styles.manualListItem}>• Toque em uma tarefa para ver detalhes e ações (concluir, editar, excluir).</Text>
+              <Text style={styles.manualListItem}>• Dependentes podem solicitar aprovação de conclusão.</Text>
+              <Text style={styles.manualListItem}>• O histórico mostra o que foi feito nos últimos 15 dias.</Text>
+            </ScrollView>
+
+            <Pressable
+              style={[styles.closeButton, styles.closeButtonFixed]}
+              onPress={handleCloseManual}
+            >
+              <Text style={styles.closeButtonText}>Fechar</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
       {/* Modal de Aprovação para Admins */}
       <Modal
         animationType="fade"
@@ -3155,14 +3362,18 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         onRequestClose={() => setApprovalModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, styles.approvalModalContent]}>
             <Text style={styles.modalTitle}>Solicitações de Aprovação</Text>
             
-            {notifications.filter(n => !n.read).length === 0 ? (
+            {notifications.length === 0 ? (
               <Text style={styles.noNotificationsText}>Nenhuma solicitação pendente</Text>
             ) : (
-              <ScrollView style={styles.notificationsList}>
-                {notifications.filter(n => !n.read).map(notification => {
+              <ScrollView 
+                style={styles.notificationsList}
+                contentContainerStyle={{ paddingBottom: 80 }}
+                showsVerticalScrollIndicator={true}
+              >
+                {notifications.map(notification => {
                   const approval = approvals.find(a => a.taskId === notification.taskId);
                   const task = tasks.find(t => t.id === notification.taskId);
                   
@@ -3219,7 +3430,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             )}
             
             <Pressable
-              style={styles.closeButton}
+              style={[styles.closeButton, styles.closeButtonFixed]}
               onPress={() => setApprovalModalVisible(false)}
             >
               <Text style={styles.closeButtonText}>Fechar</Text>
@@ -3317,7 +3528,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                 
                 {familyMembers.map(member => (
                   <View key={member.id} style={styles.familyMember}>
-                    <View style={styles.memberInfo}>
+                    <View style={styles.memberAvatarColumn}>
                       <View style={styles.memberAvatar}>
                         {member.picture ? (
                           <Image source={{ uri: member.picture }} style={styles.memberAvatarImage} />
@@ -3325,54 +3536,53 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                           <Ionicons name="person" size={20} color="#666" />
                         )}
                       </View>
-                      <View style={styles.memberDetails}>
-                        <Text style={styles.memberName}>{member.name}</Text>
-                        <View style={styles.memberRole}>
-                          <Ionicons 
-                            name={member.role === 'admin' ? 'shield-checkmark' : 'person'} 
-                            size={14} 
-                            color={member.role === 'admin' ? '#007AFF' : '#666'} 
-                          />
-                          <Text style={[
-                            styles.memberRoleText,
-                            member.role === 'admin' && styles.memberRoleAdmin
-                          ]}>
-                            {member.role === 'admin' ? 'Administrador' : 'Dependente'}
-                          </Text>
-                        </View>
-                        {member.email && (
-                          <Text style={styles.memberEmail}>{member.email}</Text>
-                        )}
-                        <Text style={styles.memberJoinDate}>
-                          Entrou em: {member.joinedAt ? new Date(member.joinedAt).toLocaleDateString('pt-BR') : 'Data não disponível'}
+                    </View>
+                    <View style={styles.memberDetailsColumn}>
+                      <Text style={styles.memberName}>{member.name}</Text>
+                      <View style={styles.memberRole}>
+                        <Ionicons 
+                          name={member.role === 'admin' ? 'shield-checkmark' : 'person'} 
+                          size={14} 
+                          color={member.role === 'admin' ? '#007AFF' : '#666'} 
+                        />
+                        <Text style={[
+                          styles.memberRoleText,
+                          member.role === 'admin' && styles.memberRoleAdmin
+                        ]}>
+                          {member.role === 'admin' ? 'Administrador' : 'Dependente'}
                         </Text>
                       </View>
+                      {member.email && (
+                        <Text style={styles.memberEmail}>{member.email}</Text>
+                      )}
+                      <Text style={styles.memberJoinDate}>
+                        Entrou em: {member.joinedAt ? new Date(member.joinedAt).toLocaleDateString('pt-BR') : 'Data não disponível'}
+                      </Text>
+                      {member.id !== user.id && user.role === 'admin' && (
+                        <View style={styles.memberActions}>
+                          <Pressable
+                            onPress={() => changeMemberRole(member.id)}
+                            style={styles.changeMemberRoleButton}
+                          >
+                            <Ionicons 
+                              name="swap-horizontal" 
+                              size={16} 
+                              color="#007AFF" 
+                            />
+                            <Text style={styles.changeMemberRoleButtonText}>
+                              {member.role === 'admin' ? 'Tornar Dependente' : 'Tornar Admin'}
+                            </Text>
+                          </Pressable>
+                          
+                          <Pressable
+                            onPress={() => removeFamilyMember(member.id)}
+                            style={styles.removeMemberButton}
+                          >
+                            <Ionicons name="trash-outline" size={18} color="#e74c3c" />
+                          </Pressable>
+                        </View>
+                      )}
                     </View>
-                    
-                    {member.id !== user.id && user.role === 'admin' && (
-                      <View style={styles.memberActions}>
-                        <Pressable
-                          onPress={() => changeMemberRole(member.id)}
-                          style={styles.changeMemberRoleButton}
-                        >
-                          <Ionicons 
-                            name="swap-horizontal" 
-                            size={16} 
-                            color="#007AFF" 
-                          />
-                          <Text style={styles.changeMemberRoleButtonText}>
-                            {member.role === 'admin' ? 'Tornar Dependente' : 'Tornar Admin'}
-                          </Text>
-                        </Pressable>
-                        
-                        <Pressable
-                          onPress={() => removeFamilyMember(member.id)}
-                          style={styles.removeMemberButton}
-                        >
-                          <Ionicons name="trash-outline" size={18} color="#e74c3c" />
-                        </Pressable>
-                      </View>
-                    )}
                   </View>
                 ))}
               </View>
@@ -3861,6 +4071,16 @@ const styles = StyleSheet.create({
     maxWidth: 400,
     flex: 1,
     maxHeight: '92%', // Aumentar altura máxima
+  },
+  // Conteúdo do modal de configurações com espaço para o botão fixo
+  settingsModalContent: {
+    position: 'relative',
+    paddingBottom: 72, // espaço para o botão "Fechar" fixo
+  },
+  // Conteúdo do modal de aprovações com espaço para o botão fixo
+  approvalModalContent: {
+    position: 'relative',
+    paddingBottom: 72, // espaço para o botão "Fechar" fixo
   },
   modalHeader: {
     flexDirection: 'row',
@@ -4434,6 +4654,14 @@ const styles = StyleSheet.create({
     marginTop: 15,
     alignItems: 'center',
   },
+  // Botão "Fechar" fixo no rodapé do modal de aprovações
+  closeButtonFixed: {
+    position: 'absolute',
+    left: 20,
+    right: 20,
+    bottom: 16,
+    marginTop: 0,
+  },
   closeButtonText: {
     color: '#fff',
     fontWeight: '600',
@@ -4587,11 +4815,11 @@ const styles = StyleSheet.create({
   familyMember: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     backgroundColor: '#fff',
-    padding: 15,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
     borderRadius: 10,
-    marginBottom: 10,
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: '#e0e0e0',
     shadowColor: '#000',
@@ -4603,80 +4831,100 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     elevation: 2,
   },
+  memberAvatarColumn: {
+    width: 60,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  memberDetailsColumn: {
+    flex: 1,
+    paddingLeft: 16,
+  },
   memberInfo: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     flex: 1,
   },
   memberAvatar: {
-    width: 45,
-    height: 45,
-    borderRadius: 22.5,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: '#f0f0f0',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: 14,
     borderWidth: 2,
     borderColor: '#e0e0e0',
   },
   memberAvatarImage: {
-    width: 41,
-    height: 41,
-    borderRadius: 20.5,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
   },
   memberDetails: {
     flex: 1,
+    gap: 4,
   },
   memberName: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: 'bold',
     color: '#333',
-    marginBottom: 2,
+    marginBottom: 6,
+    lineHeight: 22,
   },
   memberRole: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 2,
+    marginBottom: 6,
     gap: 4,
   },
   memberRoleText: {
     fontSize: 13,
     color: '#666',
+    lineHeight: 18,
   },
   memberRoleAdmin: {
     color: '#007AFF',
     fontWeight: 'bold',
   },
   memberEmail: {
-    fontSize: 12,
+    fontSize: 13,
     color: '#666',
-    marginBottom: 2,
+    marginBottom: 6,
+    lineHeight: 18,
   },
   memberJoinDate: {
-    fontSize: 11,
+    fontSize: 12,
     color: '#999',
+    lineHeight: 18,
   },
   removeMemberButton: {
-    padding: 8,
-    borderRadius: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    borderRadius: 8,
     backgroundColor: '#ffe6e6',
+    minHeight: 40,
   },
   memberActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
+    flexWrap: 'wrap',
+    marginTop: 12,
   },
   changeMemberRoleButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 8,
     backgroundColor: '#e6f3ff',
-    gap: 4,
+    gap: 6,
+    minHeight: 40,
+    minWidth: 150,
   },
   changeMemberRoleButtonText: {
-    fontSize: 12,
+    fontSize: 13,
     color: '#007AFF',
     fontWeight: '500',
   },
@@ -4814,6 +5062,10 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 8,
   },
+  // Estilo para o novo FAB de Atualizar Dados (verde)
+  updateFab: {
+    backgroundColor: '#28a745',
+  },
   filterDropdownMenuFloating: {
     position: 'absolute',
     bottom: 157, // Posicionar ao lado do botão de filtro (30 + 56 + 15 + 56 = 157)
@@ -4886,5 +5138,52 @@ const styles = StyleSheet.create({
     color: '#333',
     marginLeft: 15,
     fontWeight: '500',
+  },
+  // Botão de ação do modal de configurações (redondo e verde)
+  settingsActionFab: {
+    position: 'absolute',
+    bottom: 86, // acima do botão Fechar (que está em bottom: 16)
+    alignSelf: 'center',
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#28a745',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  // Estilos do Modal do Manual
+  manualModalContent: {
+    position: 'relative',
+    paddingBottom: 72,
+  },
+  manualScroll: {
+    flexGrow: 0,
+  },
+  manualContent: {
+    paddingBottom: 8,
+  },
+  manualParagraph: {
+    fontSize: 14,
+    color: '#444',
+    marginBottom: 12,
+    lineHeight: 20,
+  },
+  manualSubtitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#333',
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  manualListItem: {
+    fontSize: 14,
+    color: '#555',
+    marginBottom: 6,
+    lineHeight: 20,
   },
 });

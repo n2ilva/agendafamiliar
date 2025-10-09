@@ -32,6 +32,7 @@ type SyncCallback = (status: SyncStatus) => void;
 
 class SyncService {
   private static listeners: SyncCallback[] = [];
+  private static approvalsListeners: Array<(approvals: TaskApproval[]) => void> = [];
   private static isSyncing = false;
   private static syncStatus: SyncStatus = {
     isOnline: false,
@@ -201,10 +202,16 @@ class SyncService {
 
     switch (type) {
       case 'create':
-        // Usar addDoc para que o Firebase gere o ID
-        const newDocRef = await addDoc(collRef, payload);
-        console.log(`✅ Documento criado com novo ID: ${newDocRef.id}`);
-        // Opcional: atualizar o ID no cache local se necessário
+        if (payload.id && typeof payload.id === 'string' && !payload.id.startsWith('temp_') && payload.id !== 'temp') {
+          // Preservar o ID fornecido
+          const targetRef = doc(db, collectionName, payload.id);
+          await setDoc(targetRef, payload);
+          console.log(`✅ Documento criado com ID preservado: ${payload.id}`);
+        } else {
+          // Sem ID ou temporário: deixar o Firestore gerar um ID
+          const newDocRef = await addDoc(collRef, payload);
+          console.log(`✅ Documento criado com novo ID: ${newDocRef.id}`);
+        }
         break;
       
       case 'update':
@@ -228,11 +235,11 @@ class SyncService {
         break;
       
       case 'delete':
-        // Ignorar delete se o ID for temporário
-        if (!data.id.startsWith('temp_') && data.id !== 'temp') {
+        // Deletar documento se houver um ID válido
+        if (data.id && typeof data.id === 'string') {
           await deleteDoc(doc(db, collectionName, data.id));
         } else {
-          console.log(`⚠️ Ignorando deleção de documento com ID temporário: ${data.id}`);
+          console.warn(`⚠️ Operação de delete ignorada: ID inválido em ${collectionName}`, data);
         }
         break;
       
@@ -294,14 +301,33 @@ class SyncService {
       
       console.log(`📋 ${familyTasks.length} tarefas da família baixadas e salvas no cache`);
 
-      // Baixar aprovações (manter lógica existente por enquanto)
-      const approvalsQuery = query(collection(db, 'approvals'));
+      // Baixar aprovações da família
+      const approvalsQuery = query(
+        collection(db, 'approvals'),
+        where('familyId', '==', familyId)
+      );
       const approvalsSnapshot = await getDocs(approvalsQuery);
       
+      const approvals: TaskApproval[] = [];
       for (const approvalDoc of approvalsSnapshot.docs) {
-        const approvalData = { id: approvalDoc.id, ...approvalDoc.data() } as TaskApproval;
+        const raw = approvalDoc.data();
+        const approvalData: TaskApproval = {
+          id: approvalDoc.id,
+          taskId: raw.taskId,
+          dependenteId: raw.dependenteId,
+          dependenteName: raw.dependenteName,
+          adminId: raw.adminId,
+          status: raw.status,
+          requestedAt: (raw.requestedAt && typeof raw.requestedAt.toDate === 'function') ? raw.requestedAt.toDate() : (raw.requestedAt ? new Date(raw.requestedAt) : new Date()),
+          resolvedAt: (raw.resolvedAt && typeof raw.resolvedAt.toDate === 'function') ? raw.resolvedAt.toDate() : (raw.resolvedAt ? new Date(raw.resolvedAt) : undefined),
+          adminComment: raw.adminComment,
+          familyId: raw.familyId || familyId,
+        };
         await LocalStorageService.saveApproval(approvalData);
+        approvals.push(approvalData);
       }
+      // Notificar interessados na lista de approvals
+      this.notifyApprovalsListeners(approvals);
 
     } catch (error) {
       console.error('❌ Erro ao baixar dados da família:', error);
@@ -331,8 +357,51 @@ class SyncService {
 
     this.firebaseListeners.push(userListener);
 
-    // Listener para tarefas (será expandido conforme necessário)
-    // Outros listeners podem ser adicionados aqui
+    // Listener em tempo real para approvals da família do usuário (se houver)
+    familyService.getUserFamily(currentUser.uid).then(family => {
+      if (!family) return;
+      const q = query(
+        collection(db, 'approvals'),
+        where('familyId', '==', family.id)
+      );
+      const approvalsListener = onSnapshot(q, async (snapshot) => {
+        const removals: string[] = [];
+        snapshot.docChanges().forEach(async change => {
+          const data = change.doc.data() as any;
+          const approval: TaskApproval = {
+            id: change.doc.id,
+            taskId: data.taskId,
+            dependenteId: data.dependenteId,
+            dependenteName: data.dependenteName,
+            adminId: data.adminId,
+            status: data.status,
+            requestedAt: (data.requestedAt && typeof data.requestedAt.toDate === 'function') ? data.requestedAt.toDate() : (data.requestedAt ? new Date(data.requestedAt) : new Date()),
+            resolvedAt: (data.resolvedAt && typeof data.resolvedAt.toDate === 'function') ? data.resolvedAt.toDate() : (data.resolvedAt ? new Date(data.resolvedAt) : undefined),
+            adminComment: data.adminComment,
+            familyId: data.familyId || family.id,
+          };
+          // Somente salvar ou remover no cache; derivação de UI acontece na tela
+          if (change.type === 'removed') {
+            removals.push(approval.id);
+            await LocalStorageService.removeFromCache('approvals' as any, approval.id);
+          } else {
+            // evitar re-inserir itens que tenham sido removidos nesta rodada
+            if (!removals.includes(approval.id)) {
+              await LocalStorageService.saveApproval(approval);
+            }
+          }
+        });
+        // Após aplicar mudanças, carregar todas approvals do cache e notificar
+        const allApprovals = await LocalStorageService.getApprovals();
+        const filtered = allApprovals.filter(a => !removals.includes((a as any).id));
+        this.notifyApprovalsListeners(filtered);
+        console.log('🔔 Atualizações de approvals recebidas em tempo real');
+      }, (error) => {
+        console.error('Erro no listener de approvals:', error);
+      });
+
+      this.firebaseListeners.push(approvalsListener);
+    }).catch(err => console.error('Erro ao obter família para listener de approvals:', err));
   }
 
   // Parar listeners do Firebase
@@ -388,6 +457,26 @@ class SyncService {
         console.error('Erro ao executar callback de sync:', error);
       }
     });
+  }
+
+  // Notificar listeners de approvals
+  private static notifyApprovalsListeners(approvals: TaskApproval[]): void {
+    this.approvalsListeners.forEach(cb => {
+      try {
+        cb(approvals);
+      } catch (error) {
+        console.error('Erro ao executar callback de approvals:', error);
+      }
+    });
+  }
+
+  // Adicionar listener para lista de approvals (tempo real)
+  static addApprovalsListener(callback: (approvals: TaskApproval[]) => void): () => void {
+    this.approvalsListeners.push(callback);
+    // Retornar função para remover listener
+    return () => {
+      this.approvalsListeners = this.approvalsListeners.filter(l => l !== callback);
+    };
   }
 
   // Obter status atual
