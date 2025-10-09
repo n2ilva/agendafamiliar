@@ -489,6 +489,8 @@ class FirebaseFamilyService {
       dueTime: convertedDueTime,
       repeatDays: Array.isArray(data.repeatDays) ? data.repeatDays : undefined,
       editedAt: safeTimestampToDate(data.editedAt),
+      // Garantir que a flag 'private' seja retornada como boolean quando presente
+      private: data.private === true
     };
   }
 
@@ -504,6 +506,8 @@ class FirebaseFamilyService {
         dueDate: task.dueDate ? Timestamp.fromDate(task.dueDate) : null,
         dueTime: task.dueTime ? Timestamp.fromDate(task.dueTime) : null,
         repeatDays: Array.isArray((task as any).repeatDays) ? (task as any).repeatDays : undefined,
+        // Incluir flag 'private' se estiver definida
+        ...(typeof (task as any).private !== 'undefined' ? { private: (task as any).private === true } : {}),
       };
       const taskData: any = this.sanitizeForFirestore(taskDataRaw);
 

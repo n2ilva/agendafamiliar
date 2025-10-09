@@ -84,6 +84,8 @@ export interface Task {
   editedBy?: string;
   editedByName?: string;
   editedAt?: Date;
+  // Se true, a tarefa é privada ao usuário que a criou e não deve ser visível para outros membros da família
+  private?: boolean;
 }
 
 export interface FamilyData {

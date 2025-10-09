@@ -173,6 +173,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskDescription, setNewTaskDescription] = useState('');
+  // Flag para indicar se a nova tarefa é privada
+  const [newTaskPrivate, setNewTaskPrivate] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>('work');
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -315,6 +317,11 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       firebaseTask.editedAt = task.editedAt;
     }
 
+    // Incluir flag 'private' se presente
+    if ((task as any).private !== undefined) {
+      firebaseTask.private = (task as any).private;
+    }
+
     return firebaseTask as FirebaseTask;
   };
 
@@ -417,7 +424,14 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         const familyTasks = await familyService.getFamilyTasks(currentFamily.id);
         
         // Converter usando função centralizada para manter dueTime e repeatDays
-        const convertedTasks: Task[] = familyTasks.map(firebaseTaskToTask);
+        let convertedTasks: Task[] = familyTasks.map(firebaseTaskToTask);
+
+        // Filtrar tarefas privadas que não pertencem ao usuário atual
+        convertedTasks = convertedTasks.filter(t => {
+          const isPrivate = (t as any).private === true;
+          if (isPrivate && t.createdBy && t.createdBy !== user.id) return false;
+          return true;
+        });
         
         console.log('📊 Tarefas convertidas do Firebase:', convertedTasks.map(t => ({ id: t.id, title: t.title, dueDate: t.dueDate, dueTime: t.dueTime })));
 
@@ -594,8 +608,14 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             
             // Carregar tarefas da família
             const familyTasks = await familyService.getFamilyTasks(userFamily.id);
-            const convertedTasks: Task[] = familyTasks.map(firebaseTaskToTask);
-            setTasks(convertedTasks);
+                let convertedTasks: Task[] = familyTasks.map(firebaseTaskToTask);
+                // Filtrar tarefas privadas que não pertencem ao usuário atual
+                convertedTasks = convertedTasks.filter(t => {
+                  const isPrivate = (t as any).private === true;
+                  if (isPrivate && t.createdBy && t.createdBy !== user.id) return false;
+                  return true;
+                });
+                setTasks(convertedTasks);
             
             console.log(`📋 ${familyTasks.length} tarefas da família carregadas e convertidas`);
           } else {
@@ -664,13 +684,19 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             currentFamily.id,
             (updatedTasks) => {
               const convertedTasks: Task[] = updatedTasks
-                .map(firebaseTaskToTask)
-                .filter(task => {
+                  .map(firebaseTaskToTask)
+                  .filter(task => {
                   // Se a tarefa estiver na lista de espera, não a atualize
                   if (pendingSyncIds.includes(task.id)) {
                     console.log(`🚫 Tarefa ${task.id} ignorada na atualização do Firebase (pendente de sincronização).`);
                     return false; // Não incluir esta atualização
                   }
+                    // Filtrar tarefas privadas de outros usuários
+                    const isPrivate = (task as any).private === true;
+                    if (isPrivate && task.createdBy && task.createdBy !== user.id) {
+                      console.log(`🔒 Tarefa privada ${task.id} ignorada (não pertence ao usuário atual).`);
+                      return false;
+                    }
                   return true; // Incluir esta atualização
                 });
 
@@ -1095,6 +1121,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           // Campos de autoria
           createdBy: user.id,
           createdByName: user.name
+          // private flag will be added to Firebase conversion via taskToFirebaseTask
         };
 
         console.log('✨ Nova tarefa criada:', {
@@ -1115,29 +1142,30 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   }
         
         // Salvar no cache local
-        const firebaseTask = taskToFirebaseTask(newTask);
+  // Incluir flag 'private' no objeto que será convertido para Firebase
+  const firebaseTask = taskToFirebaseTask({ ...newTask, private: newTaskPrivate } as any);
         await LocalStorageService.saveTask(firebaseTask);
         
         // Adicionar à fila de sincronização (online ou offline)
-        await SyncService.addOfflineOperation('create', 'tasks', firebaseTask);
+  await SyncService.addOfflineOperation('create', 'tasks', firebaseTask);
         
         // Se o usuário pertence a uma família, salvar também na família
         if (currentFamily) {
-          try {
-            if (!isOffline) {
-              await familyService.saveFamilyTask(firebaseTask, currentFamily.id);
-              console.log('👨‍👩‍👧‍👦 Nova tarefa salva na família (online)');
-            } else {
-              // Se offline, adicionar operação para sincronizar depois
-              await SyncService.addOfflineOperation('create', 'family_tasks', {
-                ...firebaseTask,
-                familyId: currentFamily.id
-              });
-              console.log('👨‍👩‍👧‍👦 Nova tarefa adicionada à fila para sincronização da família (offline)');
+            try {
+              if (!isOffline) {
+                await familyService.saveFamilyTask(firebaseTask, currentFamily.id);
+                console.log('👨‍👩‍👧‍👦 Nova tarefa salva na família (online)');
+              } else {
+                // Se offline, adicionar operação para sincronizar depois
+                await SyncService.addOfflineOperation('create', 'family_tasks', {
+                  ...firebaseTask,
+                  familyId: currentFamily.id
+                });
+                console.log('👨‍👩‍👧‍👦 Nova tarefa adicionada à fila para sincronização da família (offline)');
+              }
+            } catch (error) {
+              console.error('❌ Erro ao salvar tarefa na família:', error);
             }
-          } catch (error) {
-            console.error('❌ Erro ao salvar tarefa na família:', error);
-          }
         }
         
         console.log('📱 Nova tarefa criada e adicionada à fila de sincronização');
@@ -1190,6 +1218,16 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     setEditingTaskId(task.id);
     setModalVisible(true);
   }, []);
+
+  // Ao abrir modal para editar/criar, sincronizar estado do campo 'private'
+  useEffect(() => {
+    if (modalVisible && isEditing && editingTaskId) {
+      const t = tasks.find(x => x.id === editingTaskId);
+      setNewTaskPrivate((t as any)?.private === true);
+    } else if (modalVisible && !isEditing) {
+      setNewTaskPrivate(false);
+    }
+  }, [modalVisible, isEditing, editingTaskId, tasks]);
 
   // Funções para filtrar tarefas por data
   const getTodayTasks = () => {
@@ -3032,6 +3070,20 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                 </View>
               </View>
             )}
+            
+            {/* Toggle Privado */}
+            <View style={styles.privateToggleContainer}>
+              <Pressable
+                style={[styles.privateToggleButton, newTaskPrivate && styles.privateToggleButtonActive]}
+                onPress={() => setNewTaskPrivate(prev => !prev)}
+              >
+                <Text style={[styles.privateToggleText, newTaskPrivate && styles.privateToggleTextActive]}>Privado</Text>
+                {newTaskPrivate && (
+                  <Ionicons name="checkmark" size={16} color="#fff" />
+                )}
+              </Pressable>
+              <Text style={styles.privateHint}>Apenas você verá esta tarefa na família</Text>
+            </View>
               </ScrollView>
 
               <View style={styles.modalButtons}>
@@ -3730,6 +3782,37 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#333',
     marginBottom: 8,
+  },
+  privateToggleContainer: {
+    marginTop: 12,
+    marginBottom: 6,
+    alignItems: 'flex-start'
+  },
+  privateToggleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#ccc',
+    backgroundColor: '#fff'
+  },
+  privateToggleButtonActive: {
+    backgroundColor: '#007AFF',
+    borderColor: '#007AFF'
+  },
+  privateToggleText: {
+    marginRight: 8,
+    color: '#333'
+  },
+  privateToggleTextActive: {
+    color: '#fff'
+  },
+  privateHint: {
+    marginTop: 6,
+    fontSize: 12,
+    color: '#888'
   },
   categoryPreviewItem: {
     flexDirection: 'row',
