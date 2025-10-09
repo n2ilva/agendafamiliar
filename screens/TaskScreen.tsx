@@ -1514,6 +1514,11 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   };
 
   const handleTaskToggle = async (task: Task) => {
+    // Safety net: dependente não pode concluir diretamente sem aprovação
+    if (user.role === 'dependente' && !task.completed) {
+      await requestTaskApproval(task);
+      return;
+    }
     let updatedTasks: Task[];
     
       if (!task.completed) {
@@ -2268,7 +2273,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         <View style={styles.taskCardHeader}>
           <View style={styles.taskMainContent}>
             <Pressable
-              onPress={() => handleTaskToggle(item)}
+              onPress={() => toggleTask(item.id)}
               style={styles.checkboxContainer}
               disabled={isPendingRecurring}
             >
