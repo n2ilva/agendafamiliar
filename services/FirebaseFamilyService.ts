@@ -567,23 +567,42 @@ class FirebaseFamilyService {
     }
   }
 
-  // Carregar tarefas da família
-  async getFamilyTasks(familyId: string): Promise<Task[]> {
+  // Carregar tarefas da família e tarefas privadas do usuário
+  // Se userId for informado, retornamos: (tarefas da família que não sejam privadas) + (tarefas privadas criadas pelo usuário)
+  async getFamilyTasks(familyId: string, userId?: string): Promise<Task[]> {
     try {
-      const q = query(
+      const tasks: Task[] = [];
+
+      // 1) Buscar tarefas da família (públicas e privadas — iremos filtrar públicas localmente)
+      const familyQ = query(
         collection(db, this.tasksCollection),
         where('familyId', '==', familyId),
         orderBy('createdAt', 'desc')
       );
 
-      const querySnapshot = await getDocs(q);
-      const tasks: Task[] = [];
-
-      querySnapshot.forEach((doc) => {
+      const familySnap = await getDocs(familyQ);
+      familySnap.forEach((doc) => {
         tasks.push(this.convertFirebaseTask(doc));
       });
 
-      console.log(`📋 Carregadas ${tasks.length} tarefas da família`);
+      // 2) Se userId informado, buscar tarefas privadas desse usuário (private == true && createdBy == userId)
+      if (userId) {
+        const privateQ = query(
+          collection(db, this.tasksCollection),
+          where('createdBy', '==', userId),
+          where('private', '==', true)
+        );
+        const privateSnap = await getDocs(privateQ);
+        privateSnap.forEach((doc) => {
+          const t = this.convertFirebaseTask(doc);
+          // Evitar duplicatas
+          if (!tasks.some(existing => existing.id === t.id)) tasks.push(t);
+        });
+      }
+
+      console.log(`📋 Carregadas ${tasks.length} tarefas (família + privadas do usuário)`);
+      // Retornar ordenado por createdAt/editedAt desc
+      tasks.sort((a, b) => (b.editedAt || b.createdAt).getTime() - (a.editedAt || a.createdAt).getTime());
       return tasks;
     } catch (error) {
       console.error('❌ Erro ao carregar tarefas da família:', error);
@@ -614,26 +633,92 @@ class FirebaseFamilyService {
   }
 
   // Observar mudanças nas tarefas da família em tempo real
-  subscribeToFamilyTasks(familyId: string, callback: (tasks: Task[]) => void): () => void {
-    const q = query(
+  // subscribeToFamilyTasks: escuta tarefas da família e (opcional) tarefas privadas do usuário
+  subscribeToFamilyTasks(familyId: string, callback: (tasks: Task[]) => void, userId?: string): () => void {
+    const unsubscribes: Array<() => void> = [];
+
+    const familyQ = query(
       collection(db, this.tasksCollection),
       where('familyId', '==', familyId),
       orderBy('createdAt', 'desc')
     );
 
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+    const familyUnsub = onSnapshot(familyQ, (querySnapshot) => {
       const tasks: Task[] = [];
       querySnapshot.forEach((doc) => {
         tasks.push(this.convertFirebaseTask(doc));
       });
-      
-      console.log(`🔄 Tarefas da família atualizadas em tempo real: ${tasks.length} tarefas`);
-      callback(tasks);
+
+      // Se não houver userId, apenas retornar as tarefas da família
+      if (!userId) {
+        console.log(`🔄 Tarefas da família atualizadas em tempo real: ${tasks.length} tarefas`);
+        callback(tasks);
+        return;
+      }
+
+      // Se userId informado, também precisamos agregar as tarefas privadas do usuário
+      const privateQ = query(
+        collection(db, this.tasksCollection),
+        where('createdBy', '==', userId),
+        where('private', '==', true)
+      );
+
+      getDocs(privateQ).then(privateSnap => {
+        privateSnap.forEach((doc) => {
+          const t = this.convertFirebaseTask(doc);
+          if (!tasks.some(existing => existing.id === t.id)) tasks.push(t);
+        });
+
+        console.log(`🔄 Tarefas (família + privadas do usuário) atualizadas: ${tasks.length} tarefas`);
+        // ordenar por data
+        tasks.sort((a, b) => (b.editedAt || b.createdAt).getTime() - (a.editedAt || a.createdAt).getTime());
+        callback(tasks);
+      }).catch(err => {
+        console.error('❌ Erro ao buscar tarefas privadas do usuário:', err);
+        // Mesmo em erro, retornar as tarefas da família
+        callback(tasks);
+      });
     }, (error) => {
       console.error('❌ Erro ao observar tarefas da família:', error);
     });
 
-    return unsubscribe;
+    unsubscribes.push(familyUnsub);
+
+    // Se userId informado, criar listener dedicado para tarefas privadas do usuário para atualizações em tempo real
+    if (userId) {
+      const privateQRealtime = query(
+        collection(db, this.tasksCollection),
+        where('createdBy', '==', userId),
+        where('private', '==', true)
+      );
+
+      const privateUnsub = onSnapshot(privateQRealtime, (querySnapshot) => {
+        // Quando houver alteração em tarefas privadas do usuário, refazer a leitura da família para agregar
+        const tasks: Task[] = [];
+        // ler família em paralelo
+        getDocs(familyQ).then(familySnap => {
+          familySnap.forEach((doc) => tasks.push(this.convertFirebaseTask(doc)));
+          querySnapshot.forEach(doc => {
+            const t = this.convertFirebaseTask(doc);
+            if (!tasks.some(existing => existing.id === t.id)) tasks.push(t);
+          });
+          tasks.sort((a, b) => (b.editedAt || b.createdAt).getTime() - (a.editedAt || a.createdAt).getTime());
+          callback(tasks);
+        }).catch(err => {
+          console.error('❌ Erro ao ler tarefas da família durante atualização de privadas:', err);
+          // fallback: retornar apenas privadas
+          const privateTasks: Task[] = [];
+          querySnapshot.forEach(doc => privateTasks.push(this.convertFirebaseTask(doc)));
+          callback(privateTasks);
+        });
+      }, (error) => {
+        console.error('❌ Erro no listener de tarefas privadas do usuário:', error);
+      });
+
+      unsubscribes.push(privateUnsub);
+    }
+
+    return () => unsubscribes.forEach(u => u());
   }
 
   // Sincronizar tarefas locais com tarefas da família

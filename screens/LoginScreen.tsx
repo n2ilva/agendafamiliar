@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Image, TextInput, ActivityIndicator, Platform, ScrollView, Modal } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Image, TextInput, ActivityIndicator, Platform, ScrollView, Modal, KeyboardAvoidingView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import FirebaseAuthService from '../services/FirebaseAuthService';
 import Alert from '../utils/Alert';
@@ -60,9 +60,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
       }
 
       if (result.success) {
-        if (isLogin) {
-          Alert.alert('Sucesso!', 'Login realizado com sucesso!');
-        } else {
+        if (!isLogin) {
           // Alerta após criar cadastro com confirmação e atualização automática
           Alert.alert(
             'Conta Criada com Sucesso!', 
@@ -144,171 +142,182 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
   };
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      <View style={styles.content}>
-        <View style={styles.header}>
-          <Image source={require('../assets/icon.png')} style={styles.logo} />
-          <Text style={styles.title}>Bem-vindo ao</Text>
-          <Text style={styles.appName}>Agenda Familiar</Text>
-        </View>
-
-        {/* Toggle Login/Registro */}
-        <View style={styles.authToggle}>
-          <Pressable
-            style={[styles.toggleButton, isLogin && styles.toggleButtonActive]}
-            onPress={() => setIsLogin(true)}
-          >
-            <Text style={[styles.toggleText, isLogin && styles.toggleTextActive]}>Entrar</Text>
-          </Pressable>
-          <Pressable
-            style={[styles.toggleButton, !isLogin && styles.toggleButtonActive]}
-            onPress={() => setIsLogin(false)}
-          >
-            <Text style={[styles.toggleText, !isLogin && styles.toggleTextActive]}>Registrar</Text>
-          </Pressable>
-        </View>
-
-        {/* Formulário de Autenticação */}
-        <View style={styles.authForm}>
-          {!isLogin && (
-            <>
-              <View style={styles.inputContainer}>
-                <Ionicons name="person-outline" size={20} color="#666" style={styles.inputIcon} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Nome completo"
-                  value={name}
-                  onChangeText={setName}
-                  autoCapitalize="words"
-                  autoCorrect={false}
-                />
-              </View>
-            </>
-          )}
-
-          <View style={styles.inputContainer}>
-            <Ionicons name="mail-outline" size={20} color="#666" style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder="Email"
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-          </View>
-
-          <View style={styles.inputContainer}>
-            <Ionicons name="lock-closed-outline" size={20} color="#666" style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder="Senha"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-          </View>
-        </View>
-
-        <View style={styles.buttonContainer}>
-        <Pressable
-          style={[styles.button, styles.primaryButton, loading && styles.buttonDisabled]}
-          onPress={handleEmailAuth}
-          disabled={loading}
-        >
-          {loading ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <>
-              <Ionicons name="mail" size={24} color="#fff" style={styles.buttonIcon} />
-              <Text style={styles.buttonText}>
-                {isLogin ? 'Entrar com Email' : 'Criar Conta'}
-              </Text>
-            </>
-          )}
-        </Pressable>
-
-        {isLogin && (
-          <Pressable
-            style={styles.forgotPasswordButton}
-            onPress={() => setResetModalVisible(true)}
-          >
-            <Text style={styles.forgotPasswordText}>Esqueci minha senha</Text>
-          </Pressable>
-        )}
-      </View>
-      
-      {/* Nota sobre configurações */}
-      <View style={styles.infoNote}>
-        <Ionicons name="information-circle-outline" size={16} color="#666" />
-        <Text style={styles.infoText}>
-          Você pode alterar seu perfil e configurações após fazer login
-        </Text>
-      </View>
-      
-      <View style={styles.footer}>
-        <Text style={styles.footerText}>Organize suas tarefas de forma simples e compartilhada.</Text>
-      </View>
-    </View>
-
-    {/* Modal de Reset de Senha */}
-    <Modal
-      animationType="fade"
-      transparent={true}
-      visible={resetModalVisible}
-      onRequestClose={() => setResetModalVisible(false)}
+    <KeyboardAvoidingView 
+      style={styles.container} 
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 40 : 0}
     >
-      <View style={styles.modalContainer}>
-        <View style={styles.modalContent}>
-          <Text style={styles.modalTitle}>Redefinir Senha</Text>
-          <Text style={styles.modalSubtitle}>
-            Digite seu email para receber um link de redefinição de senha
-          </Text>
-          
-          <View style={styles.inputContainer}>
-            <Ionicons name="mail-outline" size={20} color="#666" style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder="Digite seu email"
-              value={resetEmail}
-              onChangeText={setResetEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-              autoFocus
-            />
+      <ScrollView 
+        style={styles.scrollContainer}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.content}>
+          <View style={styles.header}>
+            <Image source={require('../assets/icon.png')} style={styles.logo} />
+            <Text style={styles.title}>Bem-vindo ao</Text>
+            <Text style={styles.appName}>Agenda Familiar</Text>
           </View>
 
-          <View style={styles.modalButtons}>
+          {/* Toggle Login/Registro */}
+          <View style={styles.authToggle}>
             <Pressable
-              style={[styles.modalButton, styles.cancelButton]}
-              onPress={() => {
-                setResetModalVisible(false);
-                setResetEmail('');
-              }}
-              disabled={resetLoading}
+              style={[styles.toggleButton, isLogin && styles.toggleButtonActive]}
+              onPress={() => setIsLogin(true)}
             >
-              <Text style={styles.cancelButtonText}>Cancelar</Text>
+              <Text style={[styles.toggleText, isLogin && styles.toggleTextActive]}>Entrar</Text>
             </Pressable>
             <Pressable
-              style={[styles.modalButton, styles.sendButton, resetLoading && styles.buttonDisabled]}
-              onPress={handlePasswordReset}
-              disabled={resetLoading}
+              style={[styles.toggleButton, !isLogin && styles.toggleButtonActive]}
+              onPress={() => setIsLogin(false)}
             >
-              {resetLoading ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Text style={styles.sendButtonText}>Enviar</Text>
-              )}
+              <Text style={[styles.toggleText, !isLogin && styles.toggleTextActive]}>Registrar</Text>
             </Pressable>
           </View>
+
+          {/* Formulário de Autenticação */}
+          <View style={styles.authForm}>
+            {!isLogin && (
+              <>
+                <View style={styles.inputContainer}>
+                  <Ionicons name="person-outline" size={20} color="#666" style={styles.inputIcon} />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Nome completo"
+                    value={name}
+                    onChangeText={setName}
+                    autoCapitalize="words"
+                    autoCorrect={false}
+                  />
+                </View>
+              </>
+            )}
+
+            <View style={styles.inputContainer}>
+              <Ionicons name="mail-outline" size={20} color="#666" style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder="Email"
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+
+            <View style={styles.inputContainer}>
+              <Ionicons name="lock-closed-outline" size={20} color="#666" style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder="Senha"
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+          </View>
+
+          <View style={styles.buttonContainer}>
+          <Pressable
+            style={[styles.button, styles.primaryButton, loading && styles.buttonDisabled]}
+            onPress={handleEmailAuth}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <>
+                <Ionicons name="mail" size={24} color="#fff" style={styles.buttonIcon} />
+                <Text style={styles.buttonText}>
+                  {isLogin ? 'Entrar com Email' : 'Criar Conta'}
+                </Text>
+              </>
+            )}
+          </Pressable>
+
+          {isLogin && (
+            <Pressable
+              style={styles.forgotPasswordButton}
+              onPress={() => setResetModalVisible(true)}
+            >
+              <Text style={styles.forgotPasswordText}>Esqueci minha senha</Text>
+            </Pressable>
+          )}
+        </View>
+        
+        {/* Nota sobre configurações */}
+        <View style={styles.infoNote}>
+          <Ionicons name="information-circle-outline" size={16} color="#666" />
+          <Text style={styles.infoText}>
+            Você pode alterar seu perfil e configurações após fazer login
+          </Text>
+        </View>
+        
+        <View style={styles.footer}>
+          <Text style={styles.footerText}>Organize suas tarefas de forma simples e compartilhada.</Text>
         </View>
       </View>
-    </Modal>
-  </ScrollView>
+      </ScrollView>
+
+      {/* Modal de Reset de Senha */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={resetModalVisible}
+        onRequestClose={() => setResetModalVisible(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Redefinir Senha</Text>
+            <Text style={styles.modalSubtitle}>
+              Digite seu email para receber um link de redefinição de senha
+            </Text>
+            
+            <View style={styles.inputContainer}>
+              <Ionicons name="mail-outline" size={20} color="#666" style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder="Digite seu email"
+                value={resetEmail}
+                onChangeText={setResetEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoFocus
+              />
+            </View>
+
+            <View style={styles.modalButtons}>
+              <Pressable
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={() => {
+                  setResetModalVisible(false);
+                  setResetEmail('');
+                }}
+                disabled={resetLoading}
+              >
+                <Text style={styles.cancelButtonText}>Cancelar</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.modalButton, styles.sendButton, resetLoading && styles.buttonDisabled]}
+                onPress={handlePasswordReset}
+                disabled={resetLoading}
+              >
+                {resetLoading ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.sendButtonText}>Enviar</Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </KeyboardAvoidingView>
   );
 };
 
@@ -316,6 +325,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',
+  },
+  scrollContainer: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
   },
   content: {
     padding: 30,

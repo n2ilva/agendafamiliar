@@ -76,6 +76,8 @@ interface Task {
   editedBy?: string;
   editedByName?: string;
   editedAt?: Date;
+  // Flag de privacidade (apenas visível para o criador)
+  private?: boolean;
 }
 
 export const DEFAULT_CATEGORIES: CategoryConfig[] = [
@@ -110,6 +112,14 @@ export const DEFAULT_CATEGORIES: CategoryConfig[] = [
     color: '#27ae60',
     bgColor: '#e8f5e8',
     isDefault: true
+  },
+  {
+    id: 'study',
+    name: 'Estudos',
+    icon: 'book',
+    color: '#9b59b6',
+    bgColor: '#f3e5f5',
+    isDefault: true
   }
 ];
 
@@ -143,6 +153,7 @@ interface Task {
     type: RepeatType;
     days?: number[];
   };
+  private?: boolean;
 }
 
 interface HistoryItem {
@@ -361,7 +372,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       createdByName: firebaseTask.createdByName || 'Usuário',
       editedBy: firebaseTask.editedBy,
       editedByName: firebaseTask.editedByName,
-      editedAt: safeToDate(firebaseTask.editedAt)
+      editedAt: safeToDate(firebaseTask.editedAt),
+      // Campo de privacidade
+      private: (firebaseTask as any).private
     };
   };
 
@@ -421,7 +434,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     if (currentFamily && !isOffline) {
       try {
         console.log('🔄 Recarregando tarefas da família...');
-        const familyTasks = await familyService.getFamilyTasks(currentFamily.id);
+  const familyTasks = await familyService.getFamilyTasks(currentFamily.id, user.id);
         
         // Converter usando função centralizada para manter dueTime e repeatDays
         let convertedTasks: Task[] = familyTasks.map(firebaseTaskToTask);
@@ -607,7 +620,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             console.log('👨‍👩‍👧‍👦 Família carregada:', userFamily.name);
             
             // Carregar tarefas da família
-            const familyTasks = await familyService.getFamilyTasks(userFamily.id);
+            const familyTasks = await familyService.getFamilyTasks(userFamily.id, user.id);
                 let convertedTasks: Task[] = familyTasks.map(firebaseTaskToTask);
                 // Filtrar tarefas privadas que não pertencem ao usuário atual
                 convertedTasks = convertedTasks.filter(t => {
@@ -844,7 +857,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         
         // Recarregar dados da família se houver
         if (currentFamily) {
-          const familyTasks = await familyService.getFamilyTasks(currentFamily.id);
+            const familyTasks = await familyService.getFamilyTasks(currentFamily.id, user.id);
           const convertedTasks: Task[] = familyTasks.map(firebaseTaskToTask);
           setTasks(convertedTasks);
           console.log(`🔄 ${familyTasks.length} tarefas da família recarregadas`);
@@ -1033,6 +1046,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                 editedBy: user.id,
                 editedByName: user.name,
                 editedAt: new Date()
+                ,
+                // Preservar/atualizar flag de privacidade baseada no estado do modal
+                private: newTaskPrivate
               }
             : task
         );
@@ -1191,7 +1207,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     } finally {
       setIsAddingTask(false); // Reabilitar o botão
     }
-  }, [newTaskTitle, newTaskDescription, selectedCategory, selectedDate, selectedTime, repeatType, customDays, isEditing, editingTaskId, tasks, currentFamily, isOffline]);
+  }, [newTaskTitle, newTaskDescription, selectedCategory, selectedDate, selectedTime, repeatType, customDays, isEditing, editingTaskId, tasks, currentFamily, isOffline, newTaskPrivate]);
 
   const resetForm = useCallback(() => {
     setNewTaskTitle('');
@@ -1227,7 +1243,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     } else if (modalVisible && !isEditing) {
       setNewTaskPrivate(false);
     }
-  }, [modalVisible, isEditing, editingTaskId, tasks]);
+  }, [modalVisible, isEditing, editingTaskId]);
 
   // Funções para filtrar tarefas por data
   const getTodayTasks = () => {
@@ -2491,6 +2507,13 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                 style={{ marginLeft: 4 }}
               />
             )}
+            {/* Indicador de tarefa privada: mostrar apenas para o criador */}
+            {((item as any).private === true) && item.createdBy === user.id && (
+              <View style={styles.privateIndicator}>
+                <Ionicons name="lock-closed" size={12} color="#666" />
+                <Text style={styles.privateIndicatorText}>PRIVADA</Text>
+              </View>
+            )}
           </View>
           {/* Indicador de tarefa vencida */}
           {isOverdue && (
@@ -2668,7 +2691,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
               const newFamily = await familyService.joinFamily(code, user);
               setCurrentFamily(newFamily);
               // recarregar tarefas da nova família
-              const familyTasks = await familyService.getFamilyTasks(newFamily.id);
+              const familyTasks = await familyService.getFamilyTasks(newFamily.id, user.id);
               const convertedTasks: Task[] = familyTasks.map(firebaseTaskToTask);
               setTasks(convertedTasks);
               // atualizar lista de membros
@@ -3399,22 +3422,47 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
               <Text style={styles.manualParagraph}>
                 Bem-vindo ao Agenda Familiar! Aqui você pode organizar as tarefas da família, aprovar pedidos dos dependentes e acompanhar o histórico de ações.
               </Text>
-              <Text style={styles.manualSubtitle}>Navegação básica</Text>
-              <Text style={styles.manualListItem}>• Hoje/Próximas: mude a aba para ver as tarefas do dia ou as próximas.</Text>
-              <Text style={styles.manualListItem}>• Criar tarefa: use o botão + para adicionar uma nova tarefa.</Text>
-              <Text style={styles.manualListItem}>• Categorias: filtre por categoria no botão de filtro; crie novas com "Nova Categoria".</Text>
-              <Text style={styles.manualListItem}>• Aprovações: admins recebem solicitações na campainha; aprove ou rejeite pela lista.</Text>
-              <Text style={styles.manualListItem}>• Lembretes: permita notificações no dispositivo para receber alertas.</Text>
 
-              <Text style={styles.manualSubtitle}>Nova funcionalidade: Tarefas Privadas</Text>
-              <Text style={styles.manualListItem}>• Ao criar/editar uma tarefa há a opção <Text style={{fontWeight: '700'}}>Privado</Text>.</Text>
-              <Text style={styles.manualListItem}>• Tarefas marcadas como privadas só são visíveis para o usuário que as criou — outros membros da família não as verão.</Text>
-              <Text style={styles.manualListItem}>• A visibilidade privada é preservada ao editar e ao sincronizar com a família; lembre-se que a privacidade é aplicada no cliente e exibida apenas para o criador.</Text>
+              <Text style={styles.manualSubtitle}>📱 Header do App</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="person-circle" size={16} color="#007AFF" /> <Text style={{fontWeight: '600'}}>Foto do Perfil:</Text> Toque na foto para alterar sua imagem de perfil. Você pode escolher uma foto da galeria ou tirar uma nova.</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="pencil" size={16} color="#007AFF" /> <Text style={{fontWeight: '600'}}>Nome:</Text> Toque no nome para editá-lo. Digite seu nome e confirme para salvar.</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="settings" size={16} color="#007AFF" /> <Text style={{fontWeight: '600'}}>Menu (Configuracoes):</Text> Acesso às configurações, histórico, manual e logout.</Text>
 
-              <Text style={styles.manualSubtitle}>Dicas rápidas</Text>
-              <Text style={styles.manualListItem}>• Toque em uma tarefa para ver detalhes e ações (concluir, editar, excluir).</Text>
-              <Text style={styles.manualListItem}>• Dependentes podem solicitar aprovação de conclusão.</Text>
-              <Text style={styles.manualListItem}>• O histórico mostra o que foi feito nos últimos 15 dias.</Text>
+              <Text style={styles.manualSubtitle}>🔄 Botões Flutuantes</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="refresh" size={16} color="#28a745" /> <Text style={{fontWeight: '600'}}>Atualizar (Verde):</Text> Sincroniza os dados com o servidor. Use quando notar que as tarefas não estão atualizando.</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="filter" size={16} color="#6c757d" /> <Text style={{fontWeight: '600'}}>Filtros (Cinza):</Text> Filtra tarefas por categoria. Toque para abrir menu de filtros e selecione a categoria desejada.</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="add" size={16} color="#007AFF" /> <Text style={{fontWeight: '600'}}>Criar Tarefa (Azul):</Text> Abre o modal para criar uma nova tarefa com título, descrição, categoria, data/hora e recorrência.</Text>
+
+              <Text style={styles.manualSubtitle}>📋 Funcionamento das Tarefas</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="create" size={16} color="#007AFF" /> <Text style={{fontWeight: '600'}}>Criando Tarefas:</Text> Use o botão + para criar. Escolha categoria, defina data/hora, configure recorrência e marque como privada se desejar.</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="checkmark-circle" size={16} color="#4CAF50" /> <Text style={{fontWeight: '600'}}>Concluindo Tarefas:</Text> Toque no círculo da tarefa para marcar como concluída. Dependentes precisam de aprovação do admin.</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="pencil" size={16} color="#FF9500" /> <Text style={{fontWeight: '600'}}>Editando Tarefas:</Text> Toque na tarefa para abrir detalhes e editar. Só o criador pode editar suas tarefas.</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="repeat" size={16} color="#9C27B0" /> <Text style={{fontWeight: '600'}}>Tarefas Recorrentes:</Text> Configure para repetir diariamente, fins de semana ou dias específicos da semana.</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="lock-closed" size={16} color="#666" /> <Text style={{fontWeight: '600'}}>Tarefas Privadas:</Text> Visíveis apenas para o criador. Outros membros da família não as verão.</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="notifications" size={16} color="#e74c3c" /> <Text style={{fontWeight: '600'}}>Aprovações:</Text> Admins recebem notificações na campainha para aprovar conclusões de dependentes.</Text>
+
+              <Text style={styles.manualSubtitle}>👨‍👩‍👧‍👦 Gerenciar Família</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="pencil" size={16} color="#007AFF" /> <Text style={{fontWeight: '600'}}>Alterar Nome:</Text> Apenas admins podem editar o nome da família através do menu de configurações.</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="people" size={16} color="#007AFF" /> <Text style={{fontWeight: '600'}}>Ver Membros:</Text> Lista todos os membros com foto, nome, função e data de entrada.</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="swap-horizontal" size={16} color="#007AFF" /> <Text style={{fontWeight: '600'}}>Alterar Funções:</Text> Admins podem promover dependentes a administradores ou reverter.</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="key" size={16} color="#007AFF" /> <Text style={{fontWeight: '600'}}>Código de Convite:</Text> Código único para convidar novos membros. Copie e compartilhe com quem quiser adicionar.</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="trash" size={16} color="#e74c3c" /> <Text style={{fontWeight: '600'}}>Remover Membros:</Text> Admins podem remover membros da família (exceto si mesmos).</Text>
+
+              <Text style={styles.manualSubtitle}>🚪 Entrar em Outra Família</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="enter" size={16} color="#FF9500" /> <Text style={{fontWeight: '600'}}>Como Entrar:</Text> Use o código de convite fornecido pelo administrador da família que você deseja entrar.</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="person" size={16} color="#34C759" /> <Text style={{fontWeight: '600'}}>Função Inicial:</Text> Novos membros entram como dependentes. Apenas admins podem alterar funções posteriormente.</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="checkmark" size={16} color="#4CAF50" /> <Text style={{fontWeight: '600'}}>Confirmação:</Text> Após inserir o código válido, você será adicionado à família e poderá ver suas tarefas.</Text>
+
+              <Text style={styles.manualSubtitle}>📜 Histórico</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="time" size={16} color="#007AFF" /> <Text style={{fontWeight: '600'}}>Acesso:</Text> Acesse através do menu de configurações, opção Histórico.</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="list" size={16} color="#007AFF" /> <Text style={{fontWeight: '600'}}>Conteúdo:</Text> Mostra todas as ações realizadas nas tarefas nos últimos 15 dias.</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="information-circle" size={16} color="#007AFF" /> <Text style={{fontWeight: '600'}}>Detalhes:</Text> Inclui quem criou/editou/concluiu tarefas, com data e hora de cada ação.</Text>
+
+              <Text style={styles.manualSubtitle}>💡 Dicas Rápidas</Text>
+              <Text style={styles.manualListItem}>• Navegação: Use as abas "Hoje" e "Próximas" para alternar entre tarefas do dia e futuras.</Text>
+              <Text style={styles.manualListItem}>• Categorias: Filtre tarefas por categoria usando o botão de filtro flutuante.</Text>
+              <Text style={styles.manualListItem}>• Notificações: Permita notificações no dispositivo para receber lembretes de tarefas.</Text>
+              <Text style={styles.manualListItem}>• Privacidade: Tarefas privadas são visíveis apenas para seu criador.</Text>
             </ScrollView>
 
             <Pressable
@@ -3958,10 +4006,12 @@ const styles = StyleSheet.create({
   },
   taskList: {
     flex: 1,
+    minHeight: '100%',
   },
   taskListContent: {
     paddingBottom: 100, // Espaço extra no final para o FAB
     flexGrow: 1,
+    minHeight: '100%',
   },
   taskItem: {
     backgroundColor: '#fff',
@@ -3999,6 +4049,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  privateIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
+    backgroundColor: 'rgba(0,0,0,0.03)'
+  },
+  privateIndicatorText: {
+    marginLeft: 4,
+    fontSize: 10,
+    color: '#666',
+    fontWeight: '700'
   },
   categoryHeaderText: {
     fontSize: 12,

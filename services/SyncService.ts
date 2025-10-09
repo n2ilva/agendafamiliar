@@ -293,13 +293,15 @@ class SyncService {
         console.log(`👥 ${familyData.members.length} membros da família salvos no cache`);
       }
 
-      // Baixar tarefas da família usando o familyService
-      const familyTasks = await familyService.getFamilyTasks(familyId);
+  // Baixar tarefas da família usando o familyService (incluir tarefas privadas do usuário se possível)
+  const currentUser = FirebaseAuthService.getCurrentUser();
+  const userId = currentUser ? currentUser.uid : undefined;
+  const familyTasks = await familyService.getFamilyTasks(familyId, userId);
       for (const task of familyTasks) {
         await LocalStorageService.saveTask(task);
       }
-      
-      console.log(`📋 ${familyTasks.length} tarefas da família baixadas e salvas no cache`);
+
+      console.log(`📋 ${familyTasks.length} tarefas da família (incluindo privadas do usuário) baixadas e salvas no cache`);
 
       // Baixar aprovações da família
       const approvalsQuery = query(
@@ -584,8 +586,8 @@ class SyncService {
       if (currentUser) {
         const userFamily = await familyService.getUserFamily(currentUser.uid);
         if (userFamily) {
-          // Apenas um exemplo de download leve: buscar tarefas
-          const familyTasks = await familyService.getFamilyTasks(userFamily.id);
+          // Apenas um exemplo de download leve: buscar tarefas (incluir privadas do usuário)
+          const familyTasks = await familyService.getFamilyTasks(userFamily.id, currentUser.uid);
           for (const task of familyTasks) {
             await LocalStorageService.saveTask(task);
           }
