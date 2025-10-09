@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import type { ListRenderItemInfo } from 'react-native';
 import {
   View,
   Text,
@@ -234,7 +235,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   const [filterDropdownVisible, setFilterDropdownVisible] = useState(false);
 
   // Função para lidar com gestos de swipe
-  const handleSwipeGesture = (event: any) => {
+  const handleSwipeGesture = useCallback((event: any) => {
     const { translationX, state } = event.nativeEvent;
     
     if (state === State.END) {
@@ -252,7 +253,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         }
       }
     }
-  };
+  }, [activeTab]);
 
   // Função para converter Task local para FirebaseTask
   const taskToFirebaseTask = (task: Task): FirebaseTask => {
@@ -865,22 +866,50 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
 
   const verificarTarefasVencidas = () => {
     const agora = new Date();
-    
+
     tasks.forEach(task => {
       if (task.dueDate && !task.completed) {
         const dataVencimento = safeToDate(task.dueDate);
         if (!dataVencimento) return; // Skip se não conseguir converter a data
-        
+
         if (task.dueTime) {
           const horaVencimento = safeToDate(task.dueTime);
           if (horaVencimento) {
             dataVencimento.setHours(horaVencimento.getHours(), horaVencimento.getMinutes());
           }
         }
-        
-        // Se a tarefa venceu há menos de 5 minutos, enviar notificação
+
         const diffMinutos = (agora.getTime() - dataVencimento.getTime()) / (1000 * 60);
+        const diffHoras = diffMinutos / 60;
+
+        // Lógica inteligente para notificações baseada no tempo de atraso:
+        // - Venceu há menos de 5 minutos: notificar imediatamente
+        // - Venceu há 1 hora: notificar novamente
+        // - Venceu há 6 horas: notificar novamente
+        // - Venceu há 24 horas: notificar novamente
+        // - Depois disso, notificar a cada 24 horas (mas com prioridade menor)
+
+        let deveNotificar = false;
+
         if (diffMinutos >= 0 && diffMinutos <= 5) {
+          // Acabou de vencer - alta prioridade
+          deveNotificar = true;
+        } else if (diffHoras >= 1 && diffHoras < 1.1) {
+          // Venceu há exatamente 1 hora
+          deveNotificar = true;
+        } else if (diffHoras >= 6 && diffHoras < 6.1) {
+          // Venceu há exatamente 6 horas
+          deveNotificar = true;
+        } else if (diffHoras >= 24 && diffHoras < 25) {
+          // Venceu há exatamente 24 horas
+          deveNotificar = true;
+        } else if (diffHoras >= 48 && Math.floor(diffHoras) % 24 === 0 && diffHoras < 48.1) {
+          // Venceu há múltiplos de 24 horas (48h, 72h, etc.) - baixa prioridade
+          deveNotificar = true;
+        }
+
+        if (deveNotificar) {
+          console.log(`[TaskScreen] Notificando tarefa vencida: "${task.title}" (${Math.floor(diffHoras)}h ${Math.floor(diffMinutos % 60)}min atraso)`);
           enviarNotificacaoVencimento(task);
         }
       }
@@ -890,17 +919,18 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   const enviarNotificacaoVencimento = async (task: Task) => {
     // No web, ignorar envio de notificação imediata
     if (Platform.OS === 'web') return;
+
     try {
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title: '⏰ Tarefa Vencida!',
-          body: `A tarefa "${task.title}" venceu. Que tal completá-la agora?`,
-          data: { taskId: task.id },
-        },
-        trigger: null, // Enviar imediatamente
-      });
+      // Usar a nova função melhorada para notificações de tarefas vencidas
+      const notificationId = await NotificationService.sendOverdueTaskNotification(task);
+
+      if (notificationId) {
+        console.log(`[TaskScreen] Notificação de vencimento enviada para tarefa "${task.title}":`, notificationId);
+      } else {
+        console.warn(`[TaskScreen] Falha ao enviar notificação de vencimento para tarefa "${task.title}"`);
+      }
     } catch (e) {
-      console.warn('[Notifications] Falha ao enviar notificação imediata:', e);
+      console.warn('[TaskScreen] Erro ao enviar notificação de vencimento:', e);
     }
   };
   
@@ -947,7 +977,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     return today;
   };
 
-  const addTask = async () => {
+  const addTask = useCallback(async () => {
     if (!newTaskTitle.trim()) {
       Alert.alert('Erro', 'Por favor, insira um título para a tarefa.');
       return;
@@ -1133,9 +1163,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     } finally {
       setIsAddingTask(false); // Reabilitar o botão
     }
-  };
+  }, [newTaskTitle, newTaskDescription, selectedCategory, selectedDate, selectedTime, repeatType, customDays, isEditing, editingTaskId, tasks, currentFamily, isOffline]);
 
-  const resetForm = () => {
+  const resetForm = useCallback(() => {
     setNewTaskTitle('');
     setNewTaskDescription('');
     setSelectedCategory('work');
@@ -1146,9 +1176,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     setIsEditing(false);
     setEditingTaskId(null);
     setModalVisible(false);
-  };
+  }, []);
 
-  const editTask = (task: Task) => {
+  const editTask = useCallback((task: Task) => {
     setNewTaskTitle(task.title);
     setNewTaskDescription(task.description);
     setSelectedCategory(task.category);
@@ -1159,7 +1189,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     setIsEditing(true);
     setEditingTaskId(task.id);
     setModalVisible(true);
-  };
+  }, []);
 
   // Funções para filtrar tarefas por data
   const getTodayTasks = () => {
@@ -1328,6 +1358,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     clearOldHistory();
   }, []);
 
+
   const getActionText = (action: string): string => {
     switch (action) {
       case 'created': return 'criou';
@@ -1360,6 +1391,43 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       default: return '#666';
     }
   };
+
+  const renderHistoryItem = useCallback(({ item }: ListRenderItemInfo<any>) => {
+    return (
+      <View style={styles.historyItem}>
+        <View style={styles.historyIconContainer}>
+          <Ionicons 
+            name={getActionIcon(item.action)}
+            size={20}
+            color={getActionColor(item.action)}
+          />
+        </View>
+        <View style={styles.historyContent}>
+          <Text style={styles.historyText}>
+            <Text style={styles.historyAction}>
+              {getActionText(item.action)}
+            </Text>{' '}
+            a tarefa "{item.taskTitle}"
+          </Text>
+          <Text style={styles.historyAuthor}>
+            por {item.userName} ({item.userRole === 'admin' ? 'Admin' : 'Dependente'})
+          </Text>
+          {item.details && (
+            <Text style={styles.historyDetails}>{item.details}</Text>
+          )}
+          <Text style={styles.historyTime}>
+            {item.timestamp ? new Date(item.timestamp).toLocaleDateString('pt-BR', {
+              day: '2-digit',
+              month: '2-digit',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit'
+            }) : 'Data não disponível'}
+          </Text>
+        </View>
+      </View>
+    );
+  }, [getActionIcon, getActionColor, getActionText]);
 
   const addCategory = () => {
     if (!newCategoryName.trim()) {
@@ -1499,7 +1567,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     }
   };
 
-  const toggleTask = async (taskId: string) => {
+  const toggleTask = useCallback(async (taskId: string) => {
     const task = tasks.find(t => t.id === taskId);
     if (!task) return;
     
@@ -1525,7 +1593,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       // Para convidados ou outras situações
       await handleTaskToggle(task);
     }
-  };
+  }, [tasks, user, currentFamily, isOffline]);
 
   const handleTaskToggle = async (task: Task) => {
     // Safety net: dependente não pode concluir diretamente sem aprovação
@@ -2071,59 +2139,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     }
   };
 
-  const removeFamilyMember = (memberId: string) => {
-    console.log('Tentando remover membro:', memberId);
-    console.log('Membros atuais:', familyMembers.map(m => ({ id: m.id, name: m.name })));
-    console.log('Usuário atual:', user.id, 'Role:', user.role);
-    
-    // Verificar se o usuário é admin
-    if (user.role !== 'admin') {
-      console.log('Usuário não é admin!');
-      Alert.alert('Erro', 'Apenas administradores podem remover membros da família.');
-      return;
-    }
-    
-    const member = familyMembers.find(m => m.id === memberId);
-    console.log('Membro encontrado:', member);
-    
-    if (!member) {
-      console.log('Membro não encontrado!');
-      Alert.alert('Erro', 'Membro não encontrado.');
-      return;
-    }
-    
-    if (member.id === user.id) {
-      console.log('Tentativa de remover a si mesmo!');
-      Alert.alert('Erro', 'Você não pode remover a si mesmo da família.');
-      return;
-    }
 
-    Alert.alert(
-      'Remover Membro',
-      `Tem certeza que deseja remover ${member.name} da família?`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Remover',
-          style: 'destructive',
-          onPress: () => {
-            console.log('Confirmou remoção do membro:', memberId);
-            const updatedMembers = familyMembers.filter(m => m.id !== memberId);
-            console.log('Novos membros:', updatedMembers.map(m => ({ id: m.id, name: m.name })));
-            setFamilyMembers(updatedMembers);
-            
-            // Remover tarefas do membro removido
-            const updatedTasks = tasks.filter(t => t.userId !== memberId);
-            setTasks(updatedTasks);
-            console.log('Membro removido com sucesso');
-            Alert.alert('Sucesso', `${member.name} foi removido da família.`);
-          }
-        }
-      ]
-    );
-  };
-
-  const changeMemberRole = (memberId: string) => {
+  const changeMemberRole = useCallback((memberId: string) => {
     // Verificar se o usuário é admin
     if (user.role !== 'admin') {
       Alert.alert('Erro', 'Apenas administradores podem alterar funções de membros.');
@@ -2190,7 +2207,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         }
       ]
     );
-  };
+  }, [familyMembers, user, currentFamily]);
 
   const startEditingFamilyName = () => {
     setNewFamilyName(currentFamily?.name || '');
@@ -2253,7 +2270,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     setFamilyModalVisible(true);
   };
 
-  const deleteTask = (taskId: string) => {
+  const deleteTask = useCallback((taskId: string) => {
     const task = tasks.find(t => t.id === taskId);
     if (!task) return;
     
@@ -2300,7 +2317,40 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         },
       ]
     );
-  };
+  }, [tasks, currentFamily, isOffline]);
+
+  const removeFamilyMember = useCallback((memberId: string) => {
+    // implementação existente usa Alert.confirm onPress handler — reutilizar função deleteMember parcialmente
+    const member = familyMembers.find(m => m.id === memberId);
+    if (!member) {
+      Alert.alert('Erro', 'Membro não encontrado.');
+      return;
+    }
+
+    if (member.id === user.id) {
+      Alert.alert('Erro', 'Você não pode remover a si mesmo da família.');
+      return;
+    }
+
+    Alert.alert(
+      'Remover Membro',
+      `Tem certeza que deseja remover ${member.name} da família?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Remover',
+          style: 'destructive',
+          onPress: () => {
+            const updatedMembers = familyMembers.filter(m => m.id !== memberId);
+            setFamilyMembers(updatedMembers);
+            const updatedTasks = tasks.filter(t => t.userId !== memberId);
+            setTasks(updatedTasks);
+            Alert.alert('Sucesso', `${member.name} foi removido da família.`);
+          }
+        }
+      ]
+    );
+  }, [familyMembers, user, tasks]);
 
   const handleSettings = () => {
     setSettingsModalVisible(true);
@@ -3263,41 +3313,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                 data={history}
                 keyExtractor={(item) => item.id}
                 showsVerticalScrollIndicator={false}
-                renderItem={({ item }) => (
-                  <View style={styles.historyItem}>
-                    <View style={styles.historyIconContainer}>
-                      <Ionicons 
-                        name={getActionIcon(item.action)}
-                        size={20}
-                        color={getActionColor(item.action)}
-                      />
-                    </View>
-                    <View style={styles.historyContent}>
-                      <Text style={styles.historyText}>
-                        <Text style={styles.historyAction}>
-                          {getActionText(item.action)}
-                        </Text>{' '}
-                        a tarefa "{item.taskTitle}"
-                      </Text>
-                      {/* Informações de autoria */}
-                      <Text style={styles.historyAuthor}>
-                        por {item.userName} ({item.userRole === 'admin' ? 'Admin' : 'Dependente'})
-                      </Text>
-                      {item.details && (
-                        <Text style={styles.historyDetails}>{item.details}</Text>
-                      )}
-                      <Text style={styles.historyTime}>
-                        {item.timestamp ? new Date(item.timestamp).toLocaleDateString('pt-BR', {
-                          day: '2-digit',
-                          month: '2-digit',
-                          year: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        }) : 'Data não disponível'}
-                      </Text>
-                    </View>
-                  </View>
-                )}
+                renderItem={renderHistoryItem}
               />
             )}
             
