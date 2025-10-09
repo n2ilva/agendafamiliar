@@ -591,27 +591,84 @@ export class FirebaseAuthService {
 
       console.log('📸 Iniciando upload da foto de perfil...');
       console.log('📸 URI recebida:', imageUri);
-      console.log('📸 URI recebida:', imageUri);
 
       // Verificar se a URI é válida
-      if (!imageUri || (!imageUri.startsWith('file://') && !imageUri.startsWith('http'))) {
-        return { success: false, error: 'URI da imagem inválida' };
+      if (!imageUri) {
+        return { success: false, error: 'URI da imagem não fornecida' };
       }
 
-      // Converter URI para blob para upload
-      console.log('📤 Convertendo URI para blob...');
-      const response = await fetch(imageUri);
+      // Verificar diferentes tipos de URI suportados
+      const isValidUri = imageUri.startsWith('file://') || 
+                        imageUri.startsWith('http') || 
+                        imageUri.startsWith('https') ||
+                        imageUri.startsWith('ph://') ||
+                        imageUri.startsWith('content://');
+
+      if (!isValidUri) {
+        console.error('❌ URI inválida:', imageUri);
+        return { success: false, error: 'Formato de URI não suportado' };
+      }
+
+      console.log('📸 Tipo de URI detectado:', imageUri.split('://')[0]);
+
+      // Para URIs do tipo ph:// (iOS Photos) ou content:// (Android), 
+      // precisamos converter para base64 primeiro
+      let blob: Blob;
       
-      if (!response.ok) {
-        console.error('❌ Erro na resposta fetch:', response.status, response.statusText);
-        return { success: false, error: 'Não foi possível acessar a imagem' };
-      }
+      try {
+        if (imageUri.startsWith('ph://') || imageUri.startsWith('content://')) {
+          console.log('📤 Convertendo URI do sistema para blob...');
+          
+          // Para iOS/Android, usar expo-file-system para converter
+          const FileSystem = require('expo-file-system');
+          
+          // Primeiro, copiar para cache se necessário
+          let localUri = imageUri;
+          
+          if (Platform.OS === 'ios' && imageUri.startsWith('ph://')) {
+            // Para iOS Photos, precisamos de manipulação especial
+            const fileInfo = await FileSystem.getInfoAsync(imageUri);
+            if (!fileInfo.exists) {
+              return { success: false, error: 'Imagem não encontrada no dispositivo' };
+            }
+            localUri = imageUri;
+          }
+          
+          // Ler como base64
+          const base64 = await FileSystem.readAsStringAsync(localUri, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          
+          // Converter base64 para blob
+          const byteCharacters = atob(base64);
+          const byteNumbers = new Array(byteCharacters.length);
+          for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+          }
+          const byteArray = new Uint8Array(byteNumbers);
+          blob = new Blob([byteArray], { type: 'image/jpeg' });
+          
+          console.log('📤 Blob criado via FileSystem, tamanho:', blob.size, 'bytes');
+        } else {
+          // Para file:// ou http(s)://, usar fetch normal
+          console.log('📤 Convertendo URI para blob via fetch...');
+          const response = await fetch(imageUri);
+          
+          if (!response.ok) {
+            console.error('❌ Erro na resposta fetch:', response.status, response.statusText);
+            return { success: false, error: 'Não foi possível acessar a imagem' };
+          }
 
-      const blob = await response.blob();
-      console.log('📤 Blob criado, tamanho:', blob.size, 'bytes');
+          blob = await response.blob();
+          console.log('📤 Blob criado via fetch, tamanho:', blob.size, 'bytes');
+        }
 
-      if (blob.size === 0) {
-        return { success: false, error: 'Imagem vazia ou corrompida' };
+        if (blob.size === 0) {
+          return { success: false, error: 'Imagem vazia ou corrompida' };
+        }
+      } catch (conversionError: any) {
+        console.error('❌ Erro ao converter URI para blob:', conversionError);
+        return { success: false, error: 'Erro ao processar a imagem selecionada' };
       }
 
       // Criar referência única para a imagem
