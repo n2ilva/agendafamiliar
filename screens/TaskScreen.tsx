@@ -874,14 +874,20 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   };
 
   const enviarNotificacaoVencimento = async (task: Task) => {
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: '⏰ Tarefa Vencida!',
-        body: `A tarefa "${task.title}" venceu. Que tal completá-la agora?`,
-        data: { taskId: task.id },
-      },
-      trigger: null, // Enviar imediatamente
-    });
+    // No web, ignorar envio de notificação imediata
+    if (Platform.OS === 'web') return;
+    try {
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: '⏰ Tarefa Vencida!',
+          body: `A tarefa "${task.title}" venceu. Que tal completá-la agora?`,
+          data: { taskId: task.id },
+        },
+        trigger: null, // Enviar imediatamente
+      });
+    } catch (e) {
+      console.warn('[Notifications] Falha ao enviar notificação imediata:', e);
+    }
   };
   
   // Estados para data e hora
@@ -973,7 +979,11 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           const firebaseTask = taskToFirebaseTask(updatedTask);
           await LocalStorageService.saveTask(firebaseTask);
           // reagendar lembrete
-          await NotificationService.rescheduleTaskReminder(updatedTask as any);
+          try {
+            await NotificationService.rescheduleTaskReminder(updatedTask as any);
+          } catch (e) {
+            console.warn('[Notifications] rescheduleTaskReminder falhou (ignorado):', e);
+          }
           
           // Determinar se é create ou update baseado no ID
           const isTemporaryId = updatedTask.id.startsWith('temp_') || updatedTask.id === 'temp';
@@ -1054,7 +1064,11 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   const updatedTasks = [newTask, ...tasks];
         setTasks(updatedTasks);
   // agendar lembrete da nova tarefa
-  await NotificationService.scheduleTaskReminder(newTask as any);
+  try {
+    await NotificationService.scheduleTaskReminder(newTask as any);
+  } catch (e) {
+    console.warn('[Notifications] scheduleTaskReminder falhou (ignorado):', e);
+  }
         
         // Salvar no cache local
         const firebaseTask = taskToFirebaseTask(newTask);
@@ -1581,7 +1595,11 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         setTasks(updatedTasks);
         
         // cancelar lembrete da tarefa atual concluída
-        await NotificationService.cancelTaskReminder(task.id);
+        try {
+          await NotificationService.cancelTaskReminder(task.id);
+        } catch (e) {
+          console.warn('[Notifications] cancelTaskReminder falhou (ignorado):', e);
+        }
         
         // Salvar nova tarefa no Firebase e na família imediatamente
         try {
@@ -1602,7 +1620,11 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           }
           
           // agendar lembrete da próxima ocorrência
-          await NotificationService.scheduleTaskReminder(nextTask as any);
+          try {
+            await NotificationService.scheduleTaskReminder(nextTask as any);
+          } catch (e) {
+            console.warn('[Notifications] scheduleTaskReminder falhou (ignorado):', e);
+          }
           
           console.log('✅ Nova tarefa recorrente criada e sincronizada com sucesso');
         } catch (error) {
@@ -1630,7 +1652,11 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         setTasks(updatedTasks);
         
         // cancelar lembrete
-        await NotificationService.cancelTaskReminder(task.id);
+        try {
+          await NotificationService.cancelTaskReminder(task.id);
+        } catch (e) {
+          console.warn('[Notifications] cancelTaskReminder falhou (ignorado):', e);
+        }
       }
     } else {
       // Desmarcando como concluída (apenas para tarefas não recorrentes)
@@ -1652,7 +1678,11 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         // reprogramar lembrete se ainda futuro
         const t = updatedTasks.find(x => x.id === task.id);
         if (t) {
-          await NotificationService.rescheduleTaskReminder(t as any);
+          try {
+            await NotificationService.rescheduleTaskReminder(t as any);
+          } catch (e) {
+            console.warn('[Notifications] rescheduleTaskReminder falhou (ignorado):', e);
+          }
         }
       } else {
         // Para tarefas recorrentes concluídas, não permite desmarcar
@@ -1789,7 +1819,11 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       } : t
     ));
     // cancelar notificação
-    await NotificationService.cancelTaskReminder(approval.taskId);
+    try {
+      await NotificationService.cancelTaskReminder(approval.taskId);
+    } catch (e) {
+      console.warn('[Notifications] cancelTaskReminder falhou (ignorado):', e);
+    }
 
     // Remover notificação
     setNotifications(notifications.filter(n => n.taskId !== approval.taskId));
@@ -1825,7 +1859,11 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     // reprogramar lembrete se necessário
     const t = tasks.find(x => x.id === approval.taskId);
     if (t) {
-      await NotificationService.rescheduleTaskReminder(t as any);
+      try {
+        await NotificationService.rescheduleTaskReminder(t as any);
+      } catch (e) {
+        console.warn('[Notifications] rescheduleTaskReminder falhou (ignorado):', e);
+      }
     }
 
     // Remover notificação
