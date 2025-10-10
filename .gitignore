@@ -2,6 +2,7 @@
 scripts/serviceAccountKey.json
 
 node_modules/
+emulator-data/
 *.log
 dist/
 build/# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
