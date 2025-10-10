@@ -1,11 +1,11 @@
 import { initializeApp } from 'firebase/app';
-import { getAnalytics, isSupported } from "firebase/analytics";
+import { getAnalytics, isSupported } from 'firebase/analytics';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { Platform } from 'react-native';
 
-// Configuração do Firebase
+// Your web app's Firebase configuration
 const firebaseConfig = {
   apiKey: "AIzaSyB1_83WDBh63SHS8BUofcIz6uA5wUGOvBo",
   authDomain: "agenda-familiar-472905.firebaseapp.com",
@@ -19,27 +19,28 @@ const firebaseConfig = {
 // Inicializar Firebase
 const app = initializeApp(firebaseConfig);
 
-// Inicializar Analytics apenas para web
-let analytics = null;
+// Inicializar Analytics apenas na web e quando suportado
+let analytics: any = null;
 if (Platform.OS === 'web') {
-  isSupported().then(yes => {
-    if (yes) {
-      analytics = getAnalytics(app);
+  isSupported().then((supported) => {
+    if (supported) {
+      try {
+        analytics = getAnalytics(app);
+      } catch (e) {
+        // Não quebrar se analytics falhar — manter app funcionando
+        console.warn('Analytics não disponível:', e);
+        analytics = null;
+      }
     }
+  }).catch(err => {
+    console.warn('Erro ao verificar suporte a analytics:', err);
   });
 }
 
-// Inicializar Auth
+// Inicializar Auth, Firestore e Storage
 const auth = getAuth(app);
-
-// Inicializar Firestore
 const db = getFirestore(app);
-
-// Inicializar Storage
 const storage = getStorage(app);
-
-// Logs reduzidos para evitar ruído; mantenha erros via console.error em casos de falha
-// console.log('Firebase inicializado para:', Platform.OS);
 
 export { auth, db, storage, analytics };
 export default app;

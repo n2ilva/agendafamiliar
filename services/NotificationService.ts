@@ -7,6 +7,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { safeToDate } from '../utils/DateUtils';
 
 const STORAGE_KEY = 'notification_task_map';
+const STORAGE_KEY_WEB = 'notification_task_map_web';
+
+// runtime map para timeouts no web (não serializável)
+const webTimeouts: Record<string, number> = {};
 
 async function ensureAndroidChannel() {
   if (Platform.OS !== 'android') return;
@@ -53,8 +57,49 @@ async function setMap(map: Record<string, string>) {
 export async function initialize() {
   // No web, expo-notifications não é suportado: fazer no-op seguro
   if (Platform.OS === 'web') {
-    console.log('[Notifications] Web detectado - inicialização ignorada');
-    return { granted: false };
+    try {
+      // Pedir permissão para Web Notifications
+      const permission = await (window as any).Notification?.requestPermission?.();
+      const granted = permission === 'granted';
+
+      // Reagendar notificações previamente armazenadas
+      if (granted) {
+        try {
+          const raw = await AsyncStorage.getItem(STORAGE_KEY_WEB);
+          const map = raw ? JSON.parse(raw) : {};
+          const now = Date.now();
+          for (const taskId of Object.keys(map)) {
+            const ts = map[taskId];
+            const scheduledAt = new Date(ts).getTime();
+            const delay = scheduledAt - now;
+            if (delay > 0) {
+              // Agendar timeout para disparar a notificação quando a página estiver aberta
+                webTimeouts[taskId] = window.setTimeout(() => {
+                  try {
+                    const entry = map[taskId];
+                    // conteúdo básico: o título foi persistido apenas como referência externa
+                    new (window as any).Notification('Lembrete', { body: `Tarefa agendada`, data: { taskId } });
+                  } catch (e) {
+                    console.warn('[Notifications][Web] Erro ao disparar notificação agendada:', e);
+                  }
+                }, delay) as unknown as number;
+            } else {
+              // horário já passou — remover do map
+              delete map[taskId];
+            }
+          }
+          await AsyncStorage.setItem(STORAGE_KEY_WEB, JSON.stringify(map));
+        } catch (e) {
+          console.warn('[Notifications][Web] Falha ao reagendar notificações:', e);
+        }
+      }
+
+      console.log('[Notifications] Web detectado - inicialização concluída (permissão:', granted, ')');
+      return { granted };
+    } catch (e) {
+      console.warn('[Notifications] Erro na inicialização web:', e);
+      return { granted: false };
+    }
   }
 
   try {
@@ -82,9 +127,58 @@ export async function initialize() {
 }
 
 export async function scheduleTaskReminder(task: any) {
-  // No web, não agendar e não falhar
+  // Suporte web: agendamento simples via setTimeout enquanto a aba estiver aberta
   if (Platform.OS === 'web') {
-    return null;
+    try {
+      // Calcular data de disparo (mesma lógica do mobile)
+      const dueDate = safeToDate(task.dueDate);
+      const dueTime = safeToDate((task as any).dueTime);
+      if (!dueDate) return null;
+
+      const fireAt = new Date(dueDate);
+      if (dueTime) {
+        fireAt.setHours(dueTime.getHours(), dueTime.getMinutes(), 0, 0);
+      } else {
+        fireAt.setHours(9, 0, 0, 0);
+      }
+
+      if (fireAt.getTime() <= Date.now()) return null;
+
+      // Garantir permissão
+      if ((window as any).Notification && (window as any).Notification.permission !== 'granted') {
+        await (window as any).Notification.requestPermission?.();
+      }
+
+      if ((window as any).Notification && (window as any).Notification.permission === 'granted') {
+        const delay = fireAt.getTime() - Date.now();
+        const timeoutId = window.setTimeout(() => {
+          try {
+            new (window as any).Notification('Lembrete', { body: `${task.title} — vence ${fireAt.toLocaleDateString('pt-BR')}${fireAt.getHours() ? ' às ' + fireAt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : ''}`, data: { taskId: task.id, type: 'task_reminder' } });
+          } catch (e) {
+            console.warn('[Notifications][Web] Erro ao disparar notificação agendada:', e);
+          }
+        }, delay) as unknown as number;
+
+        webTimeouts[task.id] = timeoutId;
+
+        // Persistir horário para re-agendamento ao recarregar
+        try {
+          const raw = await AsyncStorage.getItem(STORAGE_KEY_WEB);
+          const map = raw ? JSON.parse(raw) : {};
+          map[task.id] = fireAt.toISOString();
+          await AsyncStorage.setItem(STORAGE_KEY_WEB, JSON.stringify(map));
+        } catch (e) {
+          console.warn('[Notifications][Web] Falha ao persistir agendamento:', e);
+        }
+
+        return task.id;
+      }
+
+      return null;
+    } catch (e) {
+      console.warn('[Notifications][Web] Falha ao agendar notificação:', e);
+      return null;
+    }
   }
 
   try {
@@ -108,16 +202,15 @@ export async function scheduleTaskReminder(task: any) {
     // e as propriedades específicas do Android sejam aplicadas corretamente
     // pelo expo-notifications ao agendar a notificação.
     const content: any = {
-      title: '⏰ Lembrete de tarefa',
-      body: `"${task.title}" vence hoje`,
-      data: { taskId: task.id },
+      title: 'Lembrete',
+      body: `${task.title} — vence ${fireAt.toLocaleDateString('pt-BR')}${fireAt.getHours() ? ' às ' + fireAt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : ''}`,
+      data: { taskId: task.id, type: 'task_reminder' },
       sound: 'default',
     };
 
     if (Platform.OS === 'android') {
       content.android = {
         channelId: 'tasks-default',
-        // priority aqui torna o comportamento mais previsível em Android
         priority: Notifications.AndroidNotificationPriority.HIGH,
       };
     }
@@ -143,8 +236,25 @@ export async function scheduleTaskReminder(task: any) {
 }
 
 export async function cancelTaskReminder(taskId: string) {
-  // No web, não há agenda
-  if (Platform.OS === 'web') return;
+  // Suporte web: cancelar timeout se presente e remover persistência
+  if (Platform.OS === 'web') {
+    try {
+      const to = webTimeouts[taskId];
+      if (to) {
+        clearTimeout(to);
+        delete webTimeouts[taskId];
+      }
+      const raw = await AsyncStorage.getItem(STORAGE_KEY_WEB);
+      const map = raw ? JSON.parse(raw) : {};
+      if (map[taskId]) {
+        delete map[taskId];
+        await AsyncStorage.setItem(STORAGE_KEY_WEB, JSON.stringify(map));
+      }
+    } catch (e) {
+      console.warn('[Notifications][Web] Falha ao cancelar notificação agendada:', e);
+    }
+    return;
+  }
 
   const map = await getMap();
   const notifId = map[taskId];
@@ -169,10 +279,48 @@ export async function rescheduleTaskReminder(task: any) {
 }
 
 export async function sendOverdueTaskNotification(task: any) {
-  // No web, não enviar notificação imediata
+  // Suporte web: enviar notificação imediata via Web Notifications API
   if (Platform.OS === 'web') {
-    console.log('[Notifications] Web detectado - notificação de tarefa vencida ignorada');
-    return null;
+    try {
+      if ((window as any).Notification && (window as any).Notification.permission !== 'granted') {
+        await (window as any).Notification.requestPermission?.();
+      }
+
+      if ((window as any).Notification && (window as any).Notification.permission === 'granted') {
+        // Calcular há quanto tempo a tarefa venceu (mesma lógica para message)
+        const dueDate = safeToDate(task.dueDate);
+        const dueTime = safeToDate((task as any).dueTime);
+        if (!dueDate) return null;
+
+        const fireAt = new Date(dueDate);
+        if (dueTime) {
+          fireAt.setHours(dueTime.getHours(), dueTime.getMinutes(), 0, 0);
+        }
+
+        const now = new Date();
+        const diffMs = now.getTime() - fireAt.getTime();
+        const diffMinutes = Math.floor(diffMs / (1000 * 60));
+        const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+
+        const title = 'Tarefa vencida';
+        const body = `${task.title} — vencida há ${diffHours >= 1 ? Math.floor(diffHours) + 'h' : Math.floor(diffMinutes) + 'm'}`;
+
+        try {
+          new (window as any).Notification(title, { body, data: { taskId: task.id, type: 'overdue_task' } });
+          console.log('[Notifications][Web] Notificação de tarefa vencida enviada:', { taskId: task.id, title: task.title });
+          return task.id;
+        } catch (e) {
+          console.warn('[Notifications][Web] Falha ao criar notificação:', e);
+          return null;
+        }
+      }
+
+      console.log('[Notifications][Web] Permissão de notificação não concedida');
+      return null;
+    } catch (e) {
+      console.warn('[Notifications][Web] Erro ao enviar notificação vencida:', e);
+      return null;
+    }
   }
 
   try {
@@ -192,92 +340,16 @@ export async function sendOverdueTaskNotification(task: any) {
     const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
     const diffDays = Math.floor(diffHours / 24);
 
-    // Lógica inteligente baseada no tempo de atraso
-    let titulo = '';
-    let mensagem = '';
-    let prioridade: Notifications.AndroidNotificationPriority = Notifications.AndroidNotificationPriority.DEFAULT;
-    let vibrationPattern: number[] = [0, 500, 200, 500];
-    let color = '#e74c3c';
-    let interruptionLevel: any = 'timeSensitive';
+    // Mensagem simplificada: título curto e corpo com informação essencial
+    const title = 'Tarefa vencida';
+    const body = `${task.title} — vencida há ${diffHours >= 1 ? Math.floor(diffHours) + 'h' : Math.floor(diffMinutes) + 'm'}`;
 
-    if (diffMinutes <= 5) {
-      // Acabou de vencer - máxima urgência
-      titulo = '🚨 Tarefa Vencida!';
-      mensagem = `"${task.title}" venceu agora mesmo! Execute imediatamente.`;
-      prioridade = Notifications.AndroidNotificationPriority.MAX;
-      vibrationPattern = [0, 1000, 500, 1000, 500, 1000];
-      color = '#FF0000';
-      interruptionLevel = 'critical';
-    } else if (diffMinutes <= 30) {
-      // Venceu há pouco tempo
-      titulo = '⚠️ Tarefa Atrasada';
-      mensagem = `"${task.title}" venceu há ${diffMinutes} minutos. Não deixe acumular!`;
-      prioridade = Notifications.AndroidNotificationPriority.HIGH;
-      vibrationPattern = [0, 800, 300, 800];
-      color = '#FF6B35';
-      interruptionLevel = 'timeSensitive';
-    } else if (diffHours < 1) {
-      // Venceu há menos de 1 hora
-      titulo = '⏰ Tarefa Atrasada';
-      mensagem = `"${task.title}" venceu há ${diffMinutes} minutos. Priorize esta tarefa!`;
-      prioridade = Notifications.AndroidNotificationPriority.HIGH;
-      vibrationPattern = [0, 600, 200, 600];
-      color = '#FF8C42';
-      interruptionLevel = 'timeSensitive';
-    } else if (diffHours < 6) {
-      // Venceu há algumas horas
-      titulo = '📅 Tarefa Muito Atrasada';
-      mensagem = `"${task.title}" venceu há ${diffHours}h ${diffMinutes % 60}min. Execute o quanto antes!`;
-      prioridade = Notifications.AndroidNotificationPriority.HIGH;
-      vibrationPattern = [0, 800, 300, 800, 300, 800];
-      color = '#FF5722';
-      interruptionLevel = 'timeSensitive';
-    } else if (diffHours < 24) {
-      // Venceu hoje
-      titulo = '🔴 Tarefa Crítica';
-      mensagem = `"${task.title}" venceu há ${diffHours} horas. Esta tarefa precisa de atenção imediata!`;
-      prioridade = Notifications.AndroidNotificationPriority.MAX;
-      vibrationPattern = [0, 1000, 500, 1000, 500, 1000, 500, 1000];
-      color = '#D32F2F';
-      interruptionLevel = 'critical';
-    } else if (diffDays < 2) {
-      // Venceu ontem
-      titulo = '🚨 Tarefa Emergencial';
-      mensagem = `"${task.title}" venceu há ${diffDays} dia. CORRA para executar!`;
-      prioridade = Notifications.AndroidNotificationPriority.MAX;
-      vibrationPattern = [0, 1200, 400, 1200, 400, 1200, 400, 1200];
-      color = '#B71C1C';
-      interruptionLevel = 'critical';
-    } else if (diffDays < 7) {
-      // Venceu esta semana
-      titulo = '💥 Tarefa Urgente';
-      mensagem = `"${task.title}" venceu há ${diffDays} dias. Não ignore mais!`;
-      prioridade = Notifications.AndroidNotificationPriority.MAX;
-      vibrationPattern = [0, 1500, 300, 1500, 300, 1500];
-      color = '#8B0000';
-      interruptionLevel = 'critical';
-    } else {
-      // Venceu há muito tempo
-      titulo = '🆘 Tarefa Abandonada';
-      mensagem = `"${task.title}" venceu há ${diffDays} dias. Execute imediatamente ou cancele!`;
-      prioridade = Notifications.AndroidNotificationPriority.MAX;
-      vibrationPattern = [0, 2000, 200, 2000, 200, 2000];
-      color = '#4A148C';
-      interruptionLevel = 'critical';
-    }
-
-    // Construir o conteúdo de forma explícita por plataforma para garantir
-    // compatibilidade com as propriedades nativas do Android/iOS.
     const content: any = {
-      title: titulo,
-      body: mensagem,
+      title,
+      body,
       data: {
         taskId: task.id,
-        type: 'overdue_task',
-        dueDate: fireAt.toISOString(),
-        overdueMinutes: diffMinutes,
-        overdueHours: diffHours,
-        overdueDays: diffDays,
+        type: 'overdue_task'
       },
       sound: 'default',
       sticky: false,
@@ -287,35 +359,17 @@ export async function sendOverdueTaskNotification(task: any) {
     if (Platform.OS === 'android') {
       content.android = {
         channelId: 'tasks-overdue',
-        vibrationPattern: vibrationPattern,
-        color: color,
-        // prioridade adicional para Android (compatível com canais)
-        priority: prioridade,
+        // usar prioridade alta para tarefas vencidas
+        priority: Notifications.AndroidNotificationPriority.HIGH,
       };
     }
 
     if (Platform.OS === 'ios') {
-      // interruptionLevel e relevanceScore são iOS-specific (iOS 15+)
-      content.interruptionLevel = interruptionLevel;
       content.relevanceScore = 1.0;
     }
 
-    const id = await Notifications.scheduleNotificationAsync({
-      content,
-      trigger: null, // Enviar imediatamente
-    });
-
-    console.log('[Notifications] Notificação inteligente de tarefa vencida enviada:', {
-      id,
-      taskId: task.id,
-      title: task.title,
-      overdueMinutes: diffMinutes,
-      overdueHours: diffHours,
-      overdueDays: diffDays,
-      priority: prioridade,
-      urgencyLevel: titulo.split(' ')[0]
-    });
-
+    const id = await Notifications.scheduleNotificationAsync({ content, trigger: null });
+    console.log('[Notifications] Notificação de tarefa vencida enviada:', { id, taskId: task.id, title: task.title });
     return id;
   } catch (e) {
     console.warn('[Notifications] Falha ao enviar notificação inteligente de tarefa vencida:', e);

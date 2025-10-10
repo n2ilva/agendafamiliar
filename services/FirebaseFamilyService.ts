@@ -68,17 +68,33 @@ class FirebaseFamilyService {
 
   // Converter dados do Firebase para objetos locais
   private convertFirebaseFamily(doc: any): Family {
-    const data = doc.data();
+    const data = doc.data() || {};
+
+    // Defensive defaults
+    const createdAt = data.createdAt && typeof data.createdAt.toDate === 'function'
+      ? data.createdAt.toDate()
+      : (data.createdAt instanceof Date ? data.createdAt : new Date());
+
+    const inviteCodeExpiry = data.inviteCodeExpiry && typeof data.inviteCodeExpiry.toDate === 'function'
+      ? data.inviteCodeExpiry.toDate()
+      : (data.inviteCodeExpiry instanceof Date ? data.inviteCodeExpiry : undefined);
+
+    const rawMembers = Array.isArray(data.members) ? data.members : [];
+
+    const members = rawMembers.map((member: any) => ({
+      ...member,
+      joinedAt: member && member.joinedAt && typeof member.joinedAt.toDate === 'function'
+        ? member.joinedAt.toDate()
+        : (member && member.joinedAt instanceof Date ? member.joinedAt : new Date()),
+    }));
+
     return {
       ...data,
       id: doc.id,
-      createdAt: data.createdAt?.toDate() || new Date(),
-      inviteCodeExpiry: data.inviteCodeExpiry?.toDate(),
-      members: data.members.map((member: any) => ({
-        ...member,
-        joinedAt: member.joinedAt?.toDate() || new Date(),
-      })),
-    };
+      createdAt,
+      inviteCodeExpiry,
+      members,
+    } as Family;
   }
 
   // Criar nova família
@@ -217,8 +233,15 @@ class FirebaseFamilyService {
       console.log('❌ Nenhuma família encontrada para o usuário');
       return null;
     } catch (error) {
-      console.error('❌ Erro ao buscar família do usuário:', error);
-      throw new Error('Não foi possível carregar sua família');
+      // Log detalhado do erro original para diagnóstico
+      console.error('❌ Erro ao buscar família do usuário:', {
+        userId,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      });
+      // Re-throw com a mensagem original acoplada para manter o rastreio
+      const msg = error instanceof Error ? error.message : String(error);
+      throw new Error(`Não foi possível carregar sua família: ${msg}`);
     }
   }
 
@@ -416,8 +439,10 @@ class FirebaseFamilyService {
 
   // Converter dados do Firebase para objetos locais
   private convertFirebaseTask(doc: any): Task {
-    const data = doc.data();
-    
+    const data = doc.data() || {};
+    if (!data) {
+      console.warn('⚠️ convertFirebaseTask recebeu documento sem dados:', doc.id);
+    }
     console.log('🔍 Dados brutos do Firebase para tarefa:', {
       id: doc.id,
       title: data.title,

@@ -270,8 +270,13 @@ class SyncService {
       }
 
     } catch (error) {
-      console.error('Erro ao baixar dados do Firebase:', error);
-      throw error;
+      console.error('Erro ao baixar dados do Firebase:', {
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      });
+      // Propagar erro com contexto adicional
+      const msg = error instanceof Error ? error.message : String(error);
+      throw new Error(`downloadFirebaseData falhou: ${msg}`);
     }
   }
 
@@ -330,6 +335,78 @@ class SyncService {
       }
       // Notificar interessados na lista de approvals
       this.notifyApprovalsListeners(approvals);
+
+      // Reconciliar cache local: usar os dados do Firebase como source-of-truth para esta família
+      try {
+        const offlineData = await LocalStorageService.getOfflineData();
+
+        // Preparar mapas iniciais copiando o que existe (mantendo outras famílias)
+        const usersMap: Record<string, any> = { ...offlineData.users };
+        const familiesMap: Record<string, any> = { ...offlineData.families };
+        const tasksMap: Record<string, any> = { ...offlineData.tasks };
+        const approvalsMap: Record<string, any> = { ...offlineData.approvals };
+
+        // Identificar IDs de usuários locais pertencentes a esta família (para remover tarefas/usuários antigos)
+        const localFamilyUserIds = Object.values(offlineData.users)
+          .filter((u: any) => u && u.familyId === familyId)
+          .map((u: any) => u.id);
+
+        // Remover usuários locais da família
+        for (const uid of localFamilyUserIds) {
+          delete usersMap[uid];
+        }
+
+        // Adicionar/atualizar membros da família baixados do servidor
+        if (familyData && Array.isArray(familyData.members)) {
+          for (const member of familyData.members) {``
+            usersMap[member.id] = member;
+          }
+          // Atualizar família
+          familiesMap[familyData.id] = familyData;
+        }
+
+        // Remover tarefas locais pertencentes aos usuários antigos da família
+        for (const [tid, t] of Object.entries(tasksMap)) {
+          const task: any = t as any;
+          if (!task) continue;
+          // Se a tarefa pertence a um usuário que era da família, removemos; também suportar campo familyId se existir
+          if ((task.userId && localFamilyUserIds.includes(task.userId)) || (task.familyId && task.familyId === familyId)) {
+            delete tasksMap[tid];
+          }
+        }
+
+        // Adicionar tarefas baixadas do servidor
+        for (const t of familyTasks) {
+          tasksMap[t.id] = t;
+        }
+
+        // Remover approvals locais desta família
+        for (const [aid, a] of Object.entries(approvalsMap)) {
+          const app: any = a as any;
+          if (!app) continue;
+          if (app.familyId === familyId) {
+            delete approvalsMap[aid];
+          }
+        }
+
+        // Adicionar approvals baixados
+        for (const a of approvals) {
+          approvalsMap[a.id] = a;
+        }
+
+        // Salvar estado reconciliado (substitui as chaves afetadas)
+        await LocalStorageService.saveOfflineData({
+          users: usersMap,
+          families: familiesMap,
+          tasks: tasksMap,
+          approvals: approvalsMap,
+          lastSync: Date.now()
+        });
+
+        console.log(`✅ Cache local atualizado com os dados do Firebase para a família ${familyId}`);
+      } catch (reconcErr) {
+        console.warn('⚠️ Erro durante reconciliação de cache local:', reconcErr);
+      }
 
     } catch (error) {
       console.error('❌ Erro ao baixar dados da família:', error);
@@ -510,11 +587,14 @@ class SyncService {
       
       console.log('✅ Sincronização completa finalizada');
     } catch (error) {
-      console.error('❌ Erro na sincronização completa:', error);
+      console.error('❌ Erro na sincronização completa:', {
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      });
       this.updateSyncStatus({ 
         isSyncing: false, 
         hasError: true, 
-        errorMessage: error instanceof Error ? error.message : 'Erro desconhecido' 
+        errorMessage: error instanceof Error ? error.message : 'Erro desconhecido'
       });
     }
   }

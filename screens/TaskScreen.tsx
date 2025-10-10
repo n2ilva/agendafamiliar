@@ -33,6 +33,7 @@ import SyncService, { SyncStatus } from '../services/SyncService';
 import ConnectivityService, { ConnectivityState } from '../services/ConnectivityService';
 import Alert from '../utils/Alert';
 import familyService from '../services/FirebaseFamilyService';
+import FirebaseAuthService from '../services/FirebaseAuthService';
 import { safeToDate, isToday, isUpcoming, isTaskOverdue, getNextRecurrenceDate, isRecurringTaskCompletable } from '../utils/DateUtils';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -879,6 +880,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     // Simular um pequeno delay para mostrar o feedback visual
     setTimeout(() => {
       setIsRefreshing(false);
+      
+      // Log de confirmação de sincronização
+      console.log('✅ Sincronização concluída com sucesso!');
     }, 1000);
   };
 
@@ -2478,6 +2482,12 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     const canComplete = isRecurringTaskCompletable(item.dueDate, isRecurring);
     const isPendingRecurring = isRecurring && !canComplete && !item.completed;
     
+    // Sanitizar valores para evitar "Unexpected text node: ." no web
+    const sanitizedTitle = item.title === '.' ? '' : item.title;
+    const sanitizedDescription = item.description === '.' ? '' : item.description;
+    const sanitizedCreatedByName = item.createdByName === '.' ? 'Usuário' : item.createdByName;
+    const sanitizedEditedByName = item.editedByName === '.' ? '' : item.editedByName;
+    
     return (
       <View 
         style={[
@@ -2556,7 +2566,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                 item.completed && styles.taskTitleCompleted,
                 isPendingRecurring && styles.taskTitlePending
               ]}>
-                {item.title}
+                {sanitizedTitle}
               </Text>
               
               {item.description && (
@@ -2564,7 +2574,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                   styles.taskDescription,
                   item.completed && styles.taskDescriptionCompleted
                 ]}>
-                  {item.description}
+                  {sanitizedDescription}
                 </Text>
               )}
             </View>
@@ -2644,14 +2654,14 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           <View style={styles.authorshipRow}>
             <Ionicons name="person-outline" size={12} color="#999" />
             <Text style={styles.authorshipText}>
-              {item.createdByName || 'Usuário'} • {formatDate(item.createdAt)}
+              {sanitizedCreatedByName || 'Usuário'} • {formatDate(item.createdAt)}
             </Text>
           </View>
           {item.editedBy && item.editedByName && (
             <View style={styles.authorshipRow}>
               <Ionicons name="pencil-outline" size={12} color="#999" />
               <Text style={styles.authorshipText}>
-                Editado por {item.editedByName} • {item.editedAt ? formatDate(item.editedAt) : ''}
+                Editado por {sanitizedEditedByName} • {item.editedAt ? formatDate(item.editedAt) : ''}
               </Text>
             </View>
           )}

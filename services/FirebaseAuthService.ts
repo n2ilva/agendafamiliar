@@ -14,14 +14,108 @@ import { doc, setDoc, getDoc, collection, addDoc, updateDoc } from 'firebase/fir
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { auth, db, storage } from '../config/firebase';
 import { FamilyUser, Family, UserRole } from '../types/FamilyTypes';
-import { Platform } from 'react-native';
+import { Platform, AppState } from 'react-native';
 import LocalStorageService from './LocalStorageService';
-import SyncService from './SyncService';
+// Evitar import estático de SyncService para quebrar dependência circular.
+// Importaremos dinamicamente quando for necessário.
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const USER_STORAGE_KEY = 'familyApp_currentUser';
 
 export class FirebaseAuthService {
+  // Interval ID para keep-alive do token
+  private static keepAliveIntervalId: any = null;
+  private static keepAliveIntervalMinutes = 30; // intervalo padrão para refresh de token
+  private static appStateListener: any = null;
+
+  /**
+   * Inicia o mecanismo de keep-alive: faz refresh do token a cada N minutos
+   * e faz refresh imediato quando o app volta ao foreground.
+   */
+  static startAuthKeepAlive(intervalMinutes?: number) {
+    try {
+      if (intervalMinutes && typeof intervalMinutes === 'number') {
+        this.keepAliveIntervalMinutes = intervalMinutes;
+      }
+
+      // Se já existe, limpar antes
+      if (this.keepAliveIntervalId) {
+        clearInterval(this.keepAliveIntervalId);
+      }
+
+      // Função para forçar refresh do token
+      const refreshToken = async () => {
+        try {
+          const current = auth.currentUser;
+          if (current && typeof current.getIdToken === 'function') {
+            console.log('🔄 Keep-alive: atualizando token de autenticação...');
+            await current.getIdToken(true);
+            console.log('✅ Keep-alive: token atualizado com sucesso');
+          } else {
+            console.log('🔒 Keep-alive: usuário não autenticado - interrompendo keep-alive');
+            this.stopAuthKeepAlive();
+          }
+        } catch (err) {
+          console.warn('⚠️ Keep-alive: erro ao atualizar token:', err);
+        }
+      };
+
+      // Intervalo periódico
+      this.keepAliveIntervalId = setInterval(() => {
+        refreshToken();
+      }, this.keepAliveIntervalMinutes * 60 * 1000);
+
+      // Atualiza imediatamente ao iniciar
+      refreshToken();
+
+      // Listener para trazer ao foreground
+      if (!this.appStateListener) {
+        this.appStateListener = AppState.addEventListener('change', (nextAppState: any) => {
+          if (nextAppState === 'active') {
+            // App voltou ao foreground, forçar refresh imediato
+            (async () => {
+              try {
+                const current = auth.currentUser;
+                if (current && typeof current.getIdToken === 'function') {
+                  console.log('🔄 Keep-alive (foreground): atualizando token...');
+                  await current.getIdToken(true);
+                  console.log('✅ Keep-alive (foreground): token atualizado');
+                }
+              } catch (e) {
+                console.warn('⚠️ Keep-alive (foreground) erro:', e);
+              }
+            })();
+          }
+        });
+      }
+    } catch (error) {
+      console.warn('Erro ao iniciar keep-alive de autenticação:', error);
+    }
+  }
+
+  static stopAuthKeepAlive() {
+    try {
+      if (this.keepAliveIntervalId) {
+        clearInterval(this.keepAliveIntervalId);
+        this.keepAliveIntervalId = null;
+      }
+      if (this.appStateListener) {
+        // subscription returned by addEventListener has remove()
+        try {
+          if (typeof this.appStateListener.remove === 'function') {
+            this.appStateListener.remove();
+          }
+        } catch (e) {
+          console.warn('Erro ao remover listener AppState:', e);
+        }
+        this.appStateListener = null;
+      }
+      console.log('🛑 Keep-alive de autenticação parado');
+    } catch (error) {
+      console.warn('Erro ao parar keep-alive:', error);
+    }
+  }
+
   // Salvar usuário no AsyncStorage
   static async saveUserToLocalStorage(user: FamilyUser): Promise<void> {
     try {
@@ -140,6 +234,13 @@ export class FirebaseAuthService {
       // Salvar no AsyncStorage para persistência
       await this.saveUserToLocalStorage(fullUser);
 
+      // Garantir que o keep-alive de autenticação esteja rodando
+      try {
+        FirebaseAuthService.startAuthKeepAlive();
+      } catch (e) {
+        console.warn('Erro ao iniciar keep-alive após registro:', e);
+      }
+
       return { success: true, user: fullUser };
     } catch (error: any) {
       console.error('❌ Erro no registro:', error.message);
@@ -188,6 +289,13 @@ export class FirebaseAuthService {
       // Salvar no AsyncStorage para persistência
       await this.saveUserToLocalStorage(fullUser);
       
+      // Garantir que o keep-alive de autenticação esteja rodando
+      try {
+        FirebaseAuthService.startAuthKeepAlive();
+      } catch (e) {
+        console.warn('Erro ao iniciar keep-alive após login:', e);
+      }
+
       return { success: true, user: fullUser };
     } catch (error: any) {
       console.error('❌ Erro no login:', error.message);
@@ -260,6 +368,13 @@ export class FirebaseAuthService {
       // Salvar no AsyncStorage para persistência
       await this.saveUserToLocalStorage(familyUser);
 
+      // Garantir que o keep-alive de autenticação esteja rodando
+      try {
+        FirebaseAuthService.startAuthKeepAlive();
+      } catch (e) {
+        console.warn('Erro ao iniciar keep-alive após login com Google:', e);
+      }
+
       return { success: true, user: familyUser };
     } catch (error: any) {
       console.error('Erro detalhado no login com Google:', error);
@@ -274,7 +389,9 @@ export class FirebaseAuthService {
       await signOut(auth);
       // Remover dados do AsyncStorage
       await this.removeUserFromLocalStorage();
-      return { success: true };
+  // Garantir que o keep-alive esteja parado
+  try { FirebaseAuthService.stopAuthKeepAlive(); } catch (e) { /* ignore */ }
+  return { success: true };
     } catch (error: any) {
       const friendlyError = this.translateFirebaseError(error.code || '', error.message || '');
       return { success: false, error: friendlyError };
@@ -298,14 +415,23 @@ export class FirebaseAuthService {
             picture: firebaseUser.photoURL || userData.picture
           } as FamilyUser;
           console.log('👤 Usuário autenticado:', familyUser.name, familyUser.role);
-          callback(familyUser);
+            callback(familyUser);
+            // Iniciar keep-alive de autenticação quando houver usuário
+            try {
+              FirebaseAuthService.startAuthKeepAlive();
+            } catch (e) {
+              console.warn('Erro ao iniciar keep-alive após auth state change:', e);
+            }
         } else {
           console.log('❌ Documento do usuário não encontrado');
-          callback(null);
+            callback(null);
+            // Nenhum usuário autenticado - garantir que keep-alive esteja parado
+            try { FirebaseAuthService.stopAuthKeepAlive(); } catch (e) { /* ignore */ }
         }
       } else {
         console.log('🚪 Usuário deslogado');
-        callback(null);
+          callback(null);
+          try { FirebaseAuthService.stopAuthKeepAlive(); } catch (e) { /* ignore */ }
       }
     });
   }
@@ -390,7 +516,8 @@ export class FirebaseAuthService {
   // Inicializar sistema offline
   static async initializeOfflineSupport(): Promise<void> {
     try {
-      // Inicializar SyncService
+      // Inicializar SyncService (import dinâmico para evitar ciclo de dependências)
+      const { default: SyncService } = await import('./SyncService');
       await SyncService.initialize();
       console.log('Sistema offline inicializado');
     } catch (error) {
@@ -417,6 +544,12 @@ export class FirebaseAuthService {
         
         // Inicializar sistema offline
         await this.initializeOfflineSupport();
+        // Iniciar keep-alive quando login online bem-sucedido
+        try {
+          FirebaseAuthService.startAuthKeepAlive();
+        } catch (e) {
+          console.warn('Erro ao iniciar keep-alive após login com cache:', e);
+        }
       }
       
       return result;
@@ -452,6 +585,12 @@ export class FirebaseAuthService {
         
         // Inicializar sistema offline
         await this.initializeOfflineSupport();
+        // Iniciar keep-alive quando registro online bem-sucedido
+        try {
+          FirebaseAuthService.startAuthKeepAlive();
+        } catch (e) {
+          console.warn('Erro ao iniciar keep-alive após registro com cache:', e);
+        }
       }
       
       return result;
@@ -470,8 +609,13 @@ export class FirebaseAuthService {
       // Salvar no cache
       await this.saveUserToCache(tempUser);
       
-      // Adicionar à fila de sincronização
-      await SyncService.addOfflineOperation('create', 'users', tempUser);
+      // Adicionar à fila de sincronização (import dinâmico para evitar ciclo)
+      try {
+        const { default: SyncService } = await import('./SyncService');
+        await SyncService.addOfflineOperation('create', 'users', tempUser);
+      } catch (e) {
+        console.warn('Não foi possível adicionar operação ao SyncService (import dinâmico falhou):', e);
+      }
       
       return { success: true, user: tempUser, isOffline: true };
     }
@@ -487,7 +631,12 @@ export class FirebaseAuthService {
       // await LocalStorageService.clearCache();
       
       // Limpar sync service
-      SyncService.cleanup();
+      try {
+        const { default: SyncService } = await import('./SyncService');
+        SyncService.cleanup();
+      } catch (e) {
+        console.warn('Não foi possível chamar SyncService.cleanup() via import dinâmico:', e);
+      }
       
       console.log('Logout realizado com limpeza de cache');
     } catch (error) {

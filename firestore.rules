@@ -1,0 +1,94 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isFamilyMember(familyId) {
+      return isAuthenticated() &&
+             exists(/databases/$(database)/documents/families/$(familyId)/members/$(request.auth.uid));
+    }
+
+    function isFamilyAdmin(familyId) {
+      return isAuthenticated() &&
+             get(/databases/$(database)/documents/families/$(familyId)/members/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // Users collection
+    match /users/{userId} {
+      // Users can read and write their own data
+      allow read, write: if isOwner(userId);
+
+      // Allow read for family members (for member lists, etc.)
+      allow read: if isAuthenticated();
+    }
+
+    // Families collection
+    match /families/{familyId} {
+      // Family members can read family data
+      allow read: if isFamilyMember(familyId);
+
+      // Only family admins can create/update/delete families
+      allow create: if isAuthenticated();
+      allow update, delete: if isFamilyAdmin(familyId);
+    }
+
+    // Family members subcollection
+    match /families/{familyId}/members/{memberId} {
+      // Family members can read member data
+      allow read: if isFamilyMember(familyId);
+
+      // Users can update their own member data
+      allow write: if isOwner(memberId) && isFamilyMember(familyId);
+    }
+
+    // Tasks collection
+    match /tasks/{taskId} {
+      // Get the family ID from the task document
+      function getTaskFamilyId() {
+        return get(/databases/$(database)/documents/tasks/$(taskId)).data.familyId;
+      }
+
+      // Family members can read tasks
+      allow read: if isFamilyMember(getTaskFamilyId());
+
+      // Family members can create tasks
+      allow create: if isAuthenticated() &&
+                       request.resource.data.keys().hasAll(['familyId']) &&
+                       isFamilyMember(request.resource.data.familyId);
+
+      // Family members can update/delete tasks
+      allow update, delete: if isFamilyMember(getTaskFamilyId());
+    }
+
+    // Task approvals subcollection
+    match /tasks/{taskId}/approvals/{approvalId} {
+      function getTaskFamilyId() {
+        return get(/databases/$(database)/documents/tasks/$(taskId)).data.familyId;
+      }
+
+      // Family members can read/write approvals
+      allow read, write: if isFamilyMember(getTaskFamilyId());
+    }
+
+    // Categories collection (if used globally)
+    match /categories/{categoryId} {
+      // Allow read for authenticated users
+      allow read: if isAuthenticated();
+
+      // Allow write for authenticated users (categories might be shared)
+      allow write: if isAuthenticated();
+    }
+
+    // Default deny for any other collections
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

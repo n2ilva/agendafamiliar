@@ -1,20 +1,29 @@
 import * as BackgroundFetch from 'expo-background-fetch';
 import * as TaskManager from 'expo-task-manager';
-import SyncService from './SyncService';
+import { Platform } from 'react-native';
+// importar SyncService dinamicamente quando necessário para evitar ciclos e
+// evitar carregar módulos nativos em ambiente web.
 
 const BACKGROUND_SYNC_TASK = 'background-sync-task';
 
 TaskManager.defineTask(BACKGROUND_SYNC_TASK, async () => {
   try {
     console.log('🔄 Executando tarefa de sincronização em segundo plano...');
-    const isConnected = await SyncService.isNetworkAvailable();
-    
-    if (!isConnected) {
-      console.log('🚫 Sem conexão de rede, pulando sincronização em segundo plano.');
-      return BackgroundFetch.BackgroundFetchResult.NoData;
-    }
+    // Import dinâmico para evitar dependência circular e carregamento de módulos
+    // nativos quando executando em ambientes que não suportam BackgroundFetch.
+    try {
+      const { default: SyncService } = await import('./SyncService');
+      const isConnected = await SyncService.isNetworkAvailable();
+      if (!isConnected) {
+        console.log('🚫 Sem conexão de rede, pulando sincronização em segundo plano.');
+        return BackgroundFetch.BackgroundFetchResult.NoData;
+      }
 
-    await SyncService.performBackgroundSync();
+      await SyncService.performBackgroundSync();
+    } catch (e) {
+      console.warn('Não foi possível executar SyncService na tarefa de background:', e);
+      return BackgroundFetch.BackgroundFetchResult.Failed;
+    }
     
     console.log('✅ Sincronização em segundo plano concluída com sucesso.');
     return BackgroundFetch.BackgroundFetchResult.NewData;
@@ -26,6 +35,12 @@ TaskManager.defineTask(BACKGROUND_SYNC_TASK, async () => {
 
 async function registerBackgroundSyncAsync() {
   try {
+    // No web não tentamos registrar tarefas nativas (expo-background-fetch não está disponível)
+    if (Platform.OS === 'web') {
+      console.log('Background sync não registrado: execução em web detectada');
+      return;
+    }
+
     await BackgroundFetch.registerTaskAsync(BACKGROUND_SYNC_TASK, {
       minimumInterval: 15 * 60, // 15 minutos em segundos
       stopOnTerminate: false,
@@ -39,6 +54,11 @@ async function registerBackgroundSyncAsync() {
 
 async function unregisterBackgroundSyncAsync() {
   try {
+    if (Platform.OS === 'web') {
+      console.log('Background sync não cancelado: execução em web detectada');
+      return;
+    }
+
     await BackgroundFetch.unregisterTaskAsync(BACKGROUND_SYNC_TASK);
     console.log('👋 Tarefa de sincronização em segundo plano cancelada.');
   } catch (error) {
