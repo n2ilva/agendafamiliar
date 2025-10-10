@@ -6,6 +6,7 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
+    "migrate:normalize-private": "ts-node ./scripts/migrate-normalize-private.ts",
     "web": "expo start --web"
   },
   "dependencies": {
@@ -38,7 +39,9 @@
   "devDependencies": {
     "@types/react": "~19.1.0",
     "@types/uuid": "^10.0.0",
-    "typescript": "~5.9.2"
+    "typescript": "~5.9.2",
+    "ts-node": "^10.9.1",
+    "firebase-admin": "^11.12.0"
   },
   "private": true
 }

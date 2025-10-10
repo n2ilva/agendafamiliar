@@ -522,7 +522,7 @@ class FirebaseFamilyService {
   // Salvar tarefa da família
   async saveFamilyTask(task: Task, familyId: string): Promise<Task> {
     try {
-      const taskDataRaw: any = {
+        const taskDataRaw: any = {
         ...task,
         familyId,
         createdAt: task.createdAt ? Timestamp.fromDate(task.createdAt) : Timestamp.now(),
@@ -531,8 +531,8 @@ class FirebaseFamilyService {
         dueDate: task.dueDate ? Timestamp.fromDate(task.dueDate) : null,
         dueTime: task.dueTime ? Timestamp.fromDate(task.dueTime) : null,
         repeatDays: Array.isArray((task as any).repeatDays) ? (task as any).repeatDays : undefined,
-        // Incluir flag 'private' se estiver definida
-        ...(typeof (task as any).private !== 'undefined' ? { private: (task as any).private === true } : {}),
+        // Sempre incluir flag 'private' como booleano (default: false) para normalizar documentos
+        private: (task as any).private === true
       };
       const taskData: any = this.sanitizeForFirestore(taskDataRaw);
 
@@ -598,17 +598,43 @@ class FirebaseFamilyService {
     try {
       const tasks: Task[] = [];
 
-      // 1) Buscar tarefas da família (públicas e privadas — iremos filtrar públicas localmente)
-      const familyQ = query(
+      // 1) Buscar tarefas públicas da família (private == false) diretamente no servidor
+      // Isso reduz transferência de dados privados de outros membros.
+      const familyPublicQ = query(
         collection(db, this.tasksCollection),
         where('familyId', '==', familyId),
+        where('private', '==', false),
         orderBy('createdAt', 'desc')
       );
 
-      const familySnap = await getDocs(familyQ);
-      familySnap.forEach((doc) => {
+      const familyPublicSnap = await getDocs(familyPublicQ);
+      familyPublicSnap.forEach((doc) => {
         tasks.push(this.convertFirebaseTask(doc));
       });
+
+      // Fallback: caso existam documentos antigos sem o campo `private`, eles não
+      // serão retornados pela query acima. Para não perder dados, se não houver
+      // resultados públicos, tentar buscar todos os documentos da família e logar.
+      if (familyPublicSnap.empty) {
+        try {
+          const familyAllQ = query(
+            collection(db, this.tasksCollection),
+            where('familyId', '==', familyId),
+            orderBy('createdAt', 'desc')
+          );
+          const familyAllSnap = await getDocs(familyAllQ);
+          if (!familyAllSnap.empty) {
+            console.warn('⚠️ Fallback: documentos da família sem campo `private` detectados. Considere rodar migração para normalizar `private` as boolean.');
+            familyAllSnap.forEach((doc) => {
+              const t = this.convertFirebaseTask(doc);
+              // Evitar duplicatas
+              if (!tasks.some(existing => existing.id === t.id)) tasks.push(t);
+            });
+          }
+        } catch (err) {
+          console.error('❌ Fallback ao buscar todos os documentos da família falhou:', err);
+        }
+      }
 
       // 2) Se userId informado, buscar tarefas privadas desse usuário (private == true && createdBy == userId)
       if (userId) {
@@ -662,13 +688,15 @@ class FirebaseFamilyService {
   subscribeToFamilyTasks(familyId: string, callback: (tasks: Task[]) => void, userId?: string): () => void {
     const unsubscribes: Array<() => void> = [];
 
-    const familyQ = query(
-      collection(db, this.tasksCollection),
-      where('familyId', '==', familyId),
-      orderBy('createdAt', 'desc')
-    );
+      // Ouvir apenas tarefas públicas da família (server-side filter)
+      const familyPublicQ = query(
+        collection(db, this.tasksCollection),
+        where('familyId', '==', familyId),
+        where('private', '==', false),
+        orderBy('createdAt', 'desc')
+      );
 
-    const familyUnsub = onSnapshot(familyQ, (querySnapshot) => {
+      const familyUnsub = onSnapshot(familyPublicQ, (querySnapshot) => {
       const tasks: Task[] = [];
       querySnapshot.forEach((doc) => {
         tasks.push(this.convertFirebaseTask(doc));
@@ -721,7 +749,10 @@ class FirebaseFamilyService {
         // Quando houver alteração em tarefas privadas do usuário, refazer a leitura da família para agregar
         const tasks: Task[] = [];
         // ler família em paralelo
-        getDocs(familyQ).then(familySnap => {
+        // Ler tarefas públicas da família (server-side). Se estiverem faltando
+        // resultados (possível presença de documentos antigos sem campo `private`),
+        // aplicar fallback semelhante ao do método getFamilyTasks.
+        getDocs(familyPublicQ).then(familySnap => {
           familySnap.forEach((doc) => tasks.push(this.convertFirebaseTask(doc)));
           querySnapshot.forEach(doc => {
             const t = this.convertFirebaseTask(doc);
@@ -729,12 +760,34 @@ class FirebaseFamilyService {
           });
           tasks.sort((a, b) => (b.editedAt || b.createdAt).getTime() - (a.editedAt || a.createdAt).getTime());
           callback(tasks);
-        }).catch(err => {
-          console.error('❌ Erro ao ler tarefas da família durante atualização de privadas:', err);
-          // fallback: retornar apenas privadas
-          const privateTasks: Task[] = [];
-          querySnapshot.forEach(doc => privateTasks.push(this.convertFirebaseTask(doc)));
-          callback(privateTasks);
+        }).catch(async err => {
+          console.error('❌ Erro ao ler tarefas públicas da família durante atualização de privadas:', err);
+          // Fallback: tentar ler todos os documentos da família (compatibilidade com docs antigos)
+          try {
+            const familyAllQ = query(
+              collection(db, this.tasksCollection),
+              where('familyId', '==', familyId),
+              orderBy('createdAt', 'desc')
+            );
+            const familyAllSnap = await getDocs(familyAllQ);
+            familyAllSnap.forEach((doc) => {
+              const t = this.convertFirebaseTask(doc);
+              if (!tasks.some(existing => existing.id === t.id)) tasks.push(t);
+            });
+            // incluir privadas do usuário
+            querySnapshot.forEach(doc => {
+              const t = this.convertFirebaseTask(doc);
+              if (!tasks.some(existing => existing.id === t.id)) tasks.push(t);
+            });
+            tasks.sort((a, b) => (b.editedAt || b.createdAt).getTime() - (a.editedAt || a.createdAt).getTime());
+            callback(tasks);
+          } catch (fallbackErr) {
+            console.error('❌ Fallback falhou ao ler todos os documentos da família:', fallbackErr);
+            // fallback final: retornar apenas privadas do usuário
+            const privateTasks: Task[] = [];
+            querySnapshot.forEach(doc => privateTasks.push(this.convertFirebaseTask(doc)));
+            callback(privateTasks);
+          }
         });
       }, (error) => {
         console.error('❌ Erro no listener de tarefas privadas do usuário:', error);
@@ -753,7 +806,7 @@ class FirebaseFamilyService {
       const syncedTasks: Task[] = [];
 
       for (const task of localTasks) {
-        const taskData = this.sanitizeForFirestore({
+          const taskData = this.sanitizeForFirestore({
           ...task,
           familyId,
           createdAt: task.createdAt ? Timestamp.fromDate(task.createdAt) : Timestamp.now(),
@@ -763,6 +816,8 @@ class FirebaseFamilyService {
           dueTime: task.dueTime ? Timestamp.fromDate((task as any).dueTime) : null,
           repeatDays: Array.isArray((task as any).repeatDays) ? (task as any).repeatDays : undefined,
           editedAt: task.editedAt ? Timestamp.fromDate(task.editedAt) : null,
+          // Garantir private booleano ao sincronizar
+          private: (task as any).private === true
         });
 
         if (task.id && task.id !== 'temp') {

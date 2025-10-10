@@ -329,10 +329,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       firebaseTask.editedAt = task.editedAt;
     }
 
-    // Incluir flag 'private' se presente
-    if ((task as any).private !== undefined) {
-      firebaseTask.private = (task as any).private;
-    }
+    // Garantir que a flag 'private' sempre seja um booleano no payload enviado ao Firebase
+    // (padronizar para evitar documentos sem o campo, facilitando consultas server-side)
+    firebaseTask.private = (task as any).private === true;
 
     return firebaseTask as FirebaseTask;
   };

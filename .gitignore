@@ -1,4 +1,10 @@
-# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+# Service account key (do not commit)
+scripts/serviceAccountKey.json
+
+node_modules/
+*.log
+dist/
+build/# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
 
 # dependencies
 node_modules/
