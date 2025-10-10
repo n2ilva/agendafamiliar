@@ -32,7 +32,15 @@ async function main() {
     process.exit(1);
   }
 
-  const serviceAccount = require(SERVICE_ACCOUNT_PATH);
+  // Em ESM não podemos usar require; ler o JSON diretamente.
+  const raw = fs.readFileSync(SERVICE_ACCOUNT_PATH, 'utf8');
+  let serviceAccount: any;
+  try {
+    serviceAccount = JSON.parse(raw);
+  } catch (err) {
+    console.error('❌ Falha ao parsear o arquivo de credencial JSON:', err);
+    process.exit(1);
+  }
 
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
