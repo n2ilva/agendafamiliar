@@ -53,7 +53,14 @@ async function main() {
   // Paginar por todos os documentos na collection family_tasks
   let processed = 0;
   let updated = 0;
+  // Armazenar todos os IDs atualizados (útil para --dry-run ou relatório final)
+  const allUpdatedIds: string[] = [];
   let lastDoc: QueryDocumentSnapshot | null = null;
+
+  // Suporte a --dry-run: se passado, não aplicamos batch.commit(), apenas simulamos
+  const args = process.argv.slice(2);
+  const dryRun = args.includes('--dry-run') || args.includes('-n');
+  if (dryRun) console.log('⚠️  Rodando em modo dry-run — nenhuma alteração será gravada.');
 
   while (true) {
     let q = db.collection(TASKS_COLLECTION).orderBy('createdAt').limit(BATCH_SIZE);
@@ -65,6 +72,8 @@ async function main() {
     const batch = db.batch();
     let opsInBatch = 0;
 
+    // Coletar IDs atualizados neste batch para logging detalhado
+    const updatedIdsInBatch: string[] = [];
     snap.docs.forEach(doc => {
       processed += 1;
       const data = doc.data();
@@ -73,13 +82,23 @@ async function main() {
         batch.update(doc.ref, { private: false });
         opsInBatch += 1;
         updated += 1;
+        updatedIdsInBatch.push(doc.id);
       }
     });
 
     if (opsInBatch > 0) {
-      console.log(`📦 Comitando batch com ${opsInBatch} atualizações...`);
-      await batch.commit();
-      console.log('✅ Batch commit ok');
+      if (dryRun) {
+        console.log(`📦 [dry-run] Batch conteria ${opsInBatch} atualizações.`);
+        console.log(`🔁 [dry-run] IDs que seriam atualizados neste batch: ${updatedIdsInBatch.join(', ')}`);
+      } else {
+        console.log(`📦 Comitando batch com ${opsInBatch} atualizações...`);
+        await batch.commit();
+        console.log('✅ Batch commit ok');
+        console.log(`🔁 IDs atualizados neste batch: ${updatedIdsInBatch.join(', ')}`);
+      }
+
+      // Acumular para relatório final
+      allUpdatedIds.push(...updatedIdsInBatch);
     } else {
       console.log('— Nenhuma alteração necessária neste batch');
     }
@@ -93,6 +112,13 @@ async function main() {
   console.log('\n🎯 Migração concluída');
   console.log(`Documentos processados: ${processed}`);
   console.log(`Documentos atualizados (private adicionado): ${updated}`);
+
+  if (allUpdatedIds.length > 0) {
+    console.log('\n🔎 Lista completa de IDs atualizados:');
+    console.log(allUpdatedIds.join('\n'));
+  } else {
+    console.log('\n🔎 Nenhum documento precisou ser atualizado.');
+  }
 
   process.exit(0);
 }

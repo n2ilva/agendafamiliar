@@ -612,29 +612,10 @@ class FirebaseFamilyService {
         tasks.push(this.convertFirebaseTask(doc));
       });
 
-      // Fallback: caso existam documentos antigos sem o campo `private`, eles não
-      // serão retornados pela query acima. Para não perder dados, se não houver
-      // resultados públicos, tentar buscar todos os documentos da família e logar.
-      if (familyPublicSnap.empty) {
-        try {
-          const familyAllQ = query(
-            collection(db, this.tasksCollection),
-            where('familyId', '==', familyId),
-            orderBy('createdAt', 'desc')
-          );
-          const familyAllSnap = await getDocs(familyAllQ);
-          if (!familyAllSnap.empty) {
-            console.warn('⚠️ Fallback: documentos da família sem campo `private` detectados. Considere rodar migração para normalizar `private` as boolean.');
-            familyAllSnap.forEach((doc) => {
-              const t = this.convertFirebaseTask(doc);
-              // Evitar duplicatas
-              if (!tasks.some(existing => existing.id === t.id)) tasks.push(t);
-            });
-          }
-        } catch (err) {
-          console.error('❌ Fallback ao buscar todos os documentos da família falhou:', err);
-        }
-      }
+      // Note: não aplicar fallback de leitura "read-all" aqui. A aplicação
+      // normaliza o campo `private` em documentos antigos via migração. Isso
+      // garante que apenas documentos explicitamente públicos (private == false)
+      // sejam retornados pelo servidor, evitando exposição de tarefas privadas.
 
       // 2) Se userId informado, buscar tarefas privadas desse usuário (private == true && createdBy == userId)
       if (userId) {
@@ -760,34 +741,17 @@ class FirebaseFamilyService {
           });
           tasks.sort((a, b) => (b.editedAt || b.createdAt).getTime() - (a.editedAt || a.createdAt).getTime());
           callback(tasks);
-        }).catch(async err => {
+        }).catch(err => {
           console.error('❌ Erro ao ler tarefas públicas da família durante atualização de privadas:', err);
-          // Fallback: tentar ler todos os documentos da família (compatibilidade com docs antigos)
-          try {
-            const familyAllQ = query(
-              collection(db, this.tasksCollection),
-              where('familyId', '==', familyId),
-              orderBy('createdAt', 'desc')
-            );
-            const familyAllSnap = await getDocs(familyAllQ);
-            familyAllSnap.forEach((doc) => {
-              const t = this.convertFirebaseTask(doc);
-              if (!tasks.some(existing => existing.id === t.id)) tasks.push(t);
-            });
-            // incluir privadas do usuário
-            querySnapshot.forEach(doc => {
-              const t = this.convertFirebaseTask(doc);
-              if (!tasks.some(existing => existing.id === t.id)) tasks.push(t);
-            });
-            tasks.sort((a, b) => (b.editedAt || b.createdAt).getTime() - (a.editedAt || a.createdAt).getTime());
-            callback(tasks);
-          } catch (fallbackErr) {
-            console.error('❌ Fallback falhou ao ler todos os documentos da família:', fallbackErr);
-            // fallback final: retornar apenas privadas do usuário
-            const privateTasks: Task[] = [];
-            querySnapshot.forEach(doc => privateTasks.push(this.convertFirebaseTask(doc)));
-            callback(privateTasks);
-          }
+          // Não aplicar fallback para ler todos os documentos da família.
+          // Retornar apenas as tarefas públicas já lidas (tasks) e as privadas do usuário
+          // que estão no `querySnapshot` abaixo.
+          querySnapshot.forEach(doc => {
+            const t = this.convertFirebaseTask(doc);
+            if (!tasks.some(existing => existing.id === t.id)) tasks.push(t);
+          });
+          tasks.sort((a, b) => (b.editedAt || b.createdAt).getTime() - (a.editedAt || a.createdAt).getTime());
+          callback(tasks);
         });
       }, (error) => {
         console.error('❌ Erro no listener de tarefas privadas do usuário:', error);

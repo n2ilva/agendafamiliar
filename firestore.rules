@@ -48,33 +48,62 @@ service cloud.firestore {
       allow write: if isOwner(memberId) && isFamilyMember(familyId);
     }
 
-    // Tasks collection
-    match /tasks/{taskId} {
-      // Get the family ID from the task document
-      function getTaskFamilyId() {
-        return get(/databases/$(database)/documents/tasks/$(taskId)).data.familyId;
+    // Family tasks collection (app uses `family_tasks`)
+    match /family_tasks/{taskId} {
+      // Helper: familyId for this task (resource is available for get/list)
+      function taskFamilyId() {
+        return resource.data.familyId;
       }
 
-      // Family members can read tasks
-      allow read: if isFamilyMember(getTaskFamilyId());
+      // Helper: familyId of the authenticated user (uses users/{uid}.familyId maintained by the app)
+      function userFamilyId() {
+        return isAuthenticated() ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.familyId : null;
+      }
 
-      // Family members can create tasks
-      allow create: if isAuthenticated() &&
-                       request.resource.data.keys().hasAll(['familyId']) &&
-                       isFamilyMember(request.resource.data.familyId);
+      // READ: allow if user is authenticated, belongs to the family, and either the task is not private
+      // or the user is the creator of the task. This enforces that private tasks are only readable by their creator.
+      allow read: if isAuthenticated()
+                  && userFamilyId() == taskFamilyId()
+                  && (resource.data.private != true || resource.data.createdBy == request.auth.uid);
 
-      // Family members can update/delete tasks
-      allow update, delete: if isFamilyMember(getTaskFamilyId());
+  // CREATE: authenticated family member can create a task for their family and must set createdBy == request.auth.uid
+  // Stronger validation: enforce types for common fields to avoid regressions from clients.
+  allow create: if isAuthenticated()
+        && request.resource.data.familyId == userFamilyId()
+        && request.resource.data.createdBy == request.auth.uid
+        // createdAt must be a timestamp
+        && request.resource.data.createdAt is timestamp
+        // private must be boolean if present
+        && (!('private' in request.resource.data) || request.resource.data.private is bool)
+        // repeatDays if present should be a list (finer validation handled server-side)
+        && (!('repeatDays' in request.resource.data) || request.resource.data.repeatDays is list);
+
+  // UPDATE: only the creator may update their task. Prevent changing ownership/family and validate types.
+  allow update: if isAuthenticated()
+         && resource.data.createdBy == request.auth.uid
+         // Prevent changing who created the task or which family it belongs to
+         && request.resource.data.createdBy == resource.data.createdBy
+         && request.resource.data.familyId == resource.data.familyId
+         // private must be boolean if present
+         && (!('private' in request.resource.data) || request.resource.data.private is bool)
+         // repeatDays if present should be a list
+         && (!('repeatDays' in request.resource.data) || request.resource.data.repeatDays is list)
+         // updatedAt if present must be a timestamp
+         && (!('updatedAt' in request.resource.data) || request.resource.data.updatedAt is timestamp);
+
+  // DELETE: only the creator may delete their task
+  allow delete: if isAuthenticated() && resource.data.createdBy == request.auth.uid;
     }
 
-    // Task approvals subcollection
-    match /tasks/{taskId}/approvals/{approvalId} {
-      function getTaskFamilyId() {
-        return get(/databases/$(database)/documents/tasks/$(taskId)).data.familyId;
+    // Approvals (if approvals are stored as a top-level collection or subcollection under family_tasks)
+    // If your app stores approvals as a subcollection under family_tasks, allow family members to read/write
+    // approvals only if they belong to the same family. If approvals are stored elsewhere, adjust accordingly.
+    match /family_tasks/{taskId}/approvals/{approvalId} {
+      function taskFamilyId() {
+        return get(/databases/$(database)/documents/family_tasks/$(taskId)).data.familyId;
       }
 
-      // Family members can read/write approvals
-      allow read, write: if isFamilyMember(getTaskFamilyId());
+      allow read, write: if isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.familyId == taskFamilyId();
     }
 
     // Categories collection (if used globally)
