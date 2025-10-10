@@ -16,7 +16,11 @@ import admin from 'firebase-admin';
 import { getFirestore, WriteBatch, QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import * as fs from 'fs';
 import * as path from 'path';
+import { fileURLToPath } from 'url';
 
+// Compatibilidade ESM: derivar __dirname a partir de import.meta.url
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 const SERVICE_ACCOUNT_PATH = path.join(__dirname, 'serviceAccountKey.json');
 const TASKS_COLLECTION = 'family_tasks';
 const BATCH_SIZE = 500; // Firestore permite até 500 operações por batch
