@@ -1,22 +1,7 @@
 import LocalStorageService, { PendingOperation } from './LocalStorageService';
 import ConnectivityService from './ConnectivityService';
-import FirebaseAuthService from './FirebaseAuthService';
+import LocalAuthService from './LocalAuthService';
 import familyService from './FirebaseFamilyService';
-import { db } from '../config/firebase';
-import { 
-  collection, 
-  doc, 
-  setDoc, 
-  getDoc, 
-  getDocs, 
-  updateDoc, 
-  deleteDoc, 
-  addDoc, // Importar addDoc
-  query, 
-  where,
-  onSnapshot,
-  Unsubscribe
-} from 'firebase/firestore';
 import { FamilyUser, Family, Task, TaskApproval } from '../types/FamilyTypes';
 
 export interface SyncStatus {
@@ -41,7 +26,7 @@ class SyncService {
     pendingOperations: 0,
     hasError: false
   };
-  private static firebaseListeners: Unsubscribe[] = [];
+  private static firebaseListeners: Array<() => void> = [];
   private static isInitialized = false;
 
   // Remove chaves com valor undefined de objetos/arrays (recursivo)
@@ -197,86 +182,93 @@ class SyncService {
   // Executar operação pendente
   private static async executeOperation(operation: PendingOperation): Promise<void> {
     const { type, collection: collectionName, data } = operation;
-    const collRef = collection(db, collectionName);
-    const payload: any = this.sanitizeForFirestore(data);
-
-    switch (type) {
-      case 'create':
-        if (payload.id && typeof payload.id === 'string' && !payload.id.startsWith('temp_') && payload.id !== 'temp') {
-          // Preservar o ID fornecido
-          const targetRef = doc(db, collectionName, payload.id);
-          await setDoc(targetRef, payload);
-          console.log(`✅ Documento criado com ID preservado: ${payload.id}`);
+    // Apply operations to local cache using LocalStorageService or familyService
+    try {
+      if (collectionName === 'users') {
+        if (type === 'delete') {
+          await LocalStorageService.removeFromCache('users', data.id);
         } else {
-          // Sem ID ou temporário: deixar o Firestore gerar um ID
-          const newDocRef = await addDoc(collRef, payload);
-          console.log(`✅ Documento criado com novo ID: ${newDocRef.id}`);
+          await LocalStorageService.saveUser(data as FamilyUser);
         }
-        break;
-      
-      case 'update':
-        // Se o ID for temporário, tratar como 'create'
-        if (payload.id && (payload.id.startsWith('temp_') || payload.id === 'temp')) {
-          const newDocRefFromUpdate = await addDoc(collRef, payload);
-          console.log(`✅ Documento (de update) criado com novo ID: ${newDocRefFromUpdate.id}`);
+      } else if (collectionName === 'families') {
+        if (type === 'delete') {
+          await LocalStorageService.removeFromCache('families', data.id);
         } else {
-          // Se o ID for real, verificar se existe antes de atualizar
-          const docRef = doc(db, collectionName, payload.id);
-          const docSnap = await getDoc(docRef);
-          
-          if (docSnap.exists()) {
-            await updateDoc(docRef, payload);
-          } else {
-            // Se não existe, cria com o ID especificado (pode ter sido deletado)
-            console.log(`⚠️ Documento ${data.id} não encontrado para update, criando novo.`);
-            await setDoc(docRef, payload);
+          await LocalStorageService.saveFamily(data as Family);
+        }
+      } else if (collectionName === 'tasks') {
+        if (type === 'delete') {
+          await LocalStorageService.removeFromCache('tasks', data.id);
+        } else {
+          // Use familyService to save task if possible
+          try {
+            if (data.familyId) {
+              await familyService.saveFamilyTask(data as Task, data.familyId);
+            } else {
+              await LocalStorageService.saveTask(data as Task);
+            }
+          } catch (e) {
+            // fallback to local storage
+            await LocalStorageService.saveTask(data as Task);
           }
         }
-        break;
-      
-      case 'delete':
-        // Deletar documento se houver um ID válido
-        if (data.id && typeof data.id === 'string') {
-          await deleteDoc(doc(db, collectionName, data.id));
+      } else if (collectionName === 'approvals') {
+        if (type === 'delete') {
+          await LocalStorageService.removeFromCache('approvals', data.id);
         } else {
-          console.warn(`⚠️ Operação de delete ignorada: ID inválido em ${collectionName}`, data);
+          await LocalStorageService.saveApproval(data as TaskApproval);
         }
-        break;
-      
-      default:
-        throw new Error(`Tipo de operação não suportado: ${type}`);
+      } else if (collectionName === 'history') {
+        if (type === 'delete') {
+          await LocalStorageService.removeFromCache('history', data.id);
+        } else {
+          try {
+            await LocalStorageService.saveHistoryItem(data as any);
+          } catch (e) {
+            // fallback to familyService which normalizes history items
+            if (data.familyId) await familyService.addFamilyHistoryItem(data.familyId, data);
+          }
+        }
+      } else {
+        console.warn('Operação em coleção desconhecida (local-only):', collectionName);
+      }
+    } catch (err) {
+      console.error('Erro ao executar operação local:', err);
+      throw err;
     }
   }
 
   // Baixar dados do Firebase
   private static async downloadFirebaseData(): Promise<void> {
-    const currentUser = FirebaseAuthService.getCurrentUser();
+    // In local-only mode, download from local familyService (which uses AsyncStorage)
+    const currentUser = await LocalAuthService.getUserFromLocalStorage();
     if (!currentUser) return;
 
-    console.log('📥 Baixando dados do Firebase');
+    console.log('📥 Baixando dados (local-only)');
 
     try {
-      // Baixar dados do usuário
-      const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
-      if (userDoc.exists()) {
-        const userData = { id: userDoc.id, ...userDoc.data() } as FamilyUser;
-        await LocalStorageService.saveUser(userData);
-        
-        // Baixar dados da família se o usuário tiver uma
-        const userFamily = await familyService.getUserFamily(currentUser.uid);
-        if (userFamily) {
-          await this.downloadFamilyData(userFamily.id);
-        }
-      }
+      // Save current user to cache
+      await LocalStorageService.saveUser(currentUser);
 
+      // Get user's family and download family data
+      const userFamily = await familyService.getUserFamily(currentUser.id);
+      if (userFamily) {
+        await LocalStorageService.saveFamily(userFamily);
+        for (const member of userFamily.members) {
+          await LocalStorageService.saveUser(member);
+        }
+
+        // Tasks
+        const familyTasks = await familyService.getFamilyTasks(userFamily.id, currentUser.id);
+        for (const task of familyTasks) {
+          await LocalStorageService.saveTask(task);
+        }
+
+        console.log(`📋 ${familyTasks.length} tarefas da família (incluindo privadas do usuário) salvas no cache`);
+      }
     } catch (error) {
-      console.error('Erro ao baixar dados do Firebase:', {
-        message: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined
-      });
-      // Propagar erro com contexto adicional
-      const msg = error instanceof Error ? error.message : String(error);
-      throw new Error(`downloadFirebaseData falhou: ${msg}`);
+      console.error('Erro ao baixar dados (local-only):', error);
+      throw error;
     }
   }
 
@@ -299,8 +291,8 @@ class SyncService {
       }
 
   // Baixar tarefas da família usando o familyService (incluir tarefas privadas do usuário se possível)
-  const currentUser = FirebaseAuthService.getCurrentUser();
-  const userId = currentUser ? currentUser.uid : undefined;
+  const currentUser = await LocalAuthService.getUserFromLocalStorage();
+  const userId = currentUser ? ((currentUser as any).uid || (currentUser as any).id) : undefined;
   const familyTasks = await familyService.getFamilyTasks(familyId, userId);
       for (const task of familyTasks) {
         await LocalStorageService.saveTask(task);
@@ -308,32 +300,13 @@ class SyncService {
 
       console.log(`📋 ${familyTasks.length} tarefas da família (incluindo privadas do usuário) baixadas e salvas no cache`);
 
-      // Baixar aprovações da família
-      const approvalsQuery = query(
-        collection(db, 'approvals'),
-        where('familyId', '==', familyId)
-      );
-      const approvalsSnapshot = await getDocs(approvalsQuery);
-      
-      const approvals: TaskApproval[] = [];
-      for (const approvalDoc of approvalsSnapshot.docs) {
-        const raw = approvalDoc.data();
-        const approvalData: TaskApproval = {
-          id: approvalDoc.id,
-          taskId: raw.taskId,
-          dependenteId: raw.dependenteId,
-          dependenteName: raw.dependenteName,
-          adminId: raw.adminId,
-          status: raw.status,
-          requestedAt: (raw.requestedAt && typeof raw.requestedAt.toDate === 'function') ? raw.requestedAt.toDate() : (raw.requestedAt ? new Date(raw.requestedAt) : new Date()),
-          resolvedAt: (raw.resolvedAt && typeof raw.resolvedAt.toDate === 'function') ? raw.resolvedAt.toDate() : (raw.resolvedAt ? new Date(raw.resolvedAt) : undefined),
-          adminComment: raw.adminComment,
-          familyId: raw.familyId || familyId,
-        };
-        await LocalStorageService.saveApproval(approvalData);
-        approvals.push(approvalData);
+      // Baixar aprovações a partir do armazenamento local (não há servidor)
+      const offlineData = await LocalStorageService.getOfflineData();
+      const approvalsMap = offlineData.approvals || {};
+      const approvals: TaskApproval[] = Object.values(approvalsMap).filter(a => a && a.familyId === familyId) as TaskApproval[];
+      for (const approval of approvals) {
+        await LocalStorageService.saveApproval(approval);
       }
-      // Notificar interessados na lista de approvals
       this.notifyApprovalsListeners(approvals);
 
       // Reconciliar cache local: usar os dados do Firebase como source-of-truth para esta família
@@ -357,8 +330,8 @@ class SyncService {
         }
 
         // Adicionar/atualizar membros da família baixados do servidor
-        if (familyData && Array.isArray(familyData.members)) {
-          for (const member of familyData.members) {``
+          if (familyData && Array.isArray(familyData.members)) {
+          for (const member of familyData.members) {
             usersMap[member.id] = member;
           }
           // Atualizar família
@@ -375,9 +348,12 @@ class SyncService {
           }
         }
 
-        // Adicionar tarefas baixadas do servidor
+        // Adicionar tarefas baixadas do servidor (normalizar datas)
         for (const t of familyTasks) {
-          tasksMap[t.id] = t;
+          const tt: any = { ...t };
+          if (tt.createdAt && typeof tt.createdAt === 'string') tt.createdAt = new Date(tt.createdAt);
+          if (tt.editedAt && typeof tt.editedAt === 'string') tt.editedAt = new Date(tt.editedAt);
+          tasksMap[tt.id] = tt;
         }
 
         // Remover approvals locais desta família
@@ -416,78 +392,14 @@ class SyncService {
 
   // Configurar listeners do Firebase
   private static setupFirebaseListeners(): void {
-    const currentUser = FirebaseAuthService.getCurrentUser();
-    if (!currentUser) return;
-
-    console.log('👂 Configurando listeners Firebase');
-
-    // Listener para mudanças do usuário
-    const userListener = onSnapshot(
-      doc(db, 'users', currentUser.uid),
-      (doc) => {
-        if (doc.exists()) {
-          const userData = { id: doc.id, ...doc.data() } as FamilyUser;
-          LocalStorageService.saveUser(userData);
-          console.log('🔄 Dados do usuário atualizados');
-        }
-      },
-      (error) => console.error('Erro no listener do usuário:', error)
-    );
-
-    this.firebaseListeners.push(userListener);
-
-    // Listener em tempo real para approvals da família do usuário (se houver)
-    familyService.getUserFamily(currentUser.uid).then(family => {
-      if (!family) return;
-      const q = query(
-        collection(db, 'approvals'),
-        where('familyId', '==', family.id)
-      );
-      const approvalsListener = onSnapshot(q, async (snapshot) => {
-        const removals: string[] = [];
-        snapshot.docChanges().forEach(async change => {
-          const data = change.doc.data() as any;
-          const approval: TaskApproval = {
-            id: change.doc.id,
-            taskId: data.taskId,
-            dependenteId: data.dependenteId,
-            dependenteName: data.dependenteName,
-            adminId: data.adminId,
-            status: data.status,
-            requestedAt: (data.requestedAt && typeof data.requestedAt.toDate === 'function') ? data.requestedAt.toDate() : (data.requestedAt ? new Date(data.requestedAt) : new Date()),
-            resolvedAt: (data.resolvedAt && typeof data.resolvedAt.toDate === 'function') ? data.resolvedAt.toDate() : (data.resolvedAt ? new Date(data.resolvedAt) : undefined),
-            adminComment: data.adminComment,
-            familyId: data.familyId || family.id,
-          };
-          // Somente salvar ou remover no cache; derivação de UI acontece na tela
-          if (change.type === 'removed') {
-            removals.push(approval.id);
-            await LocalStorageService.removeFromCache('approvals' as any, approval.id);
-          } else {
-            // evitar re-inserir itens que tenham sido removidos nesta rodada
-            if (!removals.includes(approval.id)) {
-              await LocalStorageService.saveApproval(approval);
-            }
-          }
-        });
-        // Após aplicar mudanças, carregar todas approvals do cache e notificar
-        const allApprovals = await LocalStorageService.getApprovals();
-        const filtered = allApprovals.filter(a => !removals.includes((a as any).id));
-        this.notifyApprovalsListeners(filtered);
-        console.log('🔔 Atualizações de approvals recebidas em tempo real');
-      }, (error) => {
-        console.error('Erro no listener de approvals:', error);
-      });
-
-      this.firebaseListeners.push(approvalsListener);
-    }).catch(err => console.error('Erro ao obter família para listener de approvals:', err));
+    // No realtime listeners in local-only mode. Keep placeholder for API compatibility.
+    console.log('⚠️ setupFirebaseListeners skipped in local-only mode');
   }
 
   // Parar listeners do Firebase
   private static stopFirebaseListeners(): void {
-    this.firebaseListeners.forEach(unsubscribe => unsubscribe());
     this.firebaseListeners = [];
-    console.log('🛑 Listeners Firebase parados');
+    console.log('🛑 Listeners skipped/cleared in local-only mode');
   }
 
   // Adicionar operação à fila offline
@@ -662,12 +574,13 @@ class SyncService {
       await this.processPendingOperations();
 
       // 2. Baixar dados essenciais (versão leve do download)
-      const currentUser = FirebaseAuthService.getCurrentUser();
+      const currentUser = await LocalAuthService.getUserFromLocalStorage();
       if (currentUser) {
-        const userFamily = await familyService.getUserFamily(currentUser.uid);
+        const uid = (currentUser as any).uid || (currentUser as any).id;
+        const userFamily = await familyService.getUserFamily(uid);
         if (userFamily) {
           // Apenas um exemplo de download leve: buscar tarefas (incluir privadas do usuário)
-          const familyTasks = await familyService.getFamilyTasks(userFamily.id, currentUser.uid);
+          const familyTasks = await familyService.getFamilyTasks(userFamily.id, uid);
           for (const task of familyTasks) {
             await LocalStorageService.saveTask(task);
           }

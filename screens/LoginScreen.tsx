@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Image, TextInput, ActivityIndicator, Platform, ScrollView, Modal, KeyboardAvoidingView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import FirebaseAuthService from '../services/FirebaseAuthService';
+import LocalAuthService from '../services/LocalAuthService';
 import Alert from '../utils/Alert';
 
 interface LoginScreenProps {
@@ -53,10 +53,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
       
       if (isLogin) {
         // Login
-        result = await FirebaseAuthService.loginUser(email, password);
+  result = await LocalAuthService.loginUser(email, password);
       } else {
         // Registro com papel de admin por padrão
-        result = await FirebaseAuthService.registerUser(email, password, name, 'admin');
+  result = await LocalAuthService.registerUser(email, password, name, 'admin');
       }
 
       if (result.success) {
@@ -112,7 +112,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
     setResetLoading(true);
 
     try {
-      const result = await FirebaseAuthService.resetPassword(resetEmail.trim());
+  const result = await LocalAuthService.resetPassword(resetEmail.trim());
       
       if (result.success) {
         Alert.alert(

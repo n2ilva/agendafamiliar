@@ -10,7 +10,7 @@ export interface FamilyUser {
   role: UserRole;
   isGuest: boolean;
   familyId?: string;
-  joinedAt: Date;
+  joinedAt: Date | string;
 }
 
 export interface Family {
@@ -18,9 +18,9 @@ export interface Family {
   name: string;
   adminId: string;
   members: FamilyUser[];
-  createdAt: Date;
+  createdAt: Date | string;
   inviteCode?: string;
-  inviteCodeExpiry?: Date;
+  inviteCodeExpiry?: Date | string;
 }
 
 export interface FamilyInvite {
@@ -29,10 +29,10 @@ export interface FamilyInvite {
   familyName: string;
   code: string;
   createdBy: string;
-  createdAt: Date;
-  expiresAt: Date;
+  createdAt: Date | string;
+  expiresAt: Date | string;
   usedBy?: string;
-  usedAt?: Date;
+  usedAt?: Date | string;
   isActive: boolean;
 }
 
@@ -43,8 +43,8 @@ export interface TaskApproval {
   dependenteName: string;
   adminId?: string;
   status: 'pendente' | 'aprovada' | 'rejeitada';
-  requestedAt: Date;
-  resolvedAt?: Date;
+  requestedAt: Date | string;
+  resolvedAt?: Date | string;
   adminComment?: string;
   // ID da família para facilitar filtros e listeners em tempo real
   familyId?: string;
@@ -57,7 +57,7 @@ export interface ApprovalNotification {
   taskTitle: string;
   dependenteId: string;
   dependenteName: string;
-  createdAt: Date;
+  createdAt: Date | string;
   read: boolean;
 }
 
@@ -69,9 +69,9 @@ export interface Task {
   status: TaskStatus;
   category: string;
   priority: 'baixa' | 'media' | 'alta';
-  createdAt: Date;
-  updatedAt: Date;
-  completedAt?: Date;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+  completedAt?: Date | string;
   dueDate?: Date;
   dueTime?: Date; // horário específico da tarefa
   repeatOption?: 'nenhum' | 'diario' | 'semanal' | 'mensal';
@@ -83,7 +83,7 @@ export interface Task {
   createdByName: string;
   editedBy?: string;
   editedByName?: string;
-  editedAt?: Date;
+  editedAt?: Date | string;
   // Se true, a tarefa é privada ao usuário que a criou e não deve ser visível para outros membros da família
   private?: boolean;
 }

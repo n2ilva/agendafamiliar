@@ -12,7 +12,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { UserRole } from '../types/FamilyTypes';
-import FirebaseAuthService from '../services/FirebaseAuthService';
+import LocalAuthService from '../services/LocalAuthService';
 import Alert from '../utils/Alert';
 
 interface HeaderProps {
@@ -98,7 +98,7 @@ export const Header: React.FC<HeaderProps> = ({
         try {
           console.log('📤 Iniciando upload para Firebase...');
           // Upload para Firebase
-          const uploadResult = await FirebaseAuthService.uploadProfileImage(imageUri);
+          const uploadResult = await LocalAuthService.uploadProfileImage(imageUri);
           
           console.log('📤 Resultado do upload:', uploadResult);
           
@@ -145,7 +145,7 @@ export const Header: React.FC<HeaderProps> = ({
     setNameLoading(true);
     
     try {
-      const result = await FirebaseAuthService.updateUserName(newName.trim());
+  const result = await LocalAuthService.updateUserName(newName.trim());
       
       if (result.success) {
         onUserNameChange(newName.trim());

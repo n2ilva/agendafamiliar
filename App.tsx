@@ -6,7 +6,7 @@ import FamilySetupScreen from './screens/FamilySetupScreen';
 
 import { ActivityIndicator, View, StyleSheet } from 'react-native';
 import { FamilyUser, UserRole } from './types/FamilyTypes';
-import FirebaseAuthService from './services/FirebaseAuthService';
+import LocalAuthService from './services/LocalAuthService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import BackgroundSyncService from './services/BackgroundSyncService';
 import Alert from './utils/Alert';
@@ -66,11 +66,11 @@ export default function App() {
 
   // Observar mudanças de autenticação do Firebase
   useEffect(() => {
-    const unsubscribe = FirebaseAuthService.onAuthStateChange(async (firebaseUser) => {
+  const unsubscribe = LocalAuthService.onAuthStateChange(async (firebaseUser) => {
       if (firebaseUser) {
         setUser(firebaseUser);
         await saveUserToStorage(firebaseUser);
-        await FirebaseAuthService.initializeOfflineSupport();
+  await LocalAuthService.initializeOfflineSupport();
         await BackgroundSyncService.registerBackgroundSyncAsync(); // Registrar tarefa de background
         // Verificar se o usuário tem família configurada
         setFamilyConfigured(!!firebaseUser.familyId);
@@ -128,7 +128,7 @@ export default function App() {
           onPress: async () => {
             try {
               // Logout do Firebase
-              await FirebaseAuthService.logout();
+              await LocalAuthService.logout();
               
               // Remover dados do usuário do storage local
               await removeUserFromStorage();
@@ -163,7 +163,7 @@ export default function App() {
       try {
         // Atualizar role no Firebase se não for convidado
         if (!user.isGuest) {
-          await FirebaseAuthService.updateUserRole(user.id, newRole);
+          await LocalAuthService.updateUserRole(user.id, newRole);
         }
         
         // Atualizar estado local
