@@ -1370,16 +1370,15 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     // Se o usuário pertence a uma família, adicionar também ao histórico da família
     if (currentFamily && !isOffline) {
       try {
-        await familyService.addFamilyHistoryItem(
-          currentFamily.id,
+        await familyService.addFamilyHistoryItem(currentFamily.id, {
           action,
           taskTitle,
           taskId,
-          historyItem.userId,
-          historyItem.userName,
-          historyItem.userRole,
+          userId: historyItem.userId,
+          userName: historyItem.userName,
+          userRole: historyItem.userRole,
           details
-        );
+        });
         console.log('👨‍👩‍👧‍👦 Item adicionado ao histórico da família');
       } catch (error) {
         console.error('❌ Erro ao adicionar ao histórico da família:', error);
@@ -2354,7 +2353,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
               // Se o usuário pertence a uma família, deletar também da família
               if (currentFamily && !isOffline) {
                 try {
-                  await familyService.deleteFamilyTask(taskId, currentFamily.id);
+                  await familyService.deleteFamilyTask(taskId);
                   console.log('👨‍👩‍👧‍👦 Tarefa deletada da família');
                 } catch (error) {
                   console.error('❌ Erro ao deletar tarefa da família:', error);
