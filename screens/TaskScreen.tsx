@@ -32,7 +32,7 @@ import LocalStorageService, { HistoryItem as StoredHistoryItem } from '../servic
 import SyncService, { SyncStatus } from '../services/SyncService';
 import ConnectivityService, { ConnectivityState } from '../services/ConnectivityService';
 import Alert from '../utils/Alert';
-import familyService from '../services/FirebaseFamilyService';
+import familyService from '../services/LocalFamilyService';
 import LocalAuthService from '../services/LocalAuthService';
 import { safeToDate, isToday, isUpcoming, isTaskOverdue, getNextRecurrenceDate, isRecurringTaskCompletable } from '../utils/DateUtils';
 import { v4 as uuidv4 } from 'uuid';

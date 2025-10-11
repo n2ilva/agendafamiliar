@@ -10,7 +10,7 @@ import {
   Pressable,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { familyService } from '../services/FirebaseFamilyService';
+import { familyService } from '../services/LocalFamilyService';
 import { UserRole } from '../types/FamilyTypes';
 import Alert from '../utils/Alert';
 

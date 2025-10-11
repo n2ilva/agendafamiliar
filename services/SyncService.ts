@@ -1,7 +1,7 @@
 import LocalStorageService, { PendingOperation } from './LocalStorageService';
 import ConnectivityService from './ConnectivityService';
 import LocalAuthService from './LocalAuthService';
-import familyService from './FirebaseFamilyService';
+import familyService from './LocalFamilyService';
 import { FamilyUser, Family, Task, TaskApproval } from '../types/FamilyTypes';
 
 export interface SyncStatus {
