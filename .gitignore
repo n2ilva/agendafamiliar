@@ -1,11 +1,15 @@
 # Service account key (do not commit)
 scripts/serviceAccountKey.json
+*firebase-adminsdk*.json
+agenda-familiar-*-firebase-adminsdk-*.json
 
 node_modules/
 emulator-data/
 *.log
 dist/
-build/# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+build/
+
+# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
 
 # dependencies
 node_modules/

@@ -34,7 +34,15 @@ class LocalFamilyService {
       name,
       adminId: adminUser.id,
       members: [{ ...adminUser, role: 'admin', familyId: id, joinedAt: new Date() }],
-      createdAt: new Date()
+      createdAt: new Date(),
+      // Gerar código de convite curto (6 caracteres alfanuméricos) e expiry de 24 horas
+      inviteCode: (() => {
+        const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // evitar ambiguidade
+        let code = '';
+        for (let i = 0; i < 6; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
+        return code;
+      })(),
+      inviteCodeExpiry: new Date(Date.now() + 24 * 60 * 60 * 1000)
     } as any;
     families[id] = family;
     await this.saveFamilies(families);
@@ -55,14 +63,24 @@ class LocalFamilyService {
   }
 
   async joinFamily(inviteCode: string, user: FamilyUser): Promise<Family> {
-    // Simplified: join first family
     const families = await this.loadFamilies();
-    const first = Object.values(families)[0];
-    if (!first) throw new Error('Nenhuma família disponível');
-    first.members.push({ ...user, role: 'dependente', familyId: first.id, joinedAt: new Date() } as any);
-    families[first.id] = first;
+    // Procurar família pelo código de convite (ignorar case)
+    const found = Object.values(families).find(f => {
+      if (!f.inviteCode) return false;
+      if ((f.inviteCode || '').toLowerCase() !== (inviteCode || '').toLowerCase()) return false;
+      // verificar expiry
+      if (f.inviteCodeExpiry) {
+        const exp = new Date(f.inviteCodeExpiry as any).getTime();
+        if (Date.now() > exp) return false;
+      }
+      return true;
+    });
+
+    if (!found) throw new Error('Código de convite inválido ou expirado');
+    found.members.push({ ...user, role: 'dependente', familyId: found.id, joinedAt: new Date() } as any);
+    families[found.id] = found;
     await this.saveFamilies(families);
-    return first;
+    return found;
   }
 
   async saveFamilyTask(task: Task, familyId: string): Promise<Task> {

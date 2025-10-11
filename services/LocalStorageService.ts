@@ -230,7 +230,11 @@ class LocalStorageService {
 
     data.pendingOperations.push(pendingOp);
     await this.saveOfflineData(data);
-    console.log('Operação adicionada à fila offline:', pendingOp.type, pendingOp.collection);
+    const opTaskId = pendingOp.data && pendingOp.data.id ? pendingOp.data.id : undefined;
+    const opFamilyId = pendingOp.data && (pendingOp.data.familyId !== undefined) ? pendingOp.data.familyId : undefined;
+    console.log('Operação adicionada à fila offline:', `id=${pendingOp.id} type=${pendingOp.type} collection=${pendingOp.collection}` +
+      `${opTaskId ? ` taskId=${opTaskId}` : ''}` +
+      `${opFamilyId !== undefined ? ` familyId=${opFamilyId}` : ''}`);
   }
 
   // Obter operações pendentes

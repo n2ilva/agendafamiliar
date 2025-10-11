@@ -1,0 +1,18 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /profile-images/{userId}/{allPaths=**} {
+      // Permitir leitura para todos os usuários autenticados
+      allow read: if request.auth != null;
+      // Permitir escrita apenas para o próprio usuário
+      allow write: if request.auth != null && request.auth.uid == userId;
+      // Permitir delete apenas para o próprio usuário
+      allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Regras padrão para outros arquivos (mais restritivas)
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

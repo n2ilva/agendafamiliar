@@ -12,7 +12,23 @@ TaskManager.defineTask(BACKGROUND_SYNC_TASK, async () => {
     // Import dinâmico para evitar dependência circular e carregamento de módulos
     // nativos quando executando em ambientes que não suportam BackgroundFetch.
     try {
-      const { default: SyncService } = await import('./SyncService');
+      // No web não executamos a lógica de sync em background — retornar cedo evita
+      // a inclusão de imports dinâmicos/peças nativas no bundle web.
+      if (Platform.OS === 'web') {
+        console.log('Background sync não executado em web (tarefa definida, mas ignorada).');
+        return BackgroundFetch.BackgroundFetchResult.NoData;
+      }
+
+      // Usar require síncrono para carregar o serviço de sync em runtime.
+      let SyncService: any = null;
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        SyncService = require('./SyncService').default;
+      } catch (reqErr) {
+        console.warn('Falha ao require SyncService na tarefa de background:', reqErr);
+        return BackgroundFetch.BackgroundFetchResult.NoData;
+      }
+
       const isConnected = await SyncService.isNetworkAvailable();
       if (!isConnected) {
         console.log('🚫 Sem conexão de rede, pulando sincronização em segundo plano.');

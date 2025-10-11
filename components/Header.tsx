@@ -96,14 +96,14 @@ export const Header: React.FC<HeaderProps> = ({
         setImageLoading(true);
 
         try {
-          console.log('📤 Iniciando upload para Firebase...');
-          // Upload para Firebase
+          console.log('📤 Iniciando upload da imagem de perfil (serviço de armazenamento)');
+          // Upload para o serviço de armazenamento configurado (local/remote stub)
           const uploadResult = await LocalAuthService.uploadProfileImage(imageUri);
-          
+
           console.log('📤 Resultado do upload:', uploadResult);
-          
+
           if (uploadResult.success && uploadResult.photoURL) {
-            // Atualizar com URL do Firebase
+            // Atualizar com URL retornada pelo serviço
             setUserImageLocal(uploadResult.photoURL);
             
             // Notificar componente pai sobre mudança

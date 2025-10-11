@@ -1,6 +1,6 @@
 /**
  * Utility functions for safe date handling
- * Handles conversion from Firebase Timestamps, strings, and other formats to JavaScript Date objects
+ * Handles conversion from various timestamp-like objects, strings, and other formats to JavaScript Date objects
  */
 
 export const safeToDate = (dateValue: any): Date | undefined => {

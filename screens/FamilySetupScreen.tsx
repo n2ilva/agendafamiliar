@@ -28,6 +28,8 @@ export default function FamilySetupScreen({ onFamilySetup, userEmail, userName, 
   const [familyName, setFamilyName] = useState('');
   const [familyCode, setFamilyCode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  // estado temporário para exibir inviteCode na UI (para testes manuais)
+  const [lastInviteCode, setLastInviteCode] = useState<string | null>(null);
 
   const handleRoleSelection = (role: 'admin' | 'dependent') => {
     if (role === 'admin') {
@@ -63,6 +65,9 @@ export default function FamilySetupScreen({ onFamilySetup, userEmail, userName, 
         isGuest: false,
         joinedAt: new Date(),
       });
+
+      // armazenar o código para exibição no componente (apenas para debug/manual testing)
+      setLastInviteCode(newFamily.inviteCode || null);
 
       Alert.alert(
         'Família Criada!',
@@ -277,6 +282,14 @@ export default function FamilySetupScreen({ onFamilySetup, userEmail, userName, 
             {isLoading ? 'Criando...' : 'Criar Família'}
           </Text>
         </Pressable>
+
+        {/* Exibição temporária do invite code para facilitar testes manuais */}
+        {lastInviteCode ? (
+          <View style={styles.inviteCodeBoxInline}>
+            <Text style={styles.inviteCodeLabelInline}>Código gerado:</Text>
+            <Text style={styles.inviteCodeTextInline}>{lastInviteCode}</Text>
+          </View>
+        ) : null}
       </View>
     </View>
   );
@@ -484,5 +497,19 @@ const styles = StyleSheet.create({
   },
   disabledButton: {
     backgroundColor: '#ccc',
+  },
+  inviteCodeBoxInline: {
+    marginTop: 12,
+    alignItems: 'center',
+  },
+  inviteCodeLabelInline: {
+    fontSize: 14,
+    color: '#666',
+  },
+  inviteCodeTextInline: {
+    marginTop: 6,
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#007AFF',
   },
 });

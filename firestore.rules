@@ -1,0 +1,112 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() { return request.auth != null; }
+    function authId() { return request.auth.token.sub; }
+
+    function isMemberOf(familyId) {
+      return familyId != null && familyId != '' && exists(/databases/$(database)/documents/families/$(familyId)/members/$(authId()));
+    }
+
+    function isFamilyAdmin(familyId) {
+      return familyId != null && familyId != '' && exists(/databases/$(database)/documents/families/$(familyId)) && get(/databases/$(database)/documents/families/$(familyId)).data.adminId == authId();
+    }
+
+    function validTaskPayload(data) {
+      return data.userId is string
+        && data.title is string
+        && (data.familyId == null || data.familyId is string)
+        && data.userId == authId();
+    }
+
+    function validApprovalPayload(data) {
+      return data.userId is string
+        && data.taskId is string
+        && (data.familyId == null || data.familyId is string)
+        && data.userId == authId();
+    }
+
+    function validHistoryPayload(data) {
+      return data.userId is string
+        && data.action is string
+        && (data.familyId == null || data.familyId is string)
+        && data.userId == authId();
+    }
+
+    // Users
+    match /users/{userId} {
+      allow read: if isAuthenticated() && userId == authId();
+      allow create: if isAuthenticated() && request.resource.data.id == authId();
+      allow update, delete: if isAuthenticated() && userId == authId();
+    }
+
+    // Families
+    match /families/{familyId} {
+      allow read: if isAuthenticated() && isMemberOf(familyId);
+      allow create: if isAuthenticated() && request.resource.data.adminId == authId();
+      allow update: if isAuthenticated() && isFamilyAdmin(familyId);
+      allow delete: if isAuthenticated() && isFamilyAdmin(familyId);
+
+      match /members/{memberId} {
+        allow read: if isAuthenticated() && (memberId == authId() || isMemberOf(familyId));
+        allow create: if isAuthenticated() && memberId == authId();
+        allow delete: if isAuthenticated() && (memberId == authId() || isFamilyAdmin(familyId));
+      }
+    }
+
+    // Tasks
+    match /tasks/{taskId} {
+      allow create: if isAuthenticated()
+        && validTaskPayload(request.resource.data)
+        && (
+          request.resource.data.familyId == null
+          || isMemberOf(request.resource.data.familyId)
+        );
+
+      allow get, list: if isAuthenticated() && (
+        (resource.data.familyId == null && resource.data.userId == authId())
+        || isMemberOf(resource.data.familyId)
+      );
+
+      allow update: if isAuthenticated() && (
+        resource.data.userId == authId()
+        || isFamilyAdmin(resource.data.familyId)
+      ) && validTaskPayload(request.resource.data);
+
+      allow delete: if isAuthenticated() && (resource.data.userId == authId() || isFamilyAdmin(resource.data.familyId));
+    }
+
+    // Approvals
+    match /approvals/{approvalId} {
+      allow create: if isAuthenticated() && validApprovalPayload(request.resource.data)
+        && (
+          request.resource.data.familyId == null
+          || isMemberOf(request.resource.data.familyId)
+        );
+      allow get: if isAuthenticated() && (
+        (resource.data.familyId == null && resource.data.userId == authId())
+        || isMemberOf(resource.data.familyId)
+      );
+      allow update, delete: if isAuthenticated() && (resource.data.userId == authId() || isFamilyAdmin(resource.data.familyId));
+    }
+
+    // History
+    match /history/{hId} {
+      allow create: if isAuthenticated() && validHistoryPayload(request.resource.data)
+        && (
+          request.resource.data.familyId == null
+          || isMemberOf(request.resource.data.familyId)
+        );
+      allow get: if isAuthenticated() && (
+        (resource.data.familyId == null && resource.data.userId == authId())
+        || isMemberOf(resource.data.familyId)
+      );
+    }
+
+    // Default fallback
+    match /{document=**} { allow read, write: if false; }
+  }
+}

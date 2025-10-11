@@ -3,6 +3,8 @@ import ConnectivityService from './ConnectivityService';
 import LocalAuthService from './LocalAuthService';
 import familyService from './LocalFamilyService';
 import { FamilyUser, Family, Task, TaskApproval } from '../types/FamilyTypes';
+import FirestoreService from './FirestoreService';
+import { safeToDate } from '../utils/DateUtils';
 
 export interface SyncStatus {
   isOnline: boolean;
@@ -15,6 +17,12 @@ export interface SyncStatus {
 
 type SyncCallback = (status: SyncStatus) => void;
 
+export enum ConflictPolicy {
+  REMOTE_WINS = 'remote_wins',
+  LOCAL_WINS = 'local_wins',
+  MERGE = 'merge'
+}
+
 class SyncService {
   private static listeners: SyncCallback[] = [];
   private static approvalsListeners: Array<(approvals: TaskApproval[]) => void> = [];
@@ -26,8 +34,14 @@ class SyncService {
     pendingOperations: 0,
     hasError: false
   };
-  private static firebaseListeners: Array<() => void> = [];
+  private static remoteListeners: Array<() => void> = [];
   private static isInitialized = false;
+  // Política de resolução de conflitos (padrão: local wins)
+  private static conflictPolicy: ConflictPolicy = ConflictPolicy.LOCAL_WINS;
+
+  static setConflictPolicy(policy: ConflictPolicy) {
+    this.conflictPolicy = policy;
+  }
 
   // Remove chaves com valor undefined de objetos/arrays (recursivo)
   private static sanitizeForFirestore<T = any>(value: T): T {
@@ -80,7 +94,7 @@ class SyncService {
 
       // Se estiver online, iniciar sincronização
       if (connectivityState.isConnected) {
-        await this.syncWithFirebase();
+        await this.syncWithRemote();
       }
 
       this.isInitialized = true;
@@ -102,18 +116,18 @@ class SyncService {
     // Se voltou a ficar online, sincronizar
     if (!wasOnline && isNowOnline) {
       console.log('🔄 Conexão restaurada - iniciando sincronização');
-      await this.syncWithFirebase();
+      await this.syncWithRemote();
     }
 
-    // Se ficou offline, parar listeners do Firebase
+    // Se ficou offline, parar listeners remotos
     if (wasOnline && !isNowOnline) {
-      console.log('📴 Ficou offline - parando listeners Firebase');
-      this.stopFirebaseListeners();
+      console.log('📴 Ficou offline - parando listeners remotos');
+      this.stopRemoteListeners();
     }
   };
 
-  // Sincronizar com Firebase
-  static async syncWithFirebase(): Promise<void> {
+  // Sincronizar com o servidor remoto (modo local: sem listeners ativos)
+  static async syncWithRemote(): Promise<void> {
     if (this.isSyncing || !ConnectivityService.isConnected()) {
       return;
     }
@@ -122,19 +136,20 @@ class SyncService {
     this.updateSyncStatus({ isSyncing: true, hasError: false });
 
     try {
-      console.log('🔄 Iniciando sincronização com Firebase');
 
-      // 1. Processar operações pendentes
-      await this.processPendingOperations();
+  console.log('🔄 Iniciando sincronização remota');
 
-      // 2. Baixar dados atualizados do Firebase
-      await this.downloadFirebaseData();
+  // 1. Processar operações pendentes (tenta aplicar as operações que falharam antes)
+  await this.processPendingOperations();
 
-      // 3. Configurar listeners para mudanças em tempo real
-      this.setupFirebaseListeners();
+  // 2. Baixar dados atualizados do servidor remoto (reconciliação local)
+  await this.downloadRemoteData();
 
-      // 4. Atualizar timestamp da última sincronização
-      await LocalStorageService.updateLastSync();
+  // 3. Configurar listeners remotos
+  this.setupRemoteListeners();
+
+  // 4. Atualizar timestamp da última sincronização
+  await LocalStorageService.updateLastSync();
 
       // 5. Atualizar status
       const offlineData = await LocalStorageService.getOfflineData();
@@ -144,7 +159,7 @@ class SyncService {
         pendingOperations: offlineData.pendingOperations.length
       });
 
-      console.log('✅ Sincronização concluída com sucesso');
+      console.log('✅ Sincronização remota concluída com sucesso');
     } catch (error) {
       console.error('❌ Erro na sincronização:', error);
       this.updateSyncStatus({ 
@@ -164,12 +179,29 @@ class SyncService {
 
     for (const operation of pendingOps) {
       try {
+        // Try to execute operation preferring remote (Firestore) when online.
         await this.executeOperation(operation);
+        // If executed successfully, remove from queue
         await LocalStorageService.removePendingOperation(operation.id);
-        console.log(`✅ Operação processada: ${operation.type} ${operation.collection}`);
+        // Log padronizado: incluir id da operação, tipo, coleção, taskId e familyId quando disponíveis
+        const opTaskId = operation.data && operation.data.id ? operation.data.id : undefined;
+        const opFamilyId = operation.data && (operation.data.familyId !== undefined) ? operation.data.familyId : undefined;
+        console.log(`✅ Operação processada: id=${operation.id} type=${operation.type} collection=${operation.collection}` +
+          `${opTaskId ? ` taskId=${opTaskId}` : ''}` +
+          `${opFamilyId !== undefined ? ` familyId=${opFamilyId}` : ''}`);
       } catch (error) {
         console.error(`❌ Erro ao processar operação ${operation.id}:`, error);
+        // incrementar retry e aguardar backoff com jitter antes de continuar
         await LocalStorageService.incrementOperationRetry(operation.id);
+        const offlineData = await LocalStorageService.getOfflineData();
+        const updatedOp = offlineData.pendingOperations.find(op => op.id === operation.id);
+        const retryCount = updatedOp ? updatedOp.retry : (operation.retry || 0);
+        // expoential backoff com jitter (entre 0.5x e 1.5x)
+        const base = Math.min(30000, 1000 * Math.pow(2, retryCount));
+        const jitter = 0.5 + Math.random();
+        const delay = Math.floor(base * jitter);
+        console.log(`⏱️ Aguardando ${delay}ms (retry #${retryCount}) antes da próxima tentativa para ${operation.id}`);
+        await this.sleep(delay);
       }
     }
 
@@ -197,19 +229,50 @@ class SyncService {
           await LocalStorageService.saveFamily(data as Family);
         }
       } else if (collectionName === 'tasks') {
+        // Normalize familyId explicitly
+        const normalizedFamilyId = data.familyId === undefined ? null : data.familyId;
+
         if (type === 'delete') {
+          // If online, try delete remote first
+          if (ConnectivityService.isConnected()) {
+            try {
+              await FirestoreService.deleteTask(data.id);
+            } catch (e) {
+              console.warn('Falha ao deletar task no Firestore:', e);
+              throw e;
+            }
+          }
+
+          // Remove local cache
           await LocalStorageService.removeFromCache('tasks', data.id);
         } else {
-          // Use familyService to save task if possible
-          try {
-            if (data.familyId) {
-              await familyService.saveFamilyTask(data as Task, data.familyId);
+          // When online, prefer writing remote first so Firestore is source-of-truth
+          if (ConnectivityService.isConnected()) {
+            try {
+              const toSave = { ...data, familyId: normalizedFamilyId } as any;
+              // FirestoreService will create or update
+              const res = await FirestoreService.saveTask(toSave as any);
+
+              // If Firestore returned an id for create, ensure local id matches
+              if (!data.id && res && (res as any).id) {
+                data.id = (res as any).id;
+              }
+
+              // After remote success, update local cache: write to LocalStorageService and keep familyId on the task
+              const savedLocal = { ...data, familyId: normalizedFamilyId } as any;
+              await LocalStorageService.saveTask(savedLocal as Task);
+            } catch (e) {
+              console.warn('Falha ao salvar task no Firestore:', e);
+              // If remote write fails, throw to let retry/enqueue logic handle it
+              throw e;
+            }
+          } else {
+            // Offline: save locally and let processPendingOperations handle remote when online
+            if (normalizedFamilyId) {
+              await familyService.saveFamilyTask(data as Task, normalizedFamilyId);
             } else {
               await LocalStorageService.saveTask(data as Task);
             }
-          } catch (e) {
-            // fallback to local storage
-            await LocalStorageService.saveTask(data as Task);
           }
         }
       } else if (collectionName === 'approvals') {
@@ -221,11 +284,22 @@ class SyncService {
       } else if (collectionName === 'history') {
         if (type === 'delete') {
           await LocalStorageService.removeFromCache('history', data.id);
+          // no remote delete implemented for history
         } else {
+          // For history we try to push to Firestore when online, then save locally
+          if (ConnectivityService.isConnected()) {
+            try {
+              const toSave = { ...data, familyId: data.familyId === undefined ? null : data.familyId } as any;
+              await FirestoreService.addHistoryItem(toSave);
+            } catch (e) {
+              console.warn('Falha ao salvar history no Firestore:', e);
+              // don't throw - history is best-effort
+            }
+          }
+
           try {
             await LocalStorageService.saveHistoryItem(data as any);
           } catch (e) {
-            // fallback to familyService which normalizes history items
             if (data.familyId) await familyService.addFamilyHistoryItem(data.familyId, data);
           }
         }
@@ -238,19 +312,52 @@ class SyncService {
     }
   }
 
-  // Baixar dados do Firebase
-  private static async downloadFirebaseData(): Promise<void> {
+  // Baixar dados do servidor remoto (reconciliação local)
+  private static async downloadRemoteData(): Promise<void> {
     // In local-only mode, download from local familyService (which uses AsyncStorage)
     const currentUser = await LocalAuthService.getUserFromLocalStorage();
     if (!currentUser) return;
-
-    console.log('📥 Baixando dados (local-only)');
+    console.log('📥 Baixando dados (remoto/local híbrido)');
 
     try {
       // Save current user to cache
       await LocalStorageService.saveUser(currentUser);
 
-      // Get user's family and download family data
+      const uid = (currentUser as any).uid || (currentUser as any).id;
+
+      // Download tasks by user (reconciliação por timestamp)
+      if (ConnectivityService.isConnected()) {
+        try {
+          const userTasks = await FirestoreService.getTasksByUser(uid);
+          const offlineData = await LocalStorageService.getOfflineData();
+          let savedCount = 0;
+          for (const t of userTasks) {
+            const tt: any = { ...t };
+            // normalize timestamps
+            tt.createdAt = safeToDate(tt.createdAt) || new Date();
+            tt.updatedAt = safeToDate(tt.updatedAt) || safeToDate(tt.createdAt) || new Date();
+
+            const localTaskRaw = offlineData.tasks[tt.id];
+            if (localTaskRaw) {
+              const localUpdated = safeToDate((localTaskRaw as any).editedAt) || safeToDate((localTaskRaw as any).createdAt) || new Date();
+              const remoteUpdated = safeToDate(tt.updatedAt) || new Date();
+              // Se o remoto for mais recente, sobrescrever o cache local
+              if (remoteUpdated.getTime() > localUpdated.getTime()) {
+                await LocalStorageService.saveTask(tt as any);
+                savedCount++;
+              }
+            } else {
+              await LocalStorageService.saveTask(tt as any);
+              savedCount++;
+            }
+          }
+          console.log(`📋 ${savedCount} tarefas do usuário baixadas/reconciliadas e salvas no cache`);
+        } catch (e) {
+          console.warn('Falha ao baixar tarefas do usuário do Firestore:', e);
+        }
+      }
+
+      // Get user's family and download family data (local source-of-truth for family metadata)
       const userFamily = await familyService.getUserFamily(currentUser.id);
       if (userFamily) {
         await LocalStorageService.saveFamily(userFamily);
@@ -258,16 +365,46 @@ class SyncService {
           await LocalStorageService.saveUser(member);
         }
 
-        // Tasks
-        const familyTasks = await familyService.getFamilyTasks(userFamily.id, currentUser.id);
-        for (const task of familyTasks) {
-          await LocalStorageService.saveTask(task);
-        }
+        // Tasks by family (if online) - reconciliação por timestamp
+        if (ConnectivityService.isConnected()) {
+          try {
+            const familyTasks = await FirestoreService.getTasksByFamily(userFamily.id);
+            const offlineData = await LocalStorageService.getOfflineData();
+            let savedFamilyCount = 0;
+            for (const task of familyTasks) {
+              const tt: any = { ...task };
+              tt.createdAt = safeToDate(tt.createdAt) || new Date();
+              tt.updatedAt = safeToDate(tt.updatedAt) || safeToDate(tt.createdAt) || new Date();
 
-        console.log(`📋 ${familyTasks.length} tarefas da família (incluindo privadas do usuário) salvas no cache`);
+              const localTaskRaw = offlineData.tasks[tt.id];
+              if (localTaskRaw) {
+                const localUpdated = safeToDate((localTaskRaw as any).editedAt) || safeToDate((localTaskRaw as any).createdAt) || new Date();
+                const remoteUpdated = safeToDate(tt.updatedAt) || new Date();
+                if (remoteUpdated.getTime() > localUpdated.getTime()) {
+                  await LocalStorageService.saveTask(tt as any);
+                  savedFamilyCount++;
+                }
+              } else {
+                await LocalStorageService.saveTask(tt as any);
+                savedFamilyCount++;
+              }
+            }
+            console.log(`📋 ${savedFamilyCount} tarefas da família baixadas/reconciliadas e salvas no cache`);
+          } catch (e) {
+            console.warn('Falha ao baixar tarefas da família do Firestore:', e);
+          }
+        } else {
+          // offline fallback: load from local familyService
+          const familyTasks = await familyService.getFamilyTasks(userFamily.id, currentUser.id);
+          for (const task of familyTasks) {
+            await LocalStorageService.saveTask(task);
+          }
+          console.log(`📋 ${familyTasks.length} tarefas da família (offline) salvas no cache`);
+        }
       }
+
     } catch (error) {
-      console.error('Erro ao baixar dados (local-only):', error);
+      console.error('Erro ao baixar dados (hybrido):', error);
       throw error;
     }
   }
@@ -309,8 +446,8 @@ class SyncService {
       }
       this.notifyApprovalsListeners(approvals);
 
-      // Reconciliar cache local: usar os dados do Firebase como source-of-truth para esta família
-      try {
+  // Reconciliar cache local: usar os dados remotos como source-of-truth para esta família
+  try {
         const offlineData = await LocalStorageService.getOfflineData();
 
         // Preparar mapas iniciais copiando o que existe (mantendo outras famílias)
@@ -379,7 +516,7 @@ class SyncService {
           lastSync: Date.now()
         });
 
-        console.log(`✅ Cache local atualizado com os dados do Firebase para a família ${familyId}`);
+        console.log(`✅ Cache local atualizado com os dados remotos para a família ${familyId}`);
       } catch (reconcErr) {
         console.warn('⚠️ Erro durante reconciliação de cache local:', reconcErr);
       }
@@ -390,16 +527,112 @@ class SyncService {
     }
   }
 
-  // Configurar listeners do Firebase
-  private static setupFirebaseListeners(): void {
-    // No realtime listeners in local-only mode. Keep placeholder for API compatibility.
-    console.log('⚠️ setupFirebaseListeners skipped in local-only mode');
+  // Configurar listeners remotos (noop em local-only)
+  private static setupRemoteListeners(): void {
+    // Setup Firestore realtime listeners for user's tasks and family tasks when online
+    if (!ConnectivityService.isConnected()) {
+      console.log('⚠️ setupRemoteListeners skipped - offline');
+      return;
+    }
+
+    (async () => {
+      try {
+        const currentUser = await LocalAuthService.getUserFromLocalStorage();
+        if (!currentUser) return;
+        const uid = (currentUser as any).uid || (currentUser as any).id;
+
+        const userFamily = await familyService.getUserFamily(uid);
+        const familyId = userFamily ? userFamily.id : null;
+
+        // Subscribe to user tasks
+        const unsubUser = FirestoreService.subscribeToUserAndFamilyTasks(uid, familyId, async (items) => {
+          // items may be from user or family query; deduplicate before saving to local cache
+          try {
+            const offlineData = await LocalStorageService.getOfflineData();
+            for (const it of items) {
+              try {
+                const incoming: any = { ...it };
+                const localRaw = offlineData.tasks[incoming.id];
+
+                // If no local copy exists, save directly
+                if (!localRaw) {
+                  await LocalStorageService.saveTask(incoming as any);
+                  continue;
+                }
+
+                // Compare timestamps
+                const localUpdated = safeToDate((localRaw as any).editedAt) || safeToDate((localRaw as any).createdAt) || new Date();
+                const remoteUpdated = safeToDate(incoming.updatedAt) || safeToDate(incoming.editedAt) || safeToDate(incoming.createdAt) || new Date();
+
+                if (remoteUpdated.getTime() === localUpdated.getTime()) {
+                  // Same timestamp — compare important fields to avoid overwrite
+                  const fieldsToCompare = ['title','description','completed','category','userId','familyId'];
+                  const normalizeDate = (d: any) => {
+                    const dt = safeToDate(d);
+                    return dt ? dt.toISOString() : null;
+                  };
+
+                  const isSame = fieldsToCompare.every(f => ((localRaw as any)[f] || null) === (incoming[f] || null))
+                    && normalizeDate((localRaw as any).dueDate) === normalizeDate(incoming.dueDate)
+                    && normalizeDate((localRaw as any).dueTime) === normalizeDate(incoming.dueTime);
+
+                  if (isSame) continue; // identical, skip
+                }
+
+                // Resolve according to policy
+                if (this.conflictPolicy === ConflictPolicy.LOCAL_WINS) {
+                  // Skip remote change
+                  continue;
+                }
+
+                if (this.conflictPolicy === ConflictPolicy.MERGE && localRaw) {
+                  // Merge simple: prefer non-null local fields, otherwise remote
+                  const merged = { ...incoming };
+                  for (const k of Object.keys(localRaw)) {
+                    const lv = (localRaw as any)[k];
+                    if (lv !== undefined && lv !== null) merged[k] = lv;
+                  }
+                  await LocalStorageService.saveTask(merged as any);
+                  continue;
+                }
+
+                // Default: remote wins if remote is newer
+                if (remoteUpdated.getTime() >= localUpdated.getTime()) {
+                  await LocalStorageService.saveTask(incoming as any);
+                }
+              } catch (e) {
+                console.warn('Erro ao salvar task recebida por listener:', e);
+              }
+            }
+          } catch (e) {
+            console.warn('Erro no listener de tasks (dedup):', e);
+          }
+        });
+
+        this.remoteListeners.push(unsubUser);
+        console.log('✅ Listeners remotos configurados para tarefas do usuário/família');
+      } catch (e) {
+        console.warn('Erro ao configurar listeners remotos:', e);
+      }
+    })();
   }
 
-  // Parar listeners do Firebase
-  private static stopFirebaseListeners(): void {
-    this.firebaseListeners = [];
-    console.log('🛑 Listeners skipped/cleared in local-only mode');
+  // Parar listeners remotos
+  private static stopRemoteListeners(): void {
+    // Call unsubscribe functions if any
+    try {
+      for (const unsub of this.remoteListeners) {
+        try { unsub(); } catch (e) { /* ignore individual errors */ }
+      }
+    } finally {
+      this.remoteListeners = [];
+    }
+    console.log('🛑 Listeners remotos cancelados');
+  }
+
+  // Small sleep helper for backoff
+  private static sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   // Adicionar operação à fila offline
@@ -408,16 +641,40 @@ class SyncService {
     collection: string,
     data: any
   ): Promise<void> {
-    await LocalStorageService.addPendingOperation({ type, collection: collection as any, data });
-    
+    // Normalize private tasks: if payload explicitly declares private=true, ensure familyId is null
+    if (collection === 'tasks' && data && (data as any).private === true) {
+      data.familyId = null;
+    }
+
+    // If online, try to apply immediately to remote (Firestore). If it fails, enqueue for retry.
+    if (ConnectivityService.isConnected()) {
+      try {
+        // Execute directly as a PendingOperation to reuse execution logic
+        const tempOp: PendingOperation = {
+          id: `immediate_${Date.now()}_${Math.random().toString(36).substr(2,9)}`,
+          type,
+          collection: collection as any,
+          data,
+          timestamp: Date.now(),
+          retry: 0
+        };
+        await this.executeOperation(tempOp);
+        // After successful execution, update status and return
+        const offlineData = await LocalStorageService.getOfflineData();
+        this.updateSyncStatus({ pendingOperations: offlineData.pendingOperations.length });
+        return;
+      } catch (e) {
+        console.warn('Falha ao executar operação remota imediatamente, enfileirando para retry:', e);
+        // fallthrough to enqueue
+      }
+    }
+
+  // Fallback: add to pending operations queue. For private tasks, familyId remains null.
+  await LocalStorageService.addPendingOperation({ type, collection: collection as any, data });
+
     // Atualizar contagem de operações pendentes
     const offlineData = await LocalStorageService.getOfflineData();
     this.updateSyncStatus({ pendingOperations: offlineData.pendingOperations.length });
-
-    // Se estiver online, tentar sincronizar imediatamente
-    if (ConnectivityService.isConnected()) {
-      await this.syncWithFirebase();
-    }
   }
 
   // Adicionar listener para status de sincronização
@@ -486,8 +743,8 @@ class SyncService {
     this.updateSyncStatus({ isSyncing: true, hasError: false });
 
     try {
-      // Baixar dados do Firebase primeiro
-      await this.downloadFirebaseData();
+      // Baixar dados remotos primeiro
+      await this.downloadRemoteData();
       
       // Depois processar operações pendentes
       await this.processPendingOperations();
@@ -514,7 +771,7 @@ class SyncService {
   // Forçar sincronização manual
   static async forcSync(): Promise<void> {
     if (ConnectivityService.isConnected()) {
-      await this.syncWithFirebase();
+      await this.syncWithRemote();
     } else {
       console.log('📴 Sem conexão - sincronização adiada');
     }
@@ -528,7 +785,7 @@ class SyncService {
 
   // Limpar dados e reinicializar
   static async reset(): Promise<void> {
-    this.stopFirebaseListeners();
+    this.stopRemoteListeners();
     await LocalStorageService.clearCache();
     this.updateSyncStatus({
       lastSync: 0,
@@ -541,7 +798,7 @@ class SyncService {
 
   // Cleanup
   static cleanup(): void {
-    this.stopFirebaseListeners();
+    this.stopRemoteListeners();
     ConnectivityService.cleanup();
     this.listeners = [];
     this.isInitialized = false;

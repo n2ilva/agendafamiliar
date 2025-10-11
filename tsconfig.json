@@ -1,7 +1,11 @@
 {
   "compilerOptions": {
     "jsx": "react-native",
-    "moduleResolution": "bundler",
+    "moduleResolution": "node",
+    "baseUrl": ".",
+    "paths": {
+      "~/*": ["src/*"]
+    },
     "allowJs": true,
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
@@ -18,5 +22,5 @@
   "exclude": [
     "node_modules"
   ],
-  "extends": "expo/tsconfig.base"
+  
 }

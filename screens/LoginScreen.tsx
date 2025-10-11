@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Image, TextInput, ActivityIndicator, Platform, ScrollView, Modal, KeyboardAvoidingView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import LocalAuthService from '../services/LocalAuthService';
+import FirebaseAuthService from '../services/FirebaseAuthService';
+import ConnectivityService from '../services/ConnectivityService';
 import Alert from '../utils/Alert';
 
 interface LoginScreenProps {
@@ -51,12 +53,32 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
     try {
       let result;
       
-      if (isLogin) {
-        // Login
-  result = await LocalAuthService.loginUser(email, password);
+      // Verificar conectividade atual (pode ser inicializada no App.tsx)
+      let isOnline = ConnectivityService.isConnected();
+      if (!isOnline) {
+        try {
+          const st = await ConnectivityService.checkConnectivity();
+          isOnline = st.isConnected;
+        } catch (e) {
+          console.warn('Falha ao checar conectividade, assumindo offline:', e);
+          isOnline = false;
+        }
+      }
+
+      if (isOnline) {
+        // Prefer remote auth when online
+        if (isLogin) {
+          result = await FirebaseAuthService.loginUser(email, password);
+        } else {
+          result = await FirebaseAuthService.registerUser(email, password, name);
+        }
       } else {
-        // Registro com papel de admin por padrão
-  result = await LocalAuthService.registerUser(email, password, name, 'admin');
+        // Fallback local
+        if (isLogin) {
+          result = await LocalAuthService.loginUser(email, password);
+        } else {
+          result = await LocalAuthService.registerUser(email, password, name, 'admin');
+        }
       }
 
       if (result.success) {

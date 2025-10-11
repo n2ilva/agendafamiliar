@@ -27,12 +27,14 @@ import * as Notifications from 'expo-notifications';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import NotificationService from '../services/NotificationService';
 import { Header } from '../components/Header';
-import { FamilyUser, UserRole, TaskStatus, TaskApproval, ApprovalNotification, Family, FamilyInvite, Task as FirebaseTask } from '../types/FamilyTypes';
+import { FamilyUser, UserRole, TaskStatus, TaskApproval, ApprovalNotification, Family, FamilyInvite, Task as RemoteTask } from '../types/FamilyTypes';
 import LocalStorageService, { HistoryItem as StoredHistoryItem } from '../services/LocalStorageService';
 import SyncService, { SyncStatus } from '../services/SyncService';
+import FirestoreService from '../services/FirestoreService';
 import ConnectivityService, { ConnectivityState } from '../services/ConnectivityService';
 import Alert from '../utils/Alert';
 import familyService from '../services/LocalFamilyService';
+import FamilySyncHelper from '../services/FamilySyncHelper';
 import LocalAuthService from '../services/LocalAuthService';
 import { safeToDate, isToday, isUpcoming, isTaskOverdue, getNextRecurrenceDate, isRecurringTaskCompletable } from '../utils/DateUtils';
 import { v4 as uuidv4 } from 'uuid';
@@ -269,16 +271,15 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     }
   }, [activeTab]);
 
-  // Função para converter Task local para FirebaseTask
-  const taskToFirebaseTask = (task: Task): FirebaseTask => {
-    console.log('📤 Convertendo Local -> Firebase:', {
+  // Função para converter Task local para formato remoto
+  const taskToRemoteTask = (task: Task): RemoteTask => {
+    console.log('📤 Convertendo Local -> Remoto:', {
       id: task.id,
       title: task.title,
       localDueDate: task.dueDate,
       localDueTime: task.dueTime,
     });
-
-    const firebaseTask: any = {
+    const remoteTask: any = {
       id: task.id,
       title: task.title,
       description: task.description || '',
@@ -294,87 +295,86 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             task.repeat?.type === RepeatType.CUSTOM ? 'semanal' : 'nenhum',
       repeatDays: task.repeat?.type === RepeatType.CUSTOM ? (task.repeat.days || []) : null,
       userId: task.userId,
-      // Adicionar familyId se o usuário pertence a uma família
-      familyId: currentFamily?.id,
+  // Adicionar familyId se o usuário pertence a uma família, mas se a tarefa for privada garantimos null
+  familyId: (task as any)?.private === true ? null : currentFamily?.id,
       // Campos de autoria
       createdBy: task.createdBy,
       createdByName: task.createdByName,
     };
 
-    console.log('📤 Dados preparados para Firebase:', {
-      id: firebaseTask.id,
-      title: firebaseTask.title,
-      firebaseDueDate: firebaseTask.dueDate,
-      firebaseDueTime: firebaseTask.dueTime,
+    console.log('📤 Dados preparados para envio remota:', {
+      id: remoteTask.id,
+      title: remoteTask.title,
+      remoteDueDate: remoteTask.dueDate,
+      remoteDueTime: remoteTask.dueTime,
     });
 
     // Adicionar campos apenas se não forem undefined
     if (task.completed) {
-      firebaseTask.completedAt = new Date();
+      remoteTask.completedAt = new Date();
     }
     
     if (task.approvalId !== undefined) {
-      firebaseTask.approvalId = task.approvalId;
+      remoteTask.approvalId = task.approvalId;
     }
     
     if (task.editedBy !== undefined) {
-      firebaseTask.editedBy = task.editedBy;
+      remoteTask.editedBy = task.editedBy;
     }
     
     if (task.editedByName !== undefined) {
-      firebaseTask.editedByName = task.editedByName;
+      remoteTask.editedByName = task.editedByName;
     }
     
     if (task.editedAt !== undefined) {
-      firebaseTask.editedAt = task.editedAt;
+      remoteTask.editedAt = task.editedAt;
     }
 
-    // Garantir que a flag 'private' sempre seja um booleano no payload enviado ao Firebase
-    // (padronizar para evitar documentos sem o campo, facilitando consultas server-side)
-    firebaseTask.private = (task as any).private === true;
+    // Garantir que a flag 'private' sempre seja um booleano no payload enviado ao servidor remoto
+    remoteTask.private = (task as any).private === true;
 
-    return firebaseTask as FirebaseTask;
+    return remoteTask as RemoteTask;
   };
 
-  // Função para converter FirebaseTask para Task local
-  const firebaseTaskToTask = (firebaseTask: FirebaseTask): Task => {
-    const dueDate = safeToDate(firebaseTask.dueDate);
-    const dueTime = safeToDate(firebaseTask.dueTime);
+  // Função para converter dado remoto para Task local
+  const remoteTaskToTask = (remoteTask: RemoteTask): Task => {
+    const dueDate = safeToDate(remoteTask.dueDate);
+    const dueTime = safeToDate(remoteTask.dueTime);
 
-    console.log('🔄 Convertendo Firebase -> Local:', {
-      id: firebaseTask.id,
-      title: firebaseTask.title,
-      firebaseDueDate: firebaseTask.dueDate,
-      firebaseDueTime: firebaseTask.dueTime,
+    console.log('🔄 Convertendo Remoto -> Local:', {
+      id: remoteTask.id,
+      title: remoteTask.title,
+      remoteDueDate: remoteTask.dueDate,
+      remoteDueTime: remoteTask.dueTime,
       convertedDueDate: dueDate,
       convertedDueTime: dueTime,
     });
 
     return {
-      id: firebaseTask.id,
-      title: firebaseTask.title,
-      description: firebaseTask.description || '',
-      completed: firebaseTask.completed,
-      status: firebaseTask.status,
-      category: firebaseTask.category,
+      id: remoteTask.id,
+      title: remoteTask.title,
+      description: remoteTask.description || '',
+      completed: remoteTask.completed,
+      status: remoteTask.status,
+      category: remoteTask.category,
       dueDate: dueDate,
       dueTime: dueTime, // Conversão mais segura, sem fallback para dueDate
       repeat: {
-        type: firebaseTask.repeatOption === 'diario' ? RepeatType.DAILY :
-              firebaseTask.repeatOption === 'semanal' ? RepeatType.CUSTOM : RepeatType.NONE,
-        days: Array.isArray((firebaseTask as any).repeatDays) ? (firebaseTask as any).repeatDays : []
+        type: remoteTask.repeatOption === 'diario' ? RepeatType.DAILY :
+              remoteTask.repeatOption === 'semanal' ? RepeatType.CUSTOM : RepeatType.NONE,
+        days: Array.isArray((remoteTask as any).repeatDays) ? (remoteTask as any).repeatDays : []
       },
-      userId: firebaseTask.userId,
-      approvalId: firebaseTask.approvalId,
-      createdAt: safeToDate(firebaseTask.createdAt) || new Date(), // Garantir que createdAt seja sempre uma data válida
+      userId: remoteTask.userId,
+      approvalId: remoteTask.approvalId,
+      createdAt: safeToDate(remoteTask.createdAt) || new Date(), // Garantir que createdAt seja sempre uma data válida
       // Campos de autoria com fallback para dados antigos
-      createdBy: firebaseTask.createdBy || firebaseTask.userId,
-      createdByName: firebaseTask.createdByName || 'Usuário',
-      editedBy: firebaseTask.editedBy,
-      editedByName: firebaseTask.editedByName,
-      editedAt: safeToDate(firebaseTask.editedAt),
+      createdBy: remoteTask.createdBy || remoteTask.userId,
+      createdByName: remoteTask.createdByName || 'Usuário',
+      editedBy: remoteTask.editedBy,
+      editedByName: remoteTask.editedByName,
+      editedAt: safeToDate(remoteTask.editedAt),
       // Campo de privacidade
-      private: (firebaseTask as any).private
+      private: (remoteTask as any).private
     };
   };
 
@@ -384,10 +384,10 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       console.log('📱 Carregando dados do cache local...');
       
       // Carregar tarefas do cache
-      const cachedFirebaseTasks = await LocalStorageService.getTasks();
-      if (cachedFirebaseTasks.length > 0) {
-        const convertedTasks = cachedFirebaseTasks.map(firebaseTaskToTask);
-        setTasks(convertedTasks);
+      const cachedRemoteTasks = await LocalStorageService.getTasks();
+        if (cachedRemoteTasks.length > 0) {
+          const convertedTasks: Task[] = (cachedRemoteTasks.map(remoteTaskToTask as any) as Task[]);
+          setTasks(convertedTasks);
         console.log(`✅ ${convertedTasks.length} tarefas carregadas do cache`);
       }
 
@@ -414,8 +414,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     try {
       // Salvar tarefas convertidas
       for (const task of tasks) {
-        const firebaseTask = taskToFirebaseTask(task);
-        await LocalStorageService.saveTask(firebaseTask);
+  const remoteTask = taskToRemoteTask(task as any);
+  await LocalStorageService.saveTask(remoteTask);
       }
 
       // Salvar aprovações
@@ -437,7 +437,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   const familyTasks = await familyService.getFamilyTasks(currentFamily.id, user.id);
         
         // Converter usando função centralizada para manter dueTime e repeatDays
-        let convertedTasks: Task[] = familyTasks.map(firebaseTaskToTask);
+  let convertedTasks: Task[] = familyTasks.map(remoteTaskToTask as any);
 
         // Filtrar tarefas privadas que não pertencem ao usuário atual
         convertedTasks = convertedTasks.filter(t => {
@@ -446,43 +446,43 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           return true;
         });
         
-        console.log('📊 Tarefas convertidas do Firebase:', convertedTasks.map(t => ({ id: t.id, title: t.title, dueDate: t.dueDate, dueTime: t.dueTime })));
+  console.log('📊 Tarefas convertidas (remotas):', convertedTasks.map(t => ({ id: t.id, title: t.title, dueDate: t.dueDate, dueTime: t.dueTime })));
 
-        // Fazer merge inteligente: manter tarefas locais mais recentes e adicionar novas do Firebase
+  // Fazer merge inteligente: manter tarefas locais mais recentes e adicionar novas do servidor remoto
         setTasks(currentTasks => {
           console.log('📊 Tarefas locais antes do merge:', currentTasks.map(t => ({ id: t.id, title: t.title, dueDate: t.dueDate, dueTime: t.dueTime })));
           
           const mergedTasksMap = new Map(currentTasks.map(t => [t.id, t]));
 
-          // Para cada tarefa do Firebase
-          convertedTasks.forEach(firebaseTask => {
-            const existingTask = mergedTasksMap.get(firebaseTask.id);
+          // Para cada tarefa remota
+          convertedTasks.forEach(remoteTask => {
+            const existingTask = mergedTasksMap.get(remoteTask.id);
             
             if (!existingTask) {
               // Tarefa não existe localmente, adicionar
-              mergedTasksMap.set(firebaseTask.id, firebaseTask);
-              console.log(`➕ Tarefa nova adicionada: ${firebaseTask.title}`);
+              mergedTasksMap.set(remoteTask.id, remoteTask);
+              console.log(`➕ Tarefa nova adicionada: ${remoteTask.title}`);
             } else {
               // Tarefa existe, manter a versão mais recente baseada em updatedAt/editedAt
               const existingTime = existingTask.editedAt || existingTask.createdAt;
-              const firebaseTime = firebaseTask.editedAt || firebaseTask.createdAt;
+              const remoteTime = remoteTask.editedAt || remoteTask.createdAt;
               
-              if (firebaseTime > existingTime) {
-                // Versão do Firebase é mais recente
-                mergedTasksMap.set(firebaseTask.id, firebaseTask);
-                console.log(`🔄 Tarefa atualizada pelo Firebase: ${firebaseTask.title}`);
+              if (remoteTime > existingTime) {
+                // Versão remota é mais recente
+                mergedTasksMap.set(remoteTask.id, remoteTask);
+                console.log(`🔄 Tarefa atualizada pelo servidor remoto: ${remoteTask.title}`);
               } else {
                 console.log(`🚫 Mantendo versão local de: ${existingTask.title} (mais recente)`);
               }
             }
           });
           
-          // Remover tarefas locais que não existem mais no Firebase (foram deletadas)
-          const firebaseIds = new Set(convertedTasks.map(t => t.id));
+          // Remover tarefas locais que não existem mais no servidor remoto (foram deletadas)
+          const remoteIds = new Set(convertedTasks.map(t => t.id));
           currentTasks.forEach(localTask => {
-            if (!firebaseIds.has(localTask.id)) {
+            if (!remoteIds.has(localTask.id)) {
               mergedTasksMap.delete(localTask.id);
-              console.log(`➖ Tarefa removida (não existe mais no Firebase): ${localTask.title}`);
+              console.log(`➖ Tarefa removida (não existe mais no servidor remoto): ${localTask.title}`);
             }
           });
 
@@ -619,9 +619,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             setCurrentFamily(userFamily);
             console.log('👨‍👩‍👧‍👦 Família carregada:', userFamily.name);
             
-            // Carregar tarefas da família
-            const familyTasks = await familyService.getFamilyTasks(userFamily.id, user.id);
-                let convertedTasks: Task[] = familyTasks.map(firebaseTaskToTask);
+      // Carregar tarefas da família
+      const familyTasks = await familyService.getFamilyTasks(userFamily.id, user.id);
+        let convertedTasks: Task[] = familyTasks.map(remoteTaskToTask as any);
                 // Filtrar tarefas privadas que não pertencem ao usuário atual
                 convertedTasks = convertedTasks.filter(t => {
                   const isPrivate = (t as any).private === true;
@@ -637,7 +637,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             // Se não tem família, carregar tarefas do cache local
             const cachedTasks = await LocalStorageService.getTasks();
             if (cachedTasks.length > 0) {
-              const localTasks = cachedTasks.map(firebaseTaskToTask);
+              const localTasks: Task[] = (cachedTasks.map(remoteTaskToTask as any) as Task[]);
               setTasks(localTasks);
               console.log(`� ${localTasks.length} tarefas locais carregadas do cache`);
             }
@@ -650,7 +650,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         try {
           const cachedTasks = await LocalStorageService.getTasks();
           if (cachedTasks.length > 0) {
-            const localTasks = cachedTasks.map(firebaseTaskToTask);
+            const localTasks = cachedTasks.map(remoteTaskToTask);
             setTasks(localTasks);
             console.log(`🔄 ${localTasks.length} tarefas carregadas do cache após erro`);
           }
@@ -697,11 +697,11 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             currentFamily.id,
             (updatedTasks) => {
               const convertedTasks: Task[] = updatedTasks
-                  .map(firebaseTaskToTask)
-                  .filter(task => {
+                    .map(remoteTaskToTask)
+                    .filter(task => {
                   // Se a tarefa estiver na lista de espera, não a atualize
                   if (pendingSyncIds.includes(task.id)) {
-                    console.log(`🚫 Tarefa ${task.id} ignorada na atualização do Firebase (pendente de sincronização).`);
+                    console.log(`🚫 Tarefa ${task.id} ignorada na atualização remota (pendente de sincronização).`);
                     return false; // Não incluir esta atualização
                   }
                     // Filtrar tarefas privadas de outros usuários
@@ -858,7 +858,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         // Recarregar dados da família se houver
         if (currentFamily) {
             const familyTasks = await familyService.getFamilyTasks(currentFamily.id, user.id);
-          const convertedTasks: Task[] = familyTasks.map(firebaseTaskToTask);
+          const convertedTasks: Task[] = familyTasks.map(remoteTaskToTask as any);
           setTasks(convertedTasks);
           console.log(`🔄 ${familyTasks.length} tarefas da família recarregadas`);
         }
@@ -1060,13 +1060,14 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         
         // Adicionar ID à lista de pendentes de sincronização
         setPendingSyncIds(prev => [...prev, editingTaskId]);
-        console.log(`⏳ Tarefa ${editingTaskId} adicionada à lista de espera de sincronização.`);
+        console.log(`⏳ Tarefa enfileirada para sincronização: taskId=${editingTaskId}` +
+          `${currentFamily ? ` familyId=${currentFamily.id}` : ''}`);
 
         // Salvar no cache local
         const updatedTask = updatedTasks.find(t => t.id === editingTaskId);
         if (updatedTask) {
-          const firebaseTask = taskToFirebaseTask(updatedTask);
-          await LocalStorageService.saveTask(firebaseTask);
+          const remoteTask = taskToRemoteTask(updatedTask as any);
+          await LocalStorageService.saveTask(remoteTask);
           // reagendar lembrete
           try {
             await NotificationService.rescheduleTaskReminder(updatedTask as any);
@@ -1077,30 +1078,41 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           // Determinar se é create ou update baseado no ID
           const isTemporaryId = updatedTask.id.startsWith('temp_') || updatedTask.id === 'temp';
           const operationType = isTemporaryId ? 'create' : 'update';
-          
+
           // Adicionar à fila de sincronização (online ou offline)
-          await SyncService.addOfflineOperation(operationType, 'tasks', firebaseTask);
-          
-          // Se o usuário pertence a uma família, salvar também na família
-          if (currentFamily) {
+          await SyncService.addOfflineOperation(operationType, 'tasks', remoteTask as any);
+
+          // Se o usuário pertence a uma família e a tarefa não for privada, salvar também na família (prefer remote Firestore quando online)
+          if (currentFamily && (remoteTask as any)?.private !== true) {
             try {
               if (!isOffline) {
-                await familyService.saveFamilyTask(firebaseTask, currentFamily.id);
-                console.log('👨‍👩‍👧‍👦 Tarefa atualizada na família (online)');
+                // Preferir Firestore como source-of-truth
+                const toSave = { ...remoteTask, familyId: currentFamily.id } as any;
+                const res = await FirestoreService.saveTask(toSave);
+                // Atualizar cache local com familyId
+                await LocalStorageService.saveTask({ ...toSave, id: toSave.id || (res && (res as any).id) } as any);
+                console.log(`👨‍👩‍👧‍👦 Tarefa atualizada no Firestore (online): taskId=${toSave.id || (res && (res as any).id)} familyId=${currentFamily.id}`);
               } else {
-                // Se offline, adicionar operação para sincronizar depois
-                await SyncService.addOfflineOperation(operationType, 'family_tasks', {
-                  ...firebaseTask,
+                // Offline: enfileirar operação com familyId
+                await SyncService.addOfflineOperation(operationType, 'tasks', {
+                  ...remoteTask,
                   familyId: currentFamily.id
                 });
-                console.log('👨‍👩‍👧‍👦 Tarefa adicionada à fila para sincronização da família (offline)');
+                console.log(`👨‍👩‍👧‍👦 Tarefa enfileirada (offline family): taskId=${updatedTask?.id} familyId=${currentFamily.id}`);
               }
             } catch (error) {
-              console.error('❌ Erro ao atualizar tarefa na família:', error);
+              console.error('❌ Erro ao sincronizar tarefa na família via Firestore, fallback local:', error);
+              // Delegar fallback para FamilySyncHelper (centraliza remote-first / fallback)
+              try {
+                await FamilySyncHelper.saveTaskToFamily(remoteTask as any, currentFamily.id, operationType);
+              } catch (e) {
+                console.warn('Falha no fallback FamilySyncHelper.saveTaskToFamily:', e);
+              }
             }
           }
           
-          console.log('📱 Tarefa atualizada e adicionada à fila de sincronização');
+          console.log(`📱 Tarefa atualizada e adicionada à fila de sincronização: taskId=${updatedTask?.id}` +
+            `${currentFamily ? ` familyId=${currentFamily.id}` : ''}`);
         }
         
         // Adicionar ao histórico
@@ -1140,7 +1152,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           // Campos de autoria
           createdBy: user.id,
           createdByName: user.name
-          // private flag will be added to Firebase conversion via taskToFirebaseTask
+          // private flag será adicionada durante a conversão remota via taskToRemoteTask
         };
 
         console.log('✨ Nova tarefa criada:', {
@@ -1161,33 +1173,34 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   }
         
         // Salvar no cache local
-  // Incluir flag 'private' no objeto que será convertido para Firebase
-  const firebaseTask = taskToFirebaseTask({ ...newTask, private: newTaskPrivate } as any);
-        await LocalStorageService.saveTask(firebaseTask);
+  // Incluir flag 'private' no objeto que será convertido para envio remoto
+  const remoteTask = taskToRemoteTask({ ...newTask, private: newTaskPrivate } as any);
+    await LocalStorageService.saveTask(remoteTask);
         
         // Adicionar à fila de sincronização (online ou offline)
-  await SyncService.addOfflineOperation('create', 'tasks', firebaseTask);
+  await SyncService.addOfflineOperation('create', 'tasks', remoteTask);
         
-        // Se o usuário pertence a uma família, salvar também na família
-        if (currentFamily) {
-            try {
-              if (!isOffline) {
-                await familyService.saveFamilyTask(firebaseTask, currentFamily.id);
-                console.log('👨‍👩‍👧‍👦 Nova tarefa salva na família (online)');
-              } else {
-                // Se offline, adicionar operação para sincronizar depois
-                await SyncService.addOfflineOperation('create', 'family_tasks', {
-                  ...firebaseTask,
-                  familyId: currentFamily.id
-                });
-                console.log('👨‍👩‍👧‍👦 Nova tarefa adicionada à fila para sincronização da família (offline)');
-              }
-            } catch (error) {
-              console.error('❌ Erro ao salvar tarefa na família:', error);
+        // Se o usuário pertence a uma família e a tarefa não for privada, salvar também na família (prefer Firestore quando online)
+        if (currentFamily && (remoteTask as any)?.private !== true) {
+          try {
+            if (!isOffline) {
+              const toSave = { ...remoteTask, familyId: currentFamily.id } as any;
+              const res = await FirestoreService.saveTask(toSave);
+              await LocalStorageService.saveTask({ ...toSave, id: toSave.id || (res && (res as any).id) } as any);
+              console.log(`👨‍👩‍👧‍👦 Nova tarefa salva no Firestore (online): taskId=${toSave.id || (res && (res as any).id)} familyId=${currentFamily.id}`);
+            } else {
+              await SyncService.addOfflineOperation('create', 'tasks', { ...remoteTask, familyId: currentFamily.id });
+              console.log(`👨‍👩‍👧‍👦 Nova tarefa enfileirada (offline family): taskId=${remoteTask.id} familyId=${currentFamily.id}`);
             }
+          } catch (error) {
+            console.error('❌ Erro ao salvar tarefa na família via Firestore, delegando ao FamilySyncHelper:', error);
+            try { await FamilySyncHelper.saveTaskToFamily(remoteTask, currentFamily.id, 'create'); } catch (e) { console.warn('Falha fallback saveFamilyTask', e); }
+            await SyncService.addOfflineOperation('create', 'tasks', { ...remoteTask, familyId: currentFamily.id });
+          }
         }
         
-        console.log('📱 Nova tarefa criada e adicionada à fila de sincronização');
+        console.log(`📱 Nova tarefa criada e adicionada à fila de sincronização: taskId=${remoteTask.id}` +
+          `${currentFamily ? ` familyId=${currentFamily.id}` : ''}`);
         
         // Recarregar tarefas da família para garantir sincronização
         if (currentFamily && !isOffline) {
@@ -1745,21 +1758,30 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         }
         
         // Salvar nova tarefa no Firebase e na família imediatamente
-        try {
-          const firebaseNextTask = taskToFirebaseTask(nextTask);
-          await LocalStorageService.saveTask(firebaseNextTask);
-          await SyncService.addOfflineOperation('create', 'tasks', firebaseNextTask);
+            try {
+            const remoteNextTask = taskToRemoteTask(nextTask as any);
+          await LocalStorageService.saveTask(remoteNextTask);
+          await SyncService.addOfflineOperation('create', 'tasks', remoteNextTask);
           
-          // Salvar imediatamente no Firebase se online
-          if (currentFamily && !isOffline) {
-            await familyService.saveFamilyTask(firebaseNextTask as any, currentFamily.id);
-            console.log('👨‍👩‍👧‍👦 Próxima ocorrência recorrente salva imediatamente na família');
-          } else if (currentFamily) {
-            await SyncService.addOfflineOperation('create', 'family_tasks', {
-              ...firebaseNextTask,
+          // Salvar imediatamente no Firestore se online
+            if (currentFamily && !isOffline) {
+              try {
+                const toSave = { ...remoteNextTask, familyId: currentFamily.id } as any;
+                const res = await FirestoreService.saveTask(toSave);
+                await LocalStorageService.saveTask({ ...toSave, id: toSave.id || (res && (res as any).id) } as any);
+                console.log(`👨‍👩‍👧‍👦 Próxima ocorrência recorrente salva no Firestore: taskId=${toSave.id || (res && (res as any).id)} familyId=${currentFamily.id}`);
+              } catch (e) {
+                console.warn('Falha ao salvar próxima ocorrência no Firestore, fallback local:', e);
+                try { await FamilySyncHelper.saveTaskToFamily(remoteNextTask as any, currentFamily.id, 'create'); } catch (_) {}
+                await SyncService.addOfflineOperation('create', 'tasks', { ...remoteNextTask, familyId: currentFamily.id });
+              }
+            } else if (currentFamily) {
+            // Enfileirar como 'tasks' e incluir explicitamente familyId para que o SyncService envie para Firestore
+            await SyncService.addOfflineOperation('create', 'tasks', {
+              ...remoteNextTask,
               familyId: currentFamily.id,
             });
-            console.log('📱 Próxima ocorrência adicionada à fila de sincronização offline');
+            console.log(`📱 Próxima ocorrência enfileirada (offline): taskId=${remoteNextTask.id} familyId=${currentFamily.id}`);
           }
           
           // agendar lembrete da próxima ocorrência
@@ -1769,7 +1791,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             console.warn('[Notifications] scheduleTaskReminder falhou (ignorado):', e);
           }
           
-          console.log('✅ Nova tarefa recorrente criada e sincronizada com sucesso');
+          console.log(`✅ Nova tarefa recorrente criada e sincronizada com sucesso: taskId=${remoteNextTask.id}` +
+            `${currentFamily ? ` familyId=${currentFamily.id}` : ''}`);
         } catch (error) {
           console.error('❌ Erro ao sincronizar nova tarefa recorrente:', error);
           // Em caso de erro, manter a nova tarefa no estado local
@@ -1838,36 +1861,38 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       }
     }
     
-    // Salvar tarefa atualizada no cache local e sincronizar com Firebase
+  // Salvar tarefa atualizada no cache local e sincronizar com o servidor remoto
     const updatedTask = updatedTasks.find(t => t.id === task.id);
     if (updatedTask) {
       try {
-        const firebaseTask = taskToFirebaseTask(updatedTask);
-        await LocalStorageService.saveTask(firebaseTask);
+        const remoteTask = taskToRemoteTask(updatedTask as any);
+        await LocalStorageService.saveTask(remoteTask);
         
         // Determinar se é create ou update baseado no ID
         const isTemporaryId = updatedTask.id.startsWith('temp_') || updatedTask.id === 'temp';
         const operationType = isTemporaryId ? 'create' : 'update';
         
-        await SyncService.addOfflineOperation(operationType, 'tasks', firebaseTask);
+  await SyncService.addOfflineOperation(operationType, 'tasks', remoteTask);
         
-        // Para tarefas da família, sincronizar imediatamente para evitar conflitos
+        // Para tarefas da família, sincronizar imediatamente para evitar conflitos (prefer Firestore quando online)
         if (currentFamily && !isOffline) {
           try {
-            await familyService.saveFamilyTask(firebaseTask as any, currentFamily.id);
-            console.log('👨‍👩‍👧‍👦 Tarefa atualizada imediatamente na família');
+            const toSave = { ...remoteTask, familyId: currentFamily.id } as any;
+            const res = await FirestoreService.saveTask(toSave);
+            await LocalStorageService.saveTask({ ...toSave, id: toSave.id || (res && (res as any).id) } as any);
+            console.log(`👨‍👩‍👧‍👦 Tarefa atualizada no Firestore: taskId=${toSave.id || (res && (res as any).id)} familyId=${currentFamily.id}`);
           } catch (error) {
-            console.error('❌ Erro ao atualizar tarefa na família:', error);
+            console.error('❌ Erro ao atualizar tarefa na família via Firestore, fallback local:', error);
+            try { await FamilySyncHelper.saveTaskToFamily(remoteTask as any, currentFamily.id, operationType); } catch (e) { console.warn('Falha fallback saveFamilyTask', e); }
+            await SyncService.addOfflineOperation(operationType, 'tasks', { ...remoteTask, familyId: currentFamily.id });
           }
         } else if (currentFamily) {
-          await SyncService.addOfflineOperation(operationType, 'family_tasks', {
-            ...firebaseTask,
-            familyId: currentFamily.id,
-          });
-          console.log('📱 Atualização adicionada à fila de sincronização offline');
+          await SyncService.addOfflineOperation(operationType, 'tasks', { ...remoteTask, familyId: currentFamily.id });
+          console.log(`📱 Atualização enfileirada (offline): taskId=${remoteTask.id} familyId=${currentFamily.id}`);
         }
         
-        console.log('✅ Status da tarefa atualizado e sincronizado');
+        console.log(`✅ Status da tarefa atualizado e sincronizado: taskId=${updatedTask.id}` +
+          `${currentFamily ? ` familyId=${currentFamily.id}` : ''}`);
       } catch (error) {
         console.error('❌ Erro ao sincronizar toggle da tarefa:', error);
       }
@@ -1909,11 +1934,19 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     // Persistir alteração para sincronização/tempo real
     try {
       const updated = { ...task, status: 'pendente_aprovacao' as TaskStatus, approvalId: approval.id };
-      const firebaseTask = taskToFirebaseTask(updated);
-      await LocalStorageService.saveTask(firebaseTask);
-      await SyncService.addOfflineOperation('update', 'tasks', firebaseTask);
+      const remoteTask = taskToRemoteTask(updated as any);
+      await LocalStorageService.saveTask(remoteTask);
+      await SyncService.addOfflineOperation('update', 'tasks', remoteTask);
       if (currentFamily && !isOffline) {
-        await familyService.saveFamilyTask(firebaseTask, currentFamily.id);
+        try {
+          const toSave = { ...remoteTask, familyId: currentFamily.id } as any;
+          const res = await FirestoreService.saveTask(toSave);
+          await LocalStorageService.saveTask({ ...toSave, id: toSave.id || (res && (res as any).id) } as any);
+        } catch (e) {
+          console.warn('Falha ao salvar approval/task pending no Firestore, delegando ao FamilySyncHelper:', e);
+          try { await FamilySyncHelper.saveTaskToFamily(remoteTask, currentFamily.id, 'update'); } catch (_) {}
+          await SyncService.addOfflineOperation('update', 'tasks', { ...remoteTask, familyId: currentFamily.id });
+        }
       }
       // Persistir a aprovação (Firestore + cache + fila)
       await LocalStorageService.saveApproval(approval as any);
@@ -2039,11 +2072,19 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           editedBy: user.id,
           editedByName: user.name,
         };
-        const firebaseTask = taskToFirebaseTask(updatedTask);
-        await LocalStorageService.saveTask(firebaseTask);
-        await SyncService.addOfflineOperation('update', 'tasks', firebaseTask);
+        const remoteTask = taskToRemoteTask(updatedTask as any);
+        await LocalStorageService.saveTask(remoteTask);
+        await SyncService.addOfflineOperation('update', 'tasks', remoteTask);
         if (currentFamily && !isOffline) {
-          await familyService.saveFamilyTask(firebaseTask as any, currentFamily.id);
+          try {
+            const toSave = { ...remoteTask, familyId: currentFamily.id } as any;
+            const res = await FirestoreService.saveTask(toSave);
+            await LocalStorageService.saveTask({ ...toSave, id: toSave.id || (res && (res as any).id) } as any);
+            } catch (e) {
+              console.warn('Falha ao salvar aprovação/tarefa aprovada no Firestore, delegando ao FamilySyncHelper:', e);
+              try { await FamilySyncHelper.saveTaskToFamily(remoteTask as any, currentFamily.id, 'update'); } catch (_) {}
+              await SyncService.addOfflineOperation('update', 'tasks', { ...remoteTask, familyId: currentFamily.id });
+            }
         }
       }
     } catch (e) {
@@ -2120,11 +2161,19 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           editedBy: user.id,
           editedByName: user.name,
         };
-        const firebaseTask = taskToFirebaseTask(updatedTask);
-        await LocalStorageService.saveTask(firebaseTask);
-        await SyncService.addOfflineOperation('update', 'tasks', firebaseTask);
+        const remoteTask = taskToRemoteTask(updatedTask as any);
+        await LocalStorageService.saveTask(remoteTask);
+        await SyncService.addOfflineOperation('update', 'tasks', remoteTask);
         if (currentFamily && !isOffline) {
-          await familyService.saveFamilyTask(firebaseTask as any, currentFamily.id);
+          try {
+            const toSave = { ...remoteTask, familyId: currentFamily.id } as any;
+            const res = await FirestoreService.saveTask(toSave);
+            await LocalStorageService.saveTask({ ...toSave, id: toSave.id || (res && (res as any).id) } as any);
+          } catch (e) {
+            console.warn('Falha ao salvar aprovação/tarefa rejeitada no Firestore, delegando ao FamilySyncHelper:', e);
+            try { await FamilySyncHelper.saveTaskToFamily(remoteTask as any, currentFamily.id, 'update'); } catch (_) {}
+            await SyncService.addOfflineOperation('update', 'tasks', { ...remoteTask, familyId: currentFamily.id });
+          }
         }
       }
     } catch (e) {
@@ -2354,13 +2403,14 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
               if (currentFamily && !isOffline) {
                 try {
                   await familyService.deleteFamilyTask(taskId);
-                  console.log('👨‍👩‍👧‍👦 Tarefa deletada da família');
+                  console.log(`👨‍👩‍👧‍👦 Tarefa deletada da família: taskId=${taskId} familyId=${currentFamily?.id}`);
                 } catch (error) {
                   console.error('❌ Erro ao deletar tarefa da família:', error);
                 }
               }
               
-              console.log('📱 Tarefa deletada e adicionada à fila de sincronização');
+              console.log(`📱 Tarefa deletada e enfileirada para sincronização: taskId=${taskId}` +
+                `${currentFamily ? ` familyId=${currentFamily.id}` : ''}`);
               
               // Adicionar ao histórico
               await addToHistory('deleted', task.title, taskId);
@@ -2700,7 +2750,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
               setCurrentFamily(newFamily);
               // recarregar tarefas da nova família
               const familyTasks = await familyService.getFamilyTasks(newFamily.id, user.id);
-              const convertedTasks: Task[] = familyTasks.map(firebaseTaskToTask);
+              const convertedTasks: Task[] = familyTasks.map(remoteTaskToTask);
               setTasks(convertedTasks);
               // atualizar lista de membros
               setFamilyMembers(newFamily.members);

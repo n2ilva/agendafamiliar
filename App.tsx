@@ -10,6 +10,7 @@ import LocalAuthService from './services/LocalAuthService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import BackgroundSyncService from './services/BackgroundSyncService';
 import Alert from './utils/Alert';
+import ConnectivityService from './services/ConnectivityService';
 
 
 
@@ -23,7 +24,16 @@ export default function App() {
 
   // Verificar se há usuário logado ao inicializar o app
   useEffect(() => {
-    checkPersistedUser();
+    (async () => {
+      // Inicializar conectividade o quanto antes para que telas de login
+      // possam decidir entre auth remoto ou local
+      try {
+        await ConnectivityService.initialize();
+      } catch (e) {
+        console.warn('Falha ao inicializar ConnectivityService no startup:', e);
+      }
+      await checkPersistedUser();
+    })();
   }, []);
 
   // Verificar usuário persistido no AsyncStorage
@@ -64,19 +74,19 @@ export default function App() {
     }
   };
 
-  // Observar mudanças de autenticação do Firebase
+  // Observar mudanças de autenticação
   useEffect(() => {
-  const unsubscribe = LocalAuthService.onAuthStateChange(async (firebaseUser) => {
-      if (firebaseUser) {
-        setUser(firebaseUser);
-        await saveUserToStorage(firebaseUser);
+  const unsubscribe = LocalAuthService.onAuthStateChange(async (authUser) => {
+      if (authUser) {
+        setUser(authUser);
+        await saveUserToStorage(authUser);
   await LocalAuthService.initializeOfflineSupport();
         await BackgroundSyncService.registerBackgroundSyncAsync(); // Registrar tarefa de background
         // Verificar se o usuário tem família configurada
-        setFamilyConfigured(!!firebaseUser.familyId);
+        setFamilyConfigured(!!authUser.familyId);
       } else {
-        // Sempre limpar o estado quando o Firebase indica que não há usuário autenticado
-        console.log('🚪 Firebase Auth indica logout - limpando estado da aplicação');
+        // Sempre limpar o estado quando o sistema de autenticação indica logout
+        console.log('🚪 Auth indica logout - limpando estado da aplicação');
         setUser(null);
         setFamilyConfigured(false);
         await removeUserFromStorage(); // Garantir que o storage local também seja limpo
@@ -127,7 +137,7 @@ export default function App() {
           style: 'destructive',
           onPress: async () => {
             try {
-              // Logout do Firebase
+              // Logout (local)
               await LocalAuthService.logout();
               
               // Remover dados do usuário do storage local
@@ -161,7 +171,7 @@ export default function App() {
   const handleUserRoleChange = async (newRole: UserRole) => {
     if (user) {
       try {
-        // Atualizar role no Firebase se não for convidado
+        // Atualizar role no armazenamento local se não for convidado
         if (!user.isGuest) {
           await LocalAuthService.updateUserRole(user.id, newRole);
         }
