@@ -1,4 +1,4 @@
-import { firebaseFirestore } from '../config/firebase';
+import { firebaseFirestore, firebaseAuth } from '../config/firebase';
 import {
   collection,
   doc,
@@ -76,16 +76,67 @@ export const FirestoreService = {
 
   // Query tasks created by a user
   async getTasksByUser(userId: string) {
-  const q = query(tasksCol() as any, where('userId', '==', userId), orderBy('createdAt', 'desc'));
-    const snap = await getDocs(q);
-  return snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+    try {
+      // Verificar se o usuário está autenticado
+      const auth = firebaseAuth() as any;
+      const currentUser = auth.currentUser;
+      
+      if (!currentUser) {
+        console.warn('⚠️ FirestoreService.getTasksByUser: Usuário não autenticado, retornando array vazio');
+        return [];
+      }
+      
+      console.log('🔍 FirestoreService.getTasksByUser: Buscando tarefas para userId:', userId);
+      const q = query(tasksCol() as any, where('userId', '==', userId), orderBy('createdAt', 'desc'));
+      const snap = await getDocs(q);
+      const tasks = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+      console.log(`✅ FirestoreService.getTasksByUser: ${tasks.length} tarefas encontradas`);
+      return tasks;
+    } catch (error: any) {
+      console.error('❌ FirestoreService.getTasksByUser: Erro ao buscar tarefas:', error);
+      if (error.code === 'permission-denied') {
+        console.warn('⚠️ Permissão negada - usuário pode não estar autenticado ou não ter acesso aos dados');
+      }
+      return [];
+    }
   },
 
   // Query tasks for a family (familyId can be null — Firestore stores null as a value)
   async getTasksByFamily(familyId: string | null) {
-  const q = query(tasksCol() as any, where('familyId', '==', ensureFamilyId(familyId)), orderBy('createdAt', 'desc'));
-    const snap = await getDocs(q);
-  return snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+    try {
+      // Verificar se o usuário está autenticado
+      const auth = firebaseAuth() as any;
+      const currentUser = auth.currentUser;
+      
+      if (!currentUser) {
+        console.warn('⚠️ FirestoreService.getTasksByFamily: Usuário não autenticado, retornando array vazio');
+        return [];
+      }
+      
+      if (!familyId) {
+        console.log('ℹ️ FirestoreService.getTasksByFamily: familyId é null/vazio, retornando array vazio');
+        return [];
+      }
+      
+      // Se for uma família local, não tenta buscar no Firestore
+      if (familyId.startsWith('local_')) {
+        console.log('ℹ️ FirestoreService.getTasksByFamily: familyId é local, retornando array vazio (dados apenas no cache)');
+        return [];
+      }
+      
+      console.log('🔍 FirestoreService.getTasksByFamily: Buscando tarefas para familyId:', familyId);
+      const q = query(tasksCol() as any, where('familyId', '==', ensureFamilyId(familyId)), orderBy('createdAt', 'desc'));
+      const snap = await getDocs(q);
+      const tasks = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+      console.log(`✅ FirestoreService.getTasksByFamily: ${tasks.length} tarefas encontradas`);
+      return tasks;
+    } catch (error: any) {
+      console.error('❌ FirestoreService.getTasksByFamily: Erro ao buscar tarefas:', error);
+      if (error.code === 'permission-denied') {
+        console.warn('⚠️ Permissão negada - usuário pode não ter acesso à família ou não estar autenticado');
+      }
+      return [];
+    }
   },
 
   // Subscribe to tasks by userId AND familyId combination. Callback receives array of docs.

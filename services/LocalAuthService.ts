@@ -1,5 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FamilyUser, UserRole } from '../types/FamilyTypes';
+import { firebaseAuth } from '../config/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
 
 const USER_STORAGE_KEY = 'familyApp_currentUser';
 
@@ -35,14 +37,65 @@ class LocalAuthService {
   }
 
   static onAuthStateChange(callback: (user: FamilyUser | null) => void) {
-    // Simple implementation: call with current user
+    console.log('🔔 Configurando listener de autenticação');
+    
+    // Primeiro, verifica o usuário local
     (async () => {
       const raw = await AsyncStorage.getItem(USER_STORAGE_KEY);
-      if (raw) callback(JSON.parse(raw)); else callback(null);
+      if (raw) {
+        console.log('📱 Usuário local encontrado no AsyncStorage');
+        callback(JSON.parse(raw));
+      }
     })();
 
-    // Return unsubscribe noop
-    return () => {};
+    // Também monitora mudanças no Firebase Auth
+    try {
+      const auth = firebaseAuth() as any;
+      console.log('🔥 Configurando onAuthStateChanged do Firebase');
+      
+      const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+        console.log('🔥 Firebase Auth State Changed:', firebaseUser ? `Usuário: ${firebaseUser.email}` : 'Nenhum usuário');
+        
+        if (firebaseUser) {
+          // Usuário logado no Firebase - criar/atualizar objeto FamilyUser
+          const raw = await AsyncStorage.getItem(USER_STORAGE_KEY);
+          let familyUser: FamilyUser;
+          
+          if (raw) {
+            // Atualizar usuário existente
+            familyUser = JSON.parse(raw);
+            familyUser.id = firebaseUser.uid;
+            familyUser.email = firebaseUser.email || familyUser.email;
+          } else {
+            // Criar novo usuário
+            familyUser = {
+              id: firebaseUser.uid,
+              name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Usuário',
+              email: firebaseUser.email || '',
+              role: 'admin', // Usuários do Firebase são admin por padrão
+              isGuest: false,
+              familyId: '',
+              joinedAt: new Date()
+            };
+          }
+          
+          await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(familyUser));
+          console.log('✅ FamilyUser salvo no AsyncStorage:', familyUser.name);
+          callback(familyUser);
+        } else {
+          // Logout do Firebase - limpar storage local
+          console.log('🚪 Firebase logout detectado - limpando AsyncStorage');
+          await AsyncStorage.removeItem(USER_STORAGE_KEY);
+          callback(null);
+        }
+      });
+      
+      return unsubscribe;
+    } catch (error) {
+      console.warn('⚠️ Erro ao configurar Firebase Auth listener:', error);
+      // Retorna função de unsubscribe vazia em caso de erro
+      return () => {};
+    }
   }
 
   static getCurrentUser() {

@@ -24,6 +24,7 @@ import {
   GestureHandlerRootView 
 } from 'react-native-gesture-handler';
 import * as Notifications from 'expo-notifications';
+import * as Clipboard from 'expo-clipboard';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import NotificationService from '../services/NotificationService';
 import { Header } from '../components/Header';
@@ -208,6 +209,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   const [editingFamilyName, setEditingFamilyName] = useState(false);
   const [newFamilyName, setNewFamilyName] = useState('');
   // const [inviteCode, setInviteCode] = useState<string>('');
+  const [isCreatingFamilyMode, setIsCreatingFamilyMode] = useState(false);
+  const [newFamilyNameInput, setNewFamilyNameInput] = useState('');
+  const [isCreatingFamily, setIsCreatingFamily] = useState(false);
 
   const [selectedColorIndex, setSelectedColorIndex] = useState(0);
 
@@ -2229,17 +2233,19 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     try {
       const familyCode = currentFamily?.inviteCode;
       if (familyCode) {
-        // Para Expo/React Native, usamos uma abordagem simples
-        // Em um app real, você poderia usar @react-native-clipboard/clipboard
+        // Copia apenas o código para a área de transferência
+        await Clipboard.setStringAsync(familyCode);
+        
         Alert.alert(
-          'Código Copiado!', 
-          `Código da família: ${familyCode}\n\nCompartilhe este código com quem você deseja adicionar à família.`,
+          '✓ Código Copiado!', 
+          `O código "${familyCode}" foi copiado para a área de transferência.\n\nCompartilhe com quem você deseja adicionar à família.`,
           [{ text: 'OK' }]
         );
       } else {
         Alert.alert('Erro', 'Código da família não disponível.');
       }
     } catch (error) {
+      console.error('Erro ao copiar código:', error);
       Alert.alert('Erro', 'Não foi possível copiar o código.');
     }
   };
@@ -2356,8 +2362,12 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   };
 
   const handleManageFamily = async () => {
+    // Se não tem família, mostrar interface de criação
     if (!currentFamily) {
-      Alert.alert('Erro', 'Nenhuma família encontrada');
+      console.log('⚠️ Usuário sem família - ativando modo de criação');
+      setIsCreatingFamilyMode(true);
+      setNewFamilyNameInput('');
+      setFamilyModalVisible(true);
       return;
     }
 
@@ -2367,12 +2377,61 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       if (familyData) {
         setCurrentFamily(familyData);
         setFamilyMembers(familyData.members);
+        setIsCreatingFamilyMode(false);
       }
     } catch (error) {
       console.error('Erro ao carregar dados da família:', error);
     }
     
     setFamilyModalVisible(true);
+  };
+
+  const handleCreateFamilyFromModal = async () => {
+    if (!newFamilyNameInput.trim()) {
+      Alert.alert('Erro', 'Por favor, insira um nome para a família');
+      return;
+    }
+
+    setIsCreatingFamily(true);
+    try {
+      console.log('🏠 Criando nova família pelo modal:', newFamilyNameInput);
+      
+      const newFamily = await familyService.createFamily(newFamilyNameInput.trim(), {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: 'admin' as UserRole,
+        isGuest: false,
+        joinedAt: new Date(),
+      });
+
+      console.log('✅ Família criada com sucesso:', newFamily.id);
+      
+      // Atualizar estados
+      setCurrentFamily(newFamily);
+      setFamilyMembers(newFamily.members);
+      setIsCreatingFamilyMode(false);
+      setNewFamilyNameInput('');
+
+      Alert.alert(
+        'Família Criada!',
+        `Família "${newFamily.name}" criada com sucesso!\n\nCódigo da família: ${newFamily.inviteCode}\n\nCompartilhe este código com os membros da família.`,
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              // Modal permanece aberto mostrando os detalhes da família
+              console.log('✅ Modal atualizado para modo de gerenciamento');
+            }
+          }
+        ]
+      );
+    } catch (error) {
+      console.error('❌ Erro ao criar família:', error);
+      Alert.alert('Erro', 'Não foi possível criar a família. Verifique sua conexão e tente novamente.');
+    } finally {
+      setIsCreatingFamily(false);
+    }
   };
 
   const deleteTask = useCallback((taskId: string) => {
@@ -2531,10 +2590,10 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     const isPendingRecurring = isRecurring && !canComplete && !item.completed;
     
     // Sanitizar valores para evitar "Unexpected text node: ." no web
-    const sanitizedTitle = item.title === '.' ? '' : item.title;
-    const sanitizedDescription = item.description === '.' ? '' : item.description;
-    const sanitizedCreatedByName = item.createdByName === '.' ? 'Usuário' : item.createdByName;
-    const sanitizedEditedByName = item.editedByName === '.' ? '' : item.editedByName;
+    const sanitizedTitle = (item.title === '.' || !item.title) ? '' : item.title;
+    const sanitizedDescription = (item.description === '.' || !item.description) ? '' : item.description;
+    const sanitizedCreatedByName = (item.createdByName === '.' || !item.createdByName) ? 'Usuário' : item.createdByName;
+    const sanitizedEditedByName = (item.editedByName === '.' || !item.editedByName) ? '' : item.editedByName;
     
     return (
       <View 
@@ -2614,10 +2673,10 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                 item.completed && styles.taskTitleCompleted,
                 isPendingRecurring && styles.taskTitlePending
               ]}>
-                {sanitizedTitle}
+                {sanitizedTitle || 'Sem título'}
               </Text>
               
-              {item.description && (
+              {sanitizedDescription && (
                 <Text style={[
                   styles.taskDescription,
                   item.completed && styles.taskDescriptionCompleted
@@ -2702,14 +2761,14 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           <View style={styles.authorshipRow}>
             <Ionicons name="person-outline" size={12} color="#999" />
             <Text style={styles.authorshipText}>
-              {sanitizedCreatedByName || 'Usuário'} • {formatDate(item.createdAt)}
+              {`${sanitizedCreatedByName || 'Usuário'} • ${formatDate(item.createdAt)}`}
             </Text>
           </View>
-          {item.editedBy && item.editedByName && (
+          {item.editedBy && sanitizedEditedByName && (
             <View style={styles.authorshipRow}>
               <Ionicons name="pencil-outline" size={12} color="#999" />
               <Text style={styles.authorshipText}>
-                Editado por {sanitizedEditedByName} • {item.editedAt ? formatDate(item.editedAt) : ''}
+                {`Editado por ${sanitizedEditedByName}${item.editedAt ? ` • ${formatDate(item.editedAt)}` : ''}`}
               </Text>
             </View>
           )}
@@ -2875,23 +2934,36 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       <View style={styles.fabContainer}>
         {/* Botão Atualizar Dados (novo) */}
         <Pressable 
-          style={[styles.filterFab, styles.updateFab]}
+          style={({ pressed }) => [
+            styles.filterFab,
+            styles.updateFab,
+            pressed && { opacity: 0.7, transform: [{ scale: 0.95 }] }
+          ]}
           onPress={handleUpdateData}
+          android_ripple={{ color: 'rgba(255, 255, 255, 0.3)', borderless: true }}
         >
           <Ionicons name="refresh" size={24} color="#fff" />
         </Pressable>
         {/* Botão de Filtro */}
         <Pressable 
-          style={styles.filterFab}
+          style={({ pressed }) => [
+            styles.filterFab,
+            pressed && { opacity: 0.7, transform: [{ scale: 0.95 }] }
+          ]}
           onPress={() => setFilterDropdownVisible(!filterDropdownVisible)}
+          android_ripple={{ color: 'rgba(255, 255, 255, 0.3)', borderless: true }}
         >
           <Ionicons name="filter" size={24} color="#fff" />
         </Pressable>
 
         {/* Botão de Criar Tarefa */}
         <Pressable 
-          style={styles.fab}
+          style={({ pressed }) => [
+            styles.fab,
+            pressed && { opacity: 0.8, transform: [{ scale: 0.95 }] }
+          ]}
           onPress={() => setModalVisible(true)}
+          android_ripple={{ color: 'rgba(255, 255, 255, 0.3)', borderless: true }}
         >
           <Ionicons name="add" size={30} color="#fff" />
         </Pressable>
@@ -3169,16 +3241,27 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
 
               <View style={styles.modalButtons}>
                 <Pressable 
-                  style={[styles.button, styles.cancelButton]}
+                  style={({ pressed }) => [
+                    styles.button,
+                    styles.cancelButton,
+                    pressed && { opacity: 0.7 }
+                  ]}
                   onPress={resetForm}
+                  android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
                 >
                   <Text style={styles.cancelButtonText}>Cancelar</Text>
                 </Pressable>
                 
                 <Pressable 
-                  style={[styles.button, styles.addButton, isAddingTask && styles.buttonDisabled]}
+                  style={({ pressed }) => [
+                    styles.button,
+                    styles.addButton,
+                    isAddingTask && styles.buttonDisabled,
+                    pressed && !isAddingTask && { opacity: 0.8, transform: [{ scale: 0.98 }] }
+                  ]}
                   onPress={addTask}
                   disabled={isAddingTask}
+                  android_ripple={{ color: 'rgba(255, 255, 255, 0.3)' }}
                 >
                   {isAddingTask ? (
                     <ActivityIndicator size="small" color="#fff" />
@@ -3623,154 +3706,222 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         animationType="slide"
         transparent={true}
         visible={familyModalVisible}
-        onRequestClose={() => setFamilyModalVisible(false)}
+        onRequestClose={() => {
+          setFamilyModalVisible(false);
+          setIsCreatingFamilyMode(false);
+          setNewFamilyNameInput('');
+        }}
       >
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, styles.familyModalContent]}>
             <View style={styles.familyModalHeader}>
-              <Text style={styles.modalTitle}>Gerenciar Família</Text>
+              <Text style={styles.modalTitle}>
+                {isCreatingFamilyMode ? 'Criar Família' : 'Gerenciar Família'}
+              </Text>
             </View>
 
-            <ScrollView style={styles.familyContent}>
-              {/* Seção do Nome da Família */}
-              <View style={styles.familySection}>
-                <Text style={styles.familySectionTitle}>Nome da Família</Text>
-                
-                {editingFamilyName ? (
-                  <View style={styles.editFamilyNameContainer}>
+            {isCreatingFamilyMode ? (
+              /* Interface de Criação de Família */
+              <ScrollView style={styles.familyContent}>
+                <View style={styles.familySection}>
+                  <Ionicons name="people" size={60} color="#007AFF" style={styles.createFamilyIcon} />
+                  <Text style={styles.createFamilyTitle}>Criar Nova Família</Text>
+                  <Text style={styles.createFamilySubtitle}>
+                    Você precisa estar em uma família para gerenciar tarefas em grupo.
+                  </Text>
+                  
+                  <View style={styles.createFamilyInputContainer}>
+                    <Text style={styles.familySectionTitle}>Nome da Família</Text>
                     <TextInput
-                      style={styles.editFamilyNameInput}
-                      value={newFamilyName}
-                      onChangeText={setNewFamilyName}
-                      placeholder="Digite o nome da família"
+                      style={styles.createFamilyInput}
+                      value={newFamilyNameInput}
+                      onChangeText={setNewFamilyNameInput}
+                      placeholder="Ex: Família Silva"
                       maxLength={50}
+                      editable={!isCreatingFamily}
                       autoFocus
                     />
-                    <View style={styles.editFamilyNameActions}>
+                  </View>
+
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.createFamilyButton,
+                      (!newFamilyNameInput.trim() || isCreatingFamily) && styles.createFamilyButtonDisabled,
+                      pressed && newFamilyNameInput.trim() && !isCreatingFamily && { opacity: 0.8, transform: [{ scale: 0.98 }] }
+                    ]}
+                    onPress={handleCreateFamilyFromModal}
+                    disabled={!newFamilyNameInput.trim() || isCreatingFamily}
+                    android_ripple={{ color: 'rgba(255, 255, 255, 0.3)' }}
+                  >
+                    {isCreatingFamily ? (
+                      <Text style={styles.createFamilyButtonText}>Criando...</Text>
+                    ) : (
+                      <>
+                        <Ionicons name="add-circle" size={20} color="#fff" />
+                        <Text style={styles.createFamilyButtonText}>Criar Família</Text>
+                      </>
+                    )}
+                  </Pressable>
+
+                  <View style={styles.createFamilyNote}>
+                    <Ionicons name="information-circle" size={20} color="#666" />
+                    <Text style={styles.createFamilyNoteText}>
+                      Após criar a família, você receberá um código para compartilhar com outros membros.
+                    </Text>
+                  </View>
+                </View>
+              </ScrollView>
+            ) : (
+              /* Interface de Gerenciamento de Família */
+              <ScrollView style={styles.familyContent}>
+                {/* Seção do Nome da Família */}
+                <View style={styles.familySection}>
+                  <Text style={styles.familySectionTitle}>Nome da Família</Text>
+                  
+                  {editingFamilyName ? (
+                    <View style={styles.editFamilyNameContainer}>
+                      <TextInput
+                        style={styles.editFamilyNameInput}
+                        value={newFamilyName}
+                        onChangeText={setNewFamilyName}
+                        placeholder="Digite o nome da família"
+                        maxLength={50}
+                        autoFocus
+                      />
+                      <View style={styles.editFamilyNameActions}>
+                        <Pressable
+                          style={[styles.editFamilyNameButton, styles.cancelButton]}
+                          onPress={cancelEditingFamilyName}
+                        >
+                          <Text style={styles.cancelButtonText}>Cancelar</Text>
+                        </Pressable>
+                        <Pressable
+                          style={[styles.editFamilyNameButton, styles.saveButton]}
+                          onPress={saveFamilyName}
+                        >
+                          <Text style={styles.saveButtonText}>Salvar</Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                  ) : (
+                    <View style={styles.familyNameContainer}>
+                      <Text style={styles.currentFamilyName}>
+                        {currentFamily?.name || 'Nome não definido'}
+                      </Text>
+                      {user.role === 'admin' && (
+                        <Pressable
+                          style={styles.editFamilyNameIconButton}
+                          onPress={startEditingFamilyName}
+                        >
+                          <Ionicons name="pencil" size={16} color="#007AFF" />
+                        </Pressable>
+                      )}
+                    </View>
+                  )}
+                </View>
+
+                {/* Seção do Código da Família */}
+                <View style={styles.familySection}>
+                  <Text style={styles.familySectionTitle}>Código da Família</Text>
+                  <Text style={styles.familySectionSubtitle}>
+                    Use este código para convidar novos membros
+                  </Text>
+                  
+                  <View style={styles.inviteCodeContainer}>
+                    <Text style={styles.inviteCodeLabel}>Código:</Text>
+                    <View style={styles.inviteCodeBox}>
+                      <Text style={styles.inviteCodeText}>
+                        {currentFamily?.inviteCode || 'Código não disponível'}
+                      </Text>
                       <Pressable
-                        style={[styles.editFamilyNameButton, styles.cancelButton]}
-                        onPress={cancelEditingFamilyName}
+                        onPress={copyFamilyCode}
+                        style={styles.copyButton}
                       >
-                        <Text style={styles.cancelButtonText}>Cancelar</Text>
-                      </Pressable>
-                      <Pressable
-                        style={[styles.editFamilyNameButton, styles.saveButton]}
-                        onPress={saveFamilyName}
-                      >
-                        <Text style={styles.saveButtonText}>Salvar</Text>
+                        <Ionicons name="copy" size={18} color="#fff" />
                       </Pressable>
                     </View>
                   </View>
-                ) : (
-                  <View style={styles.familyNameContainer}>
-                    <Text style={styles.currentFamilyName}>
-                      {currentFamily?.name || 'Nome não definido'}
-                    </Text>
-                    {user.role === 'admin' && (
-                      <Pressable
-                        style={styles.editFamilyNameIconButton}
-                        onPress={startEditingFamilyName}
-                      >
-                        <Ionicons name="pencil" size={16} color="#007AFF" />
-                      </Pressable>
-                    )}
-                  </View>
-                )}
-              </View>
-
-              {/* Seção do Código da Família */}
-              <View style={styles.familySection}>
-                <Text style={styles.familySectionTitle}>Código da Família</Text>
-                <Text style={styles.familySectionSubtitle}>
-                  Use este código para convidar novos membros
-                </Text>
-                
-                <View style={styles.inviteCodeContainer}>
-                  <Text style={styles.inviteCodeLabel}>Código:</Text>
-                  <View style={styles.inviteCodeBox}>
-                    <Text style={styles.inviteCodeText}>
-                      {currentFamily?.inviteCode || 'Código não disponível'}
-                    </Text>
-                    <Pressable
-                      onPress={copyFamilyCode}
-                      style={styles.copyButton}
-                    >
-                      <Ionicons name="copy" size={18} color="#fff" />
-                    </Pressable>
-                  </View>
                 </View>
-              </View>
 
-              {/* Seção de Membros */}
-              <View style={styles.familySection}>
-                <Text style={styles.familySectionTitle}>Membros da Família</Text>
-                
-                {familyMembers.map(member => (
-                  <View key={member.id} style={styles.familyMember}>
-                    <View style={styles.memberAvatarColumn}>
-                      <View style={styles.memberAvatar}>
-                        {member.picture ? (
-                          <Image source={{ uri: member.picture }} style={styles.memberAvatarImage} />
-                        ) : (
-                          <Ionicons name="person" size={20} color="#666" />
+                {/* Seção de Membros */}
+                <View style={styles.familySection}>
+                  <Text style={styles.familySectionTitle}>Membros da Família</Text>
+                  
+                  {familyMembers.map(member => (
+                    <View key={member.id} style={styles.familyMember}>
+                      <View style={styles.memberAvatarColumn}>
+                        <View style={styles.memberAvatar}>
+                          {member.picture ? (
+                            <Image source={{ uri: member.picture }} style={styles.memberAvatarImage} />
+                          ) : (
+                            <Ionicons name="person" size={20} color="#666" />
+                          )}
+                        </View>
+                      </View>
+                      <View style={styles.memberDetailsColumn}>
+                        <Text style={styles.memberName}>{member.name}</Text>
+                        <View style={styles.memberRole}>
+                          <Ionicons 
+                            name={member.role === 'admin' ? 'shield-checkmark' : 'person'} 
+                            size={14} 
+                            color={member.role === 'admin' ? '#007AFF' : '#666'} 
+                          />
+                          <Text style={[
+                            styles.memberRoleText,
+                            member.role === 'admin' && styles.memberRoleAdmin
+                          ]}>
+                            {member.role === 'admin' ? 'Administrador' : 'Dependente'}
+                          </Text>
+                        </View>
+                        {member.email && (
+                          <Text style={styles.memberEmail}>{member.email}</Text>
+                        )}
+                        <Text style={styles.memberJoinDate}>
+                          Entrou em: {member.joinedAt ? new Date(member.joinedAt).toLocaleDateString('pt-BR') : 'Data não disponível'}
+                        </Text>
+                        {member.id !== user.id && user.role === 'admin' && (
+                          <View style={styles.memberActions}>
+                            <Pressable
+                              onPress={() => changeMemberRole(member.id)}
+                              style={styles.changeMemberRoleButton}
+                            >
+                              <Ionicons 
+                                name="swap-horizontal" 
+                                size={16} 
+                                color="#007AFF" 
+                              />
+                              <Text style={styles.changeMemberRoleButtonText}>
+                                {member.role === 'admin' ? 'Tornar Dependente' : 'Tornar Admin'}
+                              </Text>
+                            </Pressable>
+                            
+                            <Pressable
+                              onPress={() => removeFamilyMember(member.id)}
+                              style={styles.removeMemberButton}
+                            >
+                              <Ionicons name="trash-outline" size={18} color="#e74c3c" />
+                            </Pressable>
+                          </View>
                         )}
                       </View>
                     </View>
-                    <View style={styles.memberDetailsColumn}>
-                      <Text style={styles.memberName}>{member.name}</Text>
-                      <View style={styles.memberRole}>
-                        <Ionicons 
-                          name={member.role === 'admin' ? 'shield-checkmark' : 'person'} 
-                          size={14} 
-                          color={member.role === 'admin' ? '#007AFF' : '#666'} 
-                        />
-                        <Text style={[
-                          styles.memberRoleText,
-                          member.role === 'admin' && styles.memberRoleAdmin
-                        ]}>
-                          {member.role === 'admin' ? 'Administrador' : 'Dependente'}
-                        </Text>
-                      </View>
-                      {member.email && (
-                        <Text style={styles.memberEmail}>{member.email}</Text>
-                      )}
-                      <Text style={styles.memberJoinDate}>
-                        Entrou em: {member.joinedAt ? new Date(member.joinedAt).toLocaleDateString('pt-BR') : 'Data não disponível'}
-                      </Text>
-                      {member.id !== user.id && user.role === 'admin' && (
-                        <View style={styles.memberActions}>
-                          <Pressable
-                            onPress={() => changeMemberRole(member.id)}
-                            style={styles.changeMemberRoleButton}
-                          >
-                            <Ionicons 
-                              name="swap-horizontal" 
-                              size={16} 
-                              color="#007AFF" 
-                            />
-                            <Text style={styles.changeMemberRoleButtonText}>
-                              {member.role === 'admin' ? 'Tornar Dependente' : 'Tornar Admin'}
-                            </Text>
-                          </Pressable>
-                          
-                          <Pressable
-                            onPress={() => removeFamilyMember(member.id)}
-                            style={styles.removeMemberButton}
-                          >
-                            <Ionicons name="trash-outline" size={18} color="#e74c3c" />
-                          </Pressable>
-                        </View>
-                      )}
-                    </View>
-                  </View>
-                ))}
-              </View>
-            </ScrollView>
+                  ))}
+                </View>
+              </ScrollView>
+            )}
             
             {/* Botão de fechar no final do modal */}
             <Pressable 
-              style={styles.closeModalButton}
-              onPress={() => setFamilyModalVisible(false)}
+              style={({ pressed }) => [
+                styles.closeModalButton,
+                pressed && { opacity: 0.8, transform: [{ scale: 0.98 }] }
+              ]}
+              onPress={() => {
+                setFamilyModalVisible(false);
+                setIsCreatingFamilyMode(false);
+                setNewFamilyNameInput('');
+              }}
+              android_ripple={{ color: 'rgba(255, 255, 255, 0.3)' }}
             >
               <Text style={styles.closeModalButtonText}>Fechar</Text>
             </Pressable>
@@ -5413,4 +5564,78 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     lineHeight: 20,
   },
+  // Estilos para interface de criação de família
+  createFamilyIcon: {
+    alignSelf: 'center',
+    marginBottom: 16,
+  },
+  createFamilyTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#333',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  createFamilySubtitle: {
+    fontSize: 15,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 30,
+    lineHeight: 22,
+    paddingHorizontal: 10,
+  },
+  createFamilyInputContainer: {
+    marginBottom: 25,
+  },
+  createFamilyInput: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    fontSize: 16,
+    color: '#333',
+  },
+  createFamilyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#007AFF',
+    paddingVertical: 15,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    gap: 10,
+    marginBottom: 20,
+    shadowColor: '#007AFF',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  createFamilyButtonDisabled: {
+    backgroundColor: '#ccc',
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  createFamilyButtonText: {
+    color: '#fff',
+    fontSize: 17,
+    fontWeight: 'bold',
+  },
+  createFamilyNote: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#f8f9fa',
+    padding: 15,
+    borderRadius: 10,
+    gap: 10,
+  },
+  createFamilyNoteText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#666',
+    lineHeight: 20,
+  },
 });
+

@@ -7,6 +7,7 @@ import FamilySetupScreen from './screens/FamilySetupScreen';
 import { ActivityIndicator, View, StyleSheet } from 'react-native';
 import { FamilyUser, UserRole } from './types/FamilyTypes';
 import LocalAuthService from './services/LocalAuthService';
+import familyService from './services/LocalFamilyService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import BackgroundSyncService from './services/BackgroundSyncService';
 import Alert from './utils/Alert';
@@ -43,9 +44,31 @@ export default function App() {
       if (savedUser) {
         const userData = JSON.parse(savedUser);
         console.log('👤 Usuário encontrado no storage local:', userData.name);
+        
+        // Verificar se o usuário tem família no Firebase
+        try {
+          const userFamily = await familyService.getUserFamily(userData.id);
+          
+          if (userFamily) {
+            console.log('🏠 Família encontrada no Firebase:', userFamily.name);
+            // Atualizar o familyId do usuário se necessário
+            if (!userData.familyId || userData.familyId !== userFamily.id) {
+              userData.familyId = userFamily.id;
+              await saveUserToStorage(userData);
+              console.log('✅ FamilyId atualizado no storage:', userFamily.id);
+            }
+            setFamilyConfigured(true);
+          } else {
+            console.log('👤 Usuário não possui família');
+            setFamilyConfigured(false);
+          }
+        } catch (error) {
+          console.error('❌ Erro ao verificar família do usuário:', error);
+          // Se houver erro, usar o familyId do storage
+          setFamilyConfigured(!!userData.familyId);
+        }
+        
         setUser(userData);
-        // Verificar se o usuário já tem familyId configurado
-        setFamilyConfigured(!!userData.familyId);
       }
     } catch (error) {
       console.error('Erro ao carregar usuário salvo:', error);
@@ -80,10 +103,32 @@ export default function App() {
       if (authUser) {
         setUser(authUser);
         await saveUserToStorage(authUser);
-  await LocalAuthService.initializeOfflineSupport();
+        await LocalAuthService.initializeOfflineSupport();
         await BackgroundSyncService.registerBackgroundSyncAsync(); // Registrar tarefa de background
-        // Verificar se o usuário tem família configurada
-        setFamilyConfigured(!!authUser.familyId);
+        
+        // Verificar se o usuário tem família no Firebase
+        try {
+          const userFamily = await familyService.getUserFamily(authUser.id);
+          
+          if (userFamily) {
+            console.log('🏠 Família encontrada no Firebase:', userFamily.name);
+            // Atualizar o familyId do usuário se necessário
+            if (!authUser.familyId || authUser.familyId !== userFamily.id) {
+              authUser.familyId = userFamily.id;
+              setUser(authUser);
+              await saveUserToStorage(authUser);
+              console.log('✅ FamilyId atualizado:', userFamily.id);
+            }
+            setFamilyConfigured(true);
+          } else {
+            console.log('👤 Usuário não possui família');
+            setFamilyConfigured(!!authUser.familyId);
+          }
+        } catch (error) {
+          console.error('❌ Erro ao verificar família:', error);
+          // Se houver erro, usar o familyId do authUser
+          setFamilyConfigured(!!authUser.familyId);
+        }
       } else {
         // Sempre limpar o estado quando o sistema de autenticação indica logout
         console.log('🚪 Auth indica logout - limpando estado da aplicação');

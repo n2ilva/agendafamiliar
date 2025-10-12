@@ -19,71 +19,98 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
   const [resetModalVisible, setResetModalVisible] = useState<boolean>(false);
   const [resetEmail, setResetEmail] = useState<string>('');
   const [resetLoading, setResetLoading] = useState<boolean>(false);
+  const [showPassword, setShowPassword] = useState<boolean>(false);
 
   const handleEmailAuth = async () => {
+    console.log('🔵 handleEmailAuth iniciado');
+    console.log('📧 Email:', email);
+    console.log('🔐 Password length:', password.length);
+    console.log('👤 isLogin:', isLogin);
+    
     // Validações mais detalhadas
     if (!email.trim()) {
+      console.log('❌ Email vazio');
       Alert.alert('Campo obrigatório', 'Por favor, digite seu email.');
       return;
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email.trim())) {
+      console.log('❌ Email inválido');
       Alert.alert('Email inválido', 'Por favor, digite um email válido (exemplo: usuario@gmail.com).');
       return;
     }
 
     if (!password.trim()) {
+      console.log('❌ Senha vazia');
       Alert.alert('Campo obrigatório', 'Por favor, digite sua senha.');
       return;
     }
 
     if (!isLogin && password.length < 6) {
+      console.log('❌ Senha muito curta');
       Alert.alert('Senha muito fraca', 'A senha deve ter pelo menos 6 caracteres.');
       return;
     }
 
     if (!isLogin && !name.trim()) {
+      console.log('❌ Nome vazio');
       Alert.alert('Campo obrigatório', 'Por favor, digite seu nome completo.');
       return;
     }
 
+    console.log('✅ Validações passaram, iniciando autenticação...');
     setLoading(true);
 
     try {
+      console.log('🌐 Verificando conectividade...');
       let result;
       
       // Verificar conectividade atual (pode ser inicializada no App.tsx)
       let isOnline = ConnectivityService.isConnected();
+      console.log('📡 isConnected (cache):', isOnline);
+      
       if (!isOnline) {
         try {
+          console.log('🔄 Checando conectividade ativa...');
           const st = await ConnectivityService.checkConnectivity();
           isOnline = st.isConnected;
+          console.log('📡 isConnected (verificação):', isOnline);
         } catch (e) {
-          console.warn('Falha ao checar conectividade, assumindo offline:', e);
+          console.warn('⚠️ Falha ao checar conectividade, assumindo offline:', e);
           isOnline = false;
         }
       }
 
       if (isOnline) {
+        console.log('☁️ Online - usando autenticação Firebase');
         // Prefer remote auth when online
         if (isLogin) {
+          console.log('🔑 Tentando login remoto...');
           result = await FirebaseAuthService.loginUser(email, password);
         } else {
+          console.log('📝 Tentando registro remoto...');
           result = await FirebaseAuthService.registerUser(email, password, name);
         }
       } else {
+        console.log('💾 Offline - usando autenticação local');
         // Fallback local
         if (isLogin) {
+          console.log('🔑 Tentando login local...');
           result = await LocalAuthService.loginUser(email, password);
         } else {
+          console.log('📝 Tentando registro local...');
           result = await LocalAuthService.registerUser(email, password, name, 'admin');
         }
       }
 
+      console.log('📊 Resultado da autenticação:', result);
+
       if (result.success) {
+        console.log('✅ Autenticação bem-sucedida!');
         if (!isLogin) {
           // Alerta após criar cadastro com confirmação e atualização automática
+          console.log('🎉 Mostrando alert de conta criada');
           Alert.alert(
             'Conta Criada com Sucesso!', 
             'Sua conta foi criada com sucesso! A página será atualizada automaticamente.',
@@ -91,6 +118,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
               {
                 text: 'OK',
                 onPress: () => {
+                  console.log('👍 Usuário clicou OK no alert');
                   // Limpar formulário e voltar para tela de login
                   setEmail('');
                   setPassword('');
@@ -100,6 +128,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
                   // Atualizar a página automaticamente após um breve delay
                   setTimeout(() => {
                     if (typeof window !== 'undefined') {
+                      console.log('🔄 Recarregando página...');
                       window.location.reload();
                     }
                   }, 500);
@@ -109,13 +138,17 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
           );
         }
         // O AuthStateListener no App.tsx irá detectar o login automaticamente
+        console.log('👂 Aguardando AuthStateListener detectar mudança...');
       } else {
+        console.log('❌ Autenticação falhou:', result.error);
         Alert.alert('Erro', result.error);
       }
     } catch (error: any) {
+      console.error('💥 Erro inesperado na autenticação:', error);
       Alert.alert('Erro', 'Erro inesperado: ' + error.message);
     }
 
+    console.log('🔚 Finalizando handleEmailAuth');
     setLoading(false);
   };
 
@@ -185,14 +218,24 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
           {/* Toggle Login/Registro */}
           <View style={styles.authToggle}>
             <Pressable
-              style={[styles.toggleButton, isLogin && styles.toggleButtonActive]}
+              style={({ pressed }) => [
+                styles.toggleButton,
+                isLogin && styles.toggleButtonActive,
+                pressed && { opacity: 0.7 }
+              ]}
               onPress={() => setIsLogin(true)}
+              android_ripple={{ color: 'rgba(0, 122, 255, 0.2)' }}
             >
               <Text style={[styles.toggleText, isLogin && styles.toggleTextActive]}>Entrar</Text>
             </Pressable>
             <Pressable
-              style={[styles.toggleButton, !isLogin && styles.toggleButtonActive]}
+              style={({ pressed }) => [
+                styles.toggleButton,
+                !isLogin && styles.toggleButtonActive,
+                pressed && { opacity: 0.7 }
+              ]}
               onPress={() => setIsLogin(false)}
+              android_ripple={{ color: 'rgba(0, 122, 255, 0.2)' }}
             >
               <Text style={[styles.toggleText, !isLogin && styles.toggleTextActive]}>Registrar</Text>
             </Pressable>
@@ -236,18 +279,44 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
                 placeholder="Senha"
                 value={password}
                 onChangeText={setPassword}
-                secureTextEntry
+                secureTextEntry={!showPassword}
                 autoCapitalize="none"
                 autoCorrect={false}
               />
+              <Pressable
+                onPress={() => setShowPassword(!showPassword)}
+                style={({ pressed }) => [
+                  styles.passwordToggle,
+                  pressed && { opacity: 0.5 }
+                ]}
+                android_ripple={{ color: 'rgba(0, 0, 0, 0.1)', radius: 20, borderless: true }}
+              >
+                <Ionicons 
+                  name={showPassword ? "eye-off-outline" : "eye-outline"} 
+                  size={20} 
+                  color="#666" 
+                />
+              </Pressable>
             </View>
           </View>
 
           <View style={styles.buttonContainer}>
           <Pressable
-            style={[styles.button, styles.primaryButton, loading && styles.buttonDisabled]}
-            onPress={handleEmailAuth}
+            style={({ pressed }) => [
+              styles.button,
+              styles.primaryButton,
+              loading && styles.buttonDisabled,
+              pressed && !loading && styles.buttonPressed
+            ]}
+            onPress={() => {
+              console.log('🖱️ BOTÃO CLICADO - Entrar com Email');
+              console.log('⏳ Loading state:', loading);
+              console.log('📝 Email atual:', email);
+              console.log('🔒 Password atual (length):', password.length);
+              handleEmailAuth();
+            }}
             disabled={loading}
+            android_ripple={{ color: 'rgba(255, 255, 255, 0.3)' }}
           >
             {loading ? (
               <ActivityIndicator size="small" color="#fff" />
@@ -263,7 +332,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
 
           {isLogin && (
             <Pressable
-              style={styles.forgotPasswordButton}
+              style={({ pressed }) => [
+                styles.forgotPasswordButton,
+                pressed && { opacity: 0.6 }
+              ]}
               onPress={() => setResetModalVisible(true)}
             >
               <Text style={styles.forgotPasswordText}>Esqueci minha senha</Text>
@@ -315,19 +387,30 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
 
             <View style={styles.modalButtons}>
               <Pressable
-                style={[styles.modalButton, styles.cancelButton]}
+                style={({ pressed }) => [
+                  styles.modalButton,
+                  styles.cancelButton,
+                  pressed && !resetLoading && { opacity: 0.7 }
+                ]}
                 onPress={() => {
                   setResetModalVisible(false);
                   setResetEmail('');
                 }}
                 disabled={resetLoading}
+                android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
               >
                 <Text style={styles.cancelButtonText}>Cancelar</Text>
               </Pressable>
               <Pressable
-                style={[styles.modalButton, styles.sendButton, resetLoading && styles.buttonDisabled]}
+                style={({ pressed }) => [
+                  styles.modalButton,
+                  styles.sendButton,
+                  resetLoading && styles.buttonDisabled,
+                  pressed && !resetLoading && styles.buttonPressed
+                ]}
                 onPress={handlePasswordReset}
                 disabled={resetLoading}
+                android_ripple={{ color: 'rgba(255, 255, 255, 0.3)' }}
               >
                 {resetLoading ? (
                   <ActivityIndicator size="small" color="#fff" />
@@ -399,6 +482,10 @@ const styles = StyleSheet.create({
   },
   buttonIcon: {
     marginRight: 15,
+  },
+  buttonPressed: {
+    opacity: 0.7,
+    transform: [{ scale: 0.98 }],
   },
   buttonText: {
     fontSize: 16,
@@ -479,6 +566,10 @@ const styles = StyleSheet.create({
   },
   inputIcon: {
     marginRight: 10,
+  },
+  passwordToggle: {
+    padding: 5,
+    marginLeft: 5,
   },
   input: {
     flex: 1,

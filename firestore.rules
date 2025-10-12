@@ -43,6 +43,12 @@ service cloud.firestore {
       allow update, delete: if isAuthenticated() && userId == authId();
     }
 
+    // Collection Group Query para members
+    // Permite buscar membros em todas as famílias, mas apenas o próprio usuário
+    match /{path=**}/members/{memberId} {
+      allow read: if isAuthenticated() && resource.data.id == authId();
+    }
+
     // Families
     match /families/{familyId} {
       allow read: if isAuthenticated() && isMemberOf(familyId);
@@ -52,7 +58,11 @@ service cloud.firestore {
 
       match /members/{memberId} {
         allow read: if isAuthenticated() && (memberId == authId() || isMemberOf(familyId));
-        allow create: if isAuthenticated() && memberId == authId();
+        allow create: if isAuthenticated() && memberId == authId() && (
+          // Permitir que o admin da família se adicione como membro
+          get(/databases/$(database)/documents/families/$(familyId)).data.adminId == authId()
+          || isMemberOf(familyId)  // Ou membros existentes podem adicionar outros
+        );
         allow delete: if isAuthenticated() && (memberId == authId() || isFamilyAdmin(familyId));
       }
     }
@@ -64,17 +74,23 @@ service cloud.firestore {
         && (
           request.resource.data.familyId == null
           || isMemberOf(request.resource.data.familyId)
-        );
+        )
+        // Se a tarefa for privada, familyId DEVE ser null
+        && (request.resource.data.private != true || request.resource.data.familyId == null);
 
       allow get, list: if isAuthenticated() && (
+        // Tarefas privadas (familyId == null): apenas o criador pode ver
         (resource.data.familyId == null && resource.data.userId == authId())
-        || isMemberOf(resource.data.familyId)
+        // Tarefas da família (familyId != null): membros podem ver
+        || (resource.data.familyId != null && isMemberOf(resource.data.familyId))
       );
 
       allow update: if isAuthenticated() && (
         resource.data.userId == authId()
         || isFamilyAdmin(resource.data.familyId)
-      ) && validTaskPayload(request.resource.data);
+      ) && validTaskPayload(request.resource.data)
+      // Ao atualizar, se tornar privada deve ter familyId null
+      && (request.resource.data.private != true || request.resource.data.familyId == null);
 
       allow delete: if isAuthenticated() && (resource.data.userId == authId() || isFamilyAdmin(resource.data.familyId));
     }
@@ -100,9 +116,32 @@ service cloud.firestore {
           request.resource.data.familyId == null
           || isMemberOf(request.resource.data.familyId)
         );
+      allow list: if isAuthenticated() && (
+        (resource.data.familyId == null && resource.data.userId == authId())
+        || isMemberOf(resource.data.familyId)
+      );
       allow get: if isAuthenticated() && (
         (resource.data.familyId == null && resource.data.userId == authId())
         || isMemberOf(resource.data.familyId)
+      );
+    }
+
+    // Categories
+    match /categories/{categoryId} {
+      allow read: if isAuthenticated() && (
+        (resource.data.familyId == null && resource.data.createdBy == authId())
+        || isMemberOf(resource.data.familyId)
+      );
+      allow create: if isAuthenticated() && (
+        request.resource.data.createdBy == authId()
+        && (
+          request.resource.data.familyId == null
+          || isMemberOf(request.resource.data.familyId)
+        )
+      );
+      allow update, delete: if isAuthenticated() && (
+        resource.data.createdBy == authId()
+        || isFamilyAdmin(resource.data.familyId)
       );
     }
 

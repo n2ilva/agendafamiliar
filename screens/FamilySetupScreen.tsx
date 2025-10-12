@@ -186,8 +186,12 @@ export default function FamilySetupScreen({ onFamilySetup, userEmail, userName, 
 
       <View style={styles.optionsContainer}>
         <Pressable
-          style={styles.roleOption}
+          style={({ pressed }) => [
+            styles.roleOption,
+            pressed && { opacity: 0.7, transform: [{ scale: 0.98 }] }
+          ]}
           onPress={() => handleRoleSelection('admin')}
+          android_ripple={{ color: 'rgba(0, 122, 255, 0.1)' }}
         >
           <Ionicons name="person-circle" size={40} color="#007AFF" />
           <Text style={styles.roleTitle}>Administrador</Text>
@@ -197,8 +201,12 @@ export default function FamilySetupScreen({ onFamilySetup, userEmail, userName, 
         </Pressable>
 
         <Pressable
-          style={styles.roleOption}
+          style={({ pressed }) => [
+            styles.roleOption,
+            pressed && { opacity: 0.7, transform: [{ scale: 0.98 }] }
+          ]}
           onPress={() => handleRoleSelection('dependent')}
+          android_ripple={{ color: 'rgba(52, 199, 89, 0.1)' }}
         >
           <Ionicons name="person" size={40} color="#34C759" />
           <Text style={styles.roleTitle}>Dependente</Text>
@@ -313,7 +321,7 @@ export default function FamilySetupScreen({ onFamilySetup, userEmail, userName, 
           style={styles.input}
           placeholder="Código da família"
           value={familyCode}
-          onChangeText={setFamilyCode}
+          onChangeText={(text) => setFamilyCode(text.toUpperCase())}
           maxLength={20}
           autoCapitalize="characters"
         />
@@ -350,7 +358,7 @@ export default function FamilySetupScreen({ onFamilySetup, userEmail, userName, 
           style={styles.input}
           placeholder="Código da família"
           value={familyCode}
-          onChangeText={setFamilyCode}
+          onChangeText={(text) => setFamilyCode(text.toUpperCase())}
           maxLength={20}
           autoCapitalize="characters"
         />

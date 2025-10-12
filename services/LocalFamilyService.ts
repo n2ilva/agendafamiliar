@@ -1,197 +1,458 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Family, FamilyUser, Task } from '../types/FamilyTypes';
-
-const FAMILIES_KEY = 'familyApp_families';
-const TASKS_KEY = 'familyApp_tasks';
-const HISTORY_KEY = 'familyApp_history';
-const APPROVALS_KEY = 'familyApp_approvals';
+import { firebaseFirestore } from '../config/firebase';
+import { 
+  collection, 
+  collectionGroup,
+  doc, 
+  setDoc, 
+  getDoc, 
+  getDocs, 
+  query, 
+  where,
+  Timestamp,
+  updateDoc,
+  deleteDoc 
+} from 'firebase/firestore';
 
 class LocalFamilyService {
-  // Basic in-memory helpers
-  private async loadFamilies(): Promise<Record<string, Family>> {
-    const raw = await AsyncStorage.getItem(FAMILIES_KEY);
-    return raw ? JSON.parse(raw) : {};
+  // Helper para obter a instância do Firestore
+  private getFirestore() {
+    return firebaseFirestore();
   }
 
-  private async saveFamilies(families: Record<string, Family>) {
-    await AsyncStorage.setItem(FAMILIES_KEY, JSON.stringify(families));
-  }
-
-  private async loadTasks(): Promise<Record<string, Task>> {
-    const raw = await AsyncStorage.getItem(TASKS_KEY);
-    return raw ? JSON.parse(raw) : {};
-  }
-
-  private async saveTasks(tasks: Record<string, Task>) {
-    await AsyncStorage.setItem(TASKS_KEY, JSON.stringify(tasks));
+  private generateInviteCode(): string {
+    const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // evitar ambiguidade
+    let code = '';
+    for (let i = 0; i < 6; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return code;
   }
 
   async createFamily(name: string, adminUser: FamilyUser): Promise<Family> {
-    const families = await this.loadFamilies();
-    const id = `local_family_${Date.now()}`;
-    const family: Family = {
-      id,
-      name,
-      adminId: adminUser.id,
-      members: [{ ...adminUser, role: 'admin', familyId: id, joinedAt: new Date() }],
-      createdAt: new Date(),
-      // Gerar código de convite curto (6 caracteres alfanuméricos) e expiry de 24 horas
-      inviteCode: (() => {
-        const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // evitar ambiguidade
-        let code = '';
-        for (let i = 0; i < 6; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
-        return code;
-      })(),
-      inviteCodeExpiry: new Date(Date.now() + 24 * 60 * 60 * 1000)
-    } as any;
-    families[id] = family;
-    await this.saveFamilies(families);
-    return family;
+    console.log('🏠 [LocalFamilyService] Criando família no Firebase...');
+    
+    try {
+      const db = this.getFirestore();
+      
+      // Gerar ID único para a família
+      const familyRef = doc(collection(db, 'families'));
+      const familyId = familyRef.id;
+      
+      const inviteCode = this.generateInviteCode();
+      const now = new Date();
+      const expiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 horas
+      
+      const family: Family = {
+        id: familyId,
+        name: name.trim(),
+        adminId: adminUser.id,
+        members: [],
+        createdAt: now,
+        inviteCode: inviteCode,
+        inviteCodeExpiry: expiry
+      };
+
+      // Salvar família no Firestore
+      await setDoc(familyRef, {
+        name: family.name,
+        adminId: family.adminId,
+        createdAt: Timestamp.fromDate(now),
+        inviteCode: inviteCode,
+        inviteCodeExpiry: Timestamp.fromDate(expiry)
+      });
+
+      console.log('✅ Família criada no Firestore:', familyId);
+
+      // Adicionar admin como membro
+      const memberRef = doc(db, `families/${familyId}/members`, adminUser.id);
+      await setDoc(memberRef, {
+        id: adminUser.id,
+        email: adminUser.email,
+        name: adminUser.name,
+        role: 'admin',
+        familyId: familyId,
+        joinedAt: Timestamp.fromDate(now),
+        isGuest: false
+      });
+
+      console.log('✅ Admin adicionado como membro da família');
+
+      family.members = [{
+        ...adminUser,
+        role: 'admin',
+        familyId: familyId,
+        joinedAt: now
+      }];
+
+      return family;
+    } catch (error) {
+      console.error('❌ Erro ao criar família no Firebase:', error);
+      throw new Error('Não foi possível criar a família. Verifique sua conexão com a internet.');
+    }
   }
 
   async getFamilyById(familyId: string): Promise<Family | null> {
-    const families = await this.loadFamilies();
-    return families[familyId] || null;
+    try {
+      console.log('🔍 Buscando família no Firebase:', familyId);
+      const db = this.getFirestore();
+      const familyRef = doc(db, 'families', familyId);
+      const familySnap = await getDoc(familyRef);
+      
+      if (!familySnap.exists()) {
+        console.log('❌ Família não encontrada');
+        return null;
+      }
+
+      const familyData = familySnap.data();
+      
+      // Buscar membros da subcoleção
+      const membersRef = collection(db, 'families', familyId, 'members');
+      const membersSnap = await getDocs(membersRef);
+      const members = membersSnap.docs.map(doc => ({
+        ...doc.data(),
+        joinedAt: doc.data().joinedAt?.toDate?.() || new Date(doc.data().joinedAt)
+      }));
+
+      const family: Family = {
+        id: familySnap.id,
+        name: familyData.name,
+        adminId: familyData.adminId,
+        inviteCode: familyData.inviteCode,
+        inviteCodeExpiry: familyData.inviteCodeExpiry?.toDate?.() || new Date(familyData.inviteCodeExpiry),
+        createdAt: familyData.createdAt?.toDate?.() || new Date(familyData.createdAt),
+        members: members as FamilyUser[]
+      };
+
+      console.log('✅ Família encontrada:', family.name);
+      return family;
+    } catch (error) {
+      console.error('❌ Erro ao buscar família:', error);
+      throw new Error('Não foi possível buscar a família. Verifique sua conexão.');
+    }
   }
 
   async getUserFamily(userId: string): Promise<Family | null> {
-    const families = await this.loadFamilies();
-    for (const f of Object.values(families)) {
-      if (f.members.some(m => m.id === userId)) return f;
+    try {
+      console.log('🔍 Buscando família do usuário:', userId);
+      const db = this.getFirestore();
+      
+      // Usar collectionGroup para buscar em todas as subcoleções "members"
+      console.log('📊 Executando Collection Group Query...');
+      const membersQuery = query(
+        collectionGroup(db, 'members'),
+        where('id', '==', userId)
+      );
+      
+      const memberSnap = await getDocs(membersQuery);
+      console.log(`📋 Documentos encontrados: ${memberSnap.size}`);
+      
+      if (memberSnap.empty) {
+        console.log('❌ Usuário não pertence a nenhuma família');
+        return null;
+      }
+      
+      // Pegar o ID da família do primeiro resultado
+      const memberDoc = memberSnap.docs[0];
+      const memberData = memberDoc.data() as { familyId: string };
+      console.log('👤 Dados do membro:', memberData);
+      const familyId = memberData.familyId;
+      
+      console.log('✅ Família do usuário encontrada:', familyId);
+      return this.getFamilyById(familyId);
+    } catch (error) {
+      console.error('❌ Erro ao buscar família do usuário:', error);
+      throw new Error('Não foi possível buscar a família do usuário.');
     }
-    return null;
   }
 
   async joinFamily(inviteCode: string, user: FamilyUser): Promise<Family> {
-    const families = await this.loadFamilies();
-    // Procurar família pelo código de convite (ignorar case)
-    const found = Object.values(families).find(f => {
-      if (!f.inviteCode) return false;
-      if ((f.inviteCode || '').toLowerCase() !== (inviteCode || '').toLowerCase()) return false;
-      // verificar expiry
-      if (f.inviteCodeExpiry) {
-        const exp = new Date(f.inviteCodeExpiry as any).getTime();
-        if (Date.now() > exp) return false;
-      }
-      return true;
-    });
+    try {
+      console.log('🔍 Buscando família com código:', inviteCode);
+      const db = this.getFirestore();
+      const familiesRef = collection(db, 'families');
+      const q = query(familiesRef, where('inviteCode', '==', inviteCode.toUpperCase()));
+      const querySnap = await getDocs(q);
 
-    if (!found) throw new Error('Código de convite inválido ou expirado');
-    found.members.push({ ...user, role: 'dependente', familyId: found.id, joinedAt: new Date() } as any);
-    families[found.id] = found;
-    await this.saveFamilies(families);
-    return found;
+      if (querySnap.empty) {
+        throw new Error('Código de convite inválido');
+      }
+
+      const familyDoc = querySnap.docs[0];
+      const familyData = familyDoc.data();
+
+      // Verificar expiração
+      if (familyData.inviteCodeExpiry) {
+        const expiry = familyData.inviteCodeExpiry.toDate?.() || new Date(familyData.inviteCodeExpiry);
+        if (Date.now() > expiry.getTime()) {
+          throw new Error('Código de convite expirado');
+        }
+      }
+
+      // Adicionar membro na subcoleção
+      const memberRef = doc(db, 'families', familyDoc.id, 'members', user.id);
+      await setDoc(memberRef, {
+        ...user,
+        role: 'dependente',
+        familyId: familyDoc.id,
+        joinedAt: Timestamp.now()
+      });
+
+      console.log('✅ Usuário adicionado à família:', familyDoc.id);
+      return this.getFamilyById(familyDoc.id) as Promise<Family>;
+    } catch (error) {
+      console.error('❌ Erro ao entrar na família:', error);
+      throw error;
+    }
   }
 
   async saveFamilyTask(task: Task, familyId: string): Promise<Task> {
-    const tasks = await this.loadTasks();
-    if (!task.id || task.id.startsWith('temp')) task.id = `local_task_${Date.now()}`;
-    tasks[task.id] = { ...task, familyId, createdAt: task.createdAt || new Date(), updatedAt: new Date() } as any;
-    await this.saveTasks(tasks);
-    return tasks[task.id];
+    try {
+      console.log('💾 Salvando tarefa no Firebase:', task.title);
+      const db = this.getFirestore();
+      const tasksRef = collection(db, 'tasks');
+      
+      let taskId = task.id;
+      if (!taskId || taskId.startsWith('temp')) {
+        taskId = doc(tasksRef).id;
+      }
+
+      const taskRef = doc(db, 'tasks', taskId);
+      const taskData = {
+        ...task,
+        id: taskId,
+        familyId,
+        createdAt: task.createdAt ? Timestamp.fromDate(new Date(task.createdAt)) : Timestamp.now(),
+        updatedAt: Timestamp.now(),
+        editedAt: task.editedAt ? Timestamp.fromDate(new Date(task.editedAt)) : null,
+        completedAt: task.completedAt ? Timestamp.fromDate(new Date(task.completedAt)) : null
+      };
+
+      await setDoc(taskRef, taskData);
+      console.log('✅ Tarefa salva com sucesso:', taskId);
+
+      return {
+        ...taskData,
+        createdAt: taskData.createdAt.toDate(),
+        updatedAt: taskData.updatedAt.toDate(),
+        editedAt: taskData.editedAt?.toDate?.() || null,
+        completedAt: taskData.completedAt?.toDate?.() || null
+      } as Task;
+    } catch (error) {
+      console.error('❌ Erro ao salvar tarefa:', error);
+      throw new Error('Não foi possível salvar a tarefa.');
+    }
   }
 
   async getFamilyTasks(familyId: string, userId?: string): Promise<Task[]> {
-    const tasks = await this.loadTasks();
-    const list = Object.values(tasks).filter(t => (t as any).familyId === familyId && ( !(t as any).private || (userId && (t as any).createdBy === userId)));
-    list.sort((a:any,b:any)=> ( (b.editedAt || b.createdAt) ? new Date(b.editedAt || b.createdAt).getTime() : 0) - ( (a.editedAt || a.createdAt) ? new Date(a.editedAt || a.createdAt).getTime() : 0));
-    return list as Task[];
+    try {
+      console.log('🔍 Buscando tarefas da família:', familyId);
+      const db = this.getFirestore();
+      const tasksRef = collection(db, 'tasks');
+      const q = query(tasksRef, where('familyId', '==', familyId));
+      const querySnap = await getDocs(q);
+
+      let tasks = querySnap.docs.map(doc => {
+        const data = doc.data();
+        return {
+          ...data,
+          id: doc.id,
+          createdAt: data.createdAt?.toDate?.() || new Date(data.createdAt),
+          updatedAt: data.updatedAt?.toDate?.() || new Date(data.updatedAt),
+          editedAt: data.editedAt?.toDate?.() || null,
+          completedAt: data.completedAt?.toDate?.() || null
+        } as Task;
+      });
+
+      // Filtrar tarefas privadas
+      if (userId) {
+        tasks = tasks.filter(t => !t.private || t.createdBy === userId);
+      } else {
+        tasks = tasks.filter(t => !t.private);
+      }
+
+      // Ordenar por data de edição/criação
+      tasks.sort((a, b) => {
+        const getTime = (date: Date | string | null | undefined) => {
+          if (!date) return 0;
+          return date instanceof Date ? date.getTime() : new Date(date).getTime();
+        };
+        const dateA = getTime(a.editedAt || a.createdAt);
+        const dateB = getTime(b.editedAt || b.createdAt);
+        return dateB - dateA;
+      });
+
+      console.log('✅ Tarefas encontradas:', tasks.length);
+      return tasks;
+    } catch (error) {
+      console.error('❌ Erro ao buscar tarefas:', error);
+      return [];
+    }
   }
 
   subscribeToFamilyTasks(familyId: string, callback: (tasks: Task[]) => void, userId?: string) {
-    // No realtime in local mode; immediately call callback and return noop
+    // Simular realtime fazendo uma busca imediata
     (async () => {
-      const t = await this.getFamilyTasks(familyId, userId);
-      callback(t);
+      const tasks = await this.getFamilyTasks(familyId, userId);
+      callback(tasks);
     })();
     return () => {};
   }
 
-  // History & approvals helpers
-  private async loadHistory(): Promise<Record<string, any>> {
-    const raw = await AsyncStorage.getItem(HISTORY_KEY);
-    return raw ? JSON.parse(raw) : {};
-  }
-
-  private async saveHistory(h: Record<string, any>) {
-    await AsyncStorage.setItem(HISTORY_KEY, JSON.stringify(h));
-  }
-
-  private async loadApprovals(): Promise<Record<string, any>> {
-    const raw = await AsyncStorage.getItem(APPROVALS_KEY);
-    return raw ? JSON.parse(raw) : {};
-  }
-
-  private async saveApprovals(a: Record<string, any>) {
-    await AsyncStorage.setItem(APPROVALS_KEY, JSON.stringify(a));
-  }
-
   async getFamilyHistory(familyId: string, limit?: number): Promise<any[]> {
-    const hist = await this.loadHistory();
-    const items = Object.values(hist).filter((h:any)=> h.familyId === familyId);
-    // ordenar por createdAt desc
-    items.sort((a:any,b:any)=> {
-      const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-      const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-      return tb - ta;
-    });
-    if (typeof limit === 'number') return items.slice(0, limit);
-    return items;
+    try {
+      console.log('🔍 Buscando histórico da família:', familyId);
+      const db = this.getFirestore();
+      const historyRef = collection(db, 'history');
+      const q = query(historyRef, where('familyId', '==', familyId));
+      const querySnap = await getDocs(q);
+
+      let items = querySnap.docs.map(doc => ({
+        ...doc.data(),
+        id: doc.id,
+        createdAt: doc.data().createdAt?.toDate?.() || new Date(doc.data().createdAt)
+      }));
+
+      // Ordenar por createdAt desc
+      items.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
+      if (typeof limit === 'number') {
+        items = items.slice(0, limit);
+      }
+
+      console.log('✅ Itens de histórico encontrados:', items.length);
+      return items;
+    } catch (error) {
+      console.error('❌ Erro ao buscar histórico:', error);
+      return [];
+    }
   }
 
   subscribeToFamilyHistory(familyId: string, callback: (history: any[]) => void, limit?: number) {
-    (async ()=>{
-      const h = await this.getFamilyHistory(familyId, limit);
-      callback(h);
+    (async () => {
+      const history = await this.getFamilyHistory(familyId, limit);
+      callback(history);
     })();
     return () => {};
   }
 
   async addFamilyHistoryItem(familyId: string, item: any): Promise<any> {
-    const hist = await this.loadHistory();
-    const id = `history_${Date.now()}`;
-    const normalized = { id, familyId, ...item, createdAt: item.createdAt ? new Date(item.createdAt) : new Date() };
-    hist[id] = normalized;
-    await this.saveHistory(hist);
-    return normalized;
+    try {
+      console.log('💾 Adicionando item ao histórico:', item.type);
+      const db = this.getFirestore();
+      const historyRef = collection(db, 'history');
+      const docRef = doc(historyRef);
+      
+      const historyItem = {
+        id: docRef.id,
+        familyId,
+        ...item,
+        createdAt: item.createdAt ? Timestamp.fromDate(new Date(item.createdAt)) : Timestamp.now()
+      };
+
+      await setDoc(docRef, historyItem);
+      console.log('✅ Item adicionado ao histórico');
+
+      return {
+        ...historyItem,
+        createdAt: historyItem.createdAt.toDate()
+      };
+    } catch (error) {
+      console.error('❌ Erro ao adicionar item ao histórico:', error);
+      throw new Error('Não foi possível adicionar item ao histórico.');
+    }
   }
 
   async updateMemberRole(familyId: string, memberId: string, newRole: string): Promise<void> {
-    const families = await this.loadFamilies();
-    const family = families[familyId];
-    if (!family) throw new Error('Family not found');
-    family.members = family.members.map((m:any) => m.id === memberId ? { ...m, role: newRole } : m);
-    families[familyId] = family;
-    await this.saveFamilies(families);
+    try {
+      console.log('🔄 Atualizando role do membro:', memberId);
+      const db = this.getFirestore();
+      const memberRef = doc(db, 'families', familyId, 'members', memberId);
+      await updateDoc(memberRef, { role: newRole });
+      console.log('✅ Role atualizada com sucesso');
+    } catch (error) {
+      console.error('❌ Erro ao atualizar role:', error);
+      throw new Error('Não foi possível atualizar o papel do membro.');
+    }
   }
 
   async updateFamilyName(familyId: string, newName: string): Promise<void> {
-    const families = await this.loadFamilies();
-    const family = families[familyId];
-    if (!family) throw new Error('Family not found');
-    family.name = newName;
-    families[familyId] = family;
-    await this.saveFamilies(families);
+    try {
+      console.log('🔄 Atualizando nome da família:', newName);
+      const db = this.getFirestore();
+      const familyRef = doc(db, 'families', familyId);
+      await updateDoc(familyRef, { name: newName });
+      console.log('✅ Nome da família atualizado');
+    } catch (error) {
+      console.error('❌ Erro ao atualizar nome da família:', error);
+      throw new Error('Não foi possível atualizar o nome da família.');
+    }
   }
 
   async deleteFamilyTask(taskId: string): Promise<void> {
-    const tasks = await this.loadTasks();
-    delete tasks[taskId];
-    await this.saveTasks(tasks);
+    try {
+      console.log('🗑️ Deletando tarefa:', taskId);
+      const db = this.getFirestore();
+      const taskRef = doc(db, 'tasks', taskId);
+      await deleteDoc(taskRef);
+      console.log('✅ Tarefa deletada com sucesso');
+    } catch (error) {
+      console.error('❌ Erro ao deletar tarefa:', error);
+      throw new Error('Não foi possível deletar a tarefa.');
+    }
   }
 
-  // Approvals
   async saveApproval(approval: any): Promise<any> {
-    const approvals = await this.loadApprovals();
-    if (!approval.id) approval.id = `approval_${Date.now()}`;
-    approvals[approval.id] = approval;
-    await this.saveApprovals(approvals);
-    return approvals[approval.id];
+    try {
+      console.log('💾 Salvando aprovação no Firebase');
+      const db = this.getFirestore();
+      const approvalsRef = collection(db, 'approvals');
+      
+      let approvalId = approval.id;
+      if (!approvalId) {
+        approvalId = doc(approvalsRef).id;
+      }
+
+      const approvalRef = doc(db, 'approvals', approvalId);
+      const approvalData = {
+        ...approval,
+        id: approvalId,
+        createdAt: approval.createdAt ? Timestamp.fromDate(new Date(approval.createdAt)) : Timestamp.now()
+      };
+
+      await setDoc(approvalRef, approvalData);
+      console.log('✅ Aprovação salva com sucesso');
+
+      return {
+        ...approvalData,
+        createdAt: approvalData.createdAt.toDate()
+      };
+    } catch (error) {
+      console.error('❌ Erro ao salvar aprovação:', error);
+      throw new Error('Não foi possível salvar a aprovação.');
+    }
   }
 
   async getApprovalsForFamily(familyId: string): Promise<any[]> {
-    const approvals = await this.loadApprovals();
-    return Object.values(approvals).filter((a:any)=> a.familyId === familyId);
+    try {
+      console.log('🔍 Buscando aprovações da família:', familyId);
+      const db = this.getFirestore();
+      const approvalsRef = collection(db, 'approvals');
+      const q = query(approvalsRef, where('familyId', '==', familyId));
+      const querySnap = await getDocs(q);
+
+      const approvals = querySnap.docs.map(doc => ({
+        ...doc.data(),
+        id: doc.id,
+        createdAt: doc.data().createdAt?.toDate?.() || new Date(doc.data().createdAt)
+      }));
+
+      console.log('✅ Aprovações encontradas:', approvals.length);
+      return approvals;
+    } catch (error) {
+      console.error('❌ Erro ao buscar aprovações:', error);
+      return [];
+    }
   }
 }
 

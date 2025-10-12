@@ -231,8 +231,16 @@ class SyncService {
       } else if (collectionName === 'tasks') {
         // Normalize familyId explicitly
         const normalizedFamilyId = data.familyId === undefined ? null : data.familyId;
+        const isLocalFamily = normalizedFamilyId && typeof normalizedFamilyId === 'string' && normalizedFamilyId.startsWith('local_');
 
         if (type === 'delete') {
+          // Se for família local, não tenta deletar no Firestore
+          if (isLocalFamily) {
+            console.log('ℹ️ Task de família local - deletando apenas do cache');
+            await LocalStorageService.removeFromCache('tasks', data.id);
+            return; // Operação concluída
+          }
+          
           // If online, try delete remote first
           if (ConnectivityService.isConnected()) {
             try {
@@ -246,6 +254,14 @@ class SyncService {
           // Remove local cache
           await LocalStorageService.removeFromCache('tasks', data.id);
         } else {
+          // Se for família local, salva apenas no cache
+          if (isLocalFamily) {
+            console.log('ℹ️ Task de família local - salvando apenas no cache');
+            const savedLocal = { ...data, familyId: normalizedFamilyId } as any;
+            await LocalStorageService.saveTask(savedLocal as Task);
+            return; // Operação concluída
+          }
+          
           // When online, prefer writing remote first so Firestore is source-of-truth
           if (ConnectivityService.isConnected()) {
             try {
