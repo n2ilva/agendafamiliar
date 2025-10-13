@@ -491,12 +491,12 @@ class SyncService {
           familiesMap[familyData.id] = familyData;
         }
 
-        // Remover tarefas locais pertencentes aos usuários antigos da família
+        // Remover apenas tarefas públicas da família atual (preservar privadas do usuário com familyId === null)
         for (const [tid, t] of Object.entries(tasksMap)) {
           const task: any = t as any;
           if (!task) continue;
-          // Se a tarefa pertence a um usuário que era da família, removemos; também suportar campo familyId se existir
-          if ((task.userId && localFamilyUserIds.includes(task.userId)) || (task.familyId && task.familyId === familyId)) {
+          const isFamilyTask = task.familyId && task.familyId === familyId;
+          if (isFamilyTask) {
             delete tasksMap[tid];
           }
         }

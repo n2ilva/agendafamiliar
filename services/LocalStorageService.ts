@@ -194,7 +194,7 @@ class LocalStorageService {
     return limit ? historyItems.slice(0, limit) : historyItems;
   }
 
-  static async clearOldHistory(daysToKeep: number = 15): Promise<void> {
+  static async clearOldHistory(daysToKeep: number = 7): Promise<void> {
     const data = await this.getOfflineData();
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - daysToKeep);

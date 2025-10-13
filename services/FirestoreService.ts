@@ -14,14 +14,13 @@ import {
   orderBy
 } from 'firebase/firestore';
 
-// Tipos simples para tasks/history — adapte conforme o modelo do app
 export type RemoteTask = {
   id?: string;
   title: string;
   description?: string;
   completed?: boolean;
   userId: string;
-  familyId: string | null; // explicitamente null para privado
+  familyId: string | null;
   createdAt?: any;
   updatedAt?: any;
 };
@@ -42,174 +41,281 @@ function ensureFamilyId(val: string | null | undefined) {
   return val === undefined ? null : val;
 }
 
+function mapSnapshot(snap: any) {
+  return snap.docs.map((docSnap: any) => ({ id: docSnap.id, ...(docSnap.data() as any) }));
+}
+
+function timestampToMillis(value: any): number {
+  if (!value) {
+    return 0;
+  }
+  if (typeof value.toDate === 'function') {
+    return value.toDate().getTime();
+  }
+  if (value instanceof Date) {
+    return value.getTime();
+  }
+  return new Date(value).getTime();
+}
+
+function sortTasksByUpdatedAt(tasks: any[]): any[] {
+  return tasks.sort((a, b) => {
+    const aTime = timestampToMillis(a.updatedAt || a.editedAt || a.createdAt);
+    const bTime = timestampToMillis(b.updatedAt || b.editedAt || b.createdAt);
+    return bTime - aTime;
+  });
+}
+
 export const FirestoreService = {
-  // Verifica se um usuário é admin de uma família
   async checkIsFamilyAdmin(familyId: string | null | undefined, userId?: string): Promise<boolean> {
+    if (!userId || !familyId) {
+      return false;
+    }
+
     try {
-      if (!familyId || !userId) return false;
-      const db = firebaseFirestore() as any;
-      const famRef = doc(db, 'families', familyId);
-      const famSnap = await getDoc(famRef);
-      if (!famSnap.exists()) return false;
-      const data: any = famSnap.data();
-      return data && data.adminId === userId;
-    } catch {
+      const familyRef = doc(firebaseFirestore() as any, 'families', familyId);
+      const familySnap = await getDoc(familyRef);
+      if (!familySnap.exists()) {
+        return false;
+      }
+
+      const familyData = familySnap.data() as any;
+      return familyData.adminId === userId;
+    } catch (error) {
+      console.warn('[FirestoreService] checkIsFamilyAdmin falhou:', error);
       return false;
     }
   },
-  // Save or update a task. If task.id is provided, write to that doc, otherwise add a new doc.
-  async saveTask(task: RemoteTask) {
-    const taskToSave = {
-      ...task,
-      familyId: ensureFamilyId(task.familyId),
-      updatedAt: serverTimestamp(),
-      createdAt: task.createdAt || serverTimestamp()
-    } as any;
 
-    // Log de debug para tarefas privadas
-    if ((task as any).private === true) {
-      console.log('🔒 [FirestoreService] Salvando tarefa PRIVADA:', {
-        id: task.id,
-        title: task.title,
-        private: (task as any).private,
-        familyId: taskToSave.familyId,
-        userId: task.userId
-      });
-      
-      // Validação crítica: tarefas privadas DEVEM ter familyId = null
-      if (taskToSave.familyId !== null) {
-        console.error('❌ ERRO CRÍTICO: Tarefa privada com familyId não-null!', taskToSave);
-        throw new Error('Tarefas privadas devem ter familyId = null');
-      }
+  async saveTask(task: RemoteTask & Record<string, any>) {
+    const db = firebaseFirestore() as any;
+
+    const taskToSave: any = {
+      ...task,
+      familyId: ensureFamilyId(task.familyId ?? null),
+      updatedAt: serverTimestamp()
+    };
+
+    if (!task.id) {
+      taskToSave.createdAt = task.createdAt || serverTimestamp();
+    } else if (!taskToSave.createdAt) {
+      taskToSave.createdAt = task.createdAt || serverTimestamp();
+    }
+
+    if (taskToSave.private === true && taskToSave.familyId !== null) {
+      console.error('❌ Tarefa privada com familyId não nulo detectada:', taskToSave);
+      throw new Error('Tarefas privadas devem ter familyId = null');
     }
 
     try {
       if (task.id) {
-        const ref = doc(firebaseFirestore() as any, 'tasks', task.id);
-        await setDoc(ref, taskToSave, { merge: true });
-        console.log('[FirestoreService] saveTask: updated task id=', task.id);
+        await setDoc(doc(db, 'tasks', task.id), taskToSave, { merge: true });
         return { id: task.id };
-      } else {
-        const ref = await addDoc(tasksCol() as any, taskToSave);
-        console.log('[FirestoreService] saveTask: created task id=', ref.id);
-        return { id: ref.id };
       }
-    } catch (err) {
-      console.error('[FirestoreService] saveTask ERROR:', err, 'payload=', taskToSave);
-      throw err;
+
+      const ref = await addDoc(tasksCol() as any, taskToSave);
+      return { id: ref.id };
+    } catch (error) {
+      console.error('[FirestoreService] saveTask erro:', error, taskToSave);
+      throw error;
     }
   },
 
   async deleteTask(taskId: string) {
     const auth = firebaseAuth() as any;
     const currentUserId = auth.currentUser?.uid || auth.currentUser?.id;
-    const db = firebaseFirestore() as any;
-    const ref = doc(db, 'tasks', taskId);
+
+    if (!currentUserId) {
+      throw new Error('permission-denied');
+    }
+
+    const ref = doc(firebaseFirestore() as any, 'tasks', taskId);
     const snap = await getDoc(ref);
-    if (!snap.exists()) return;
-    const data: any = snap.data();
+    if (!snap.exists()) {
+      return;
+    }
+
+    const data = snap.data() as any;
     const isPrivate = data.familyId == null || data.private === true;
 
     if (!isPrivate) {
-      // Tarefa da família: apenas admin pode excluir
       const canAdmin = await this.checkIsFamilyAdmin(data.familyId, currentUserId);
-      if (!canAdmin) throw new Error('permission-denied');
-    } else if (data.userId !== currentUserId) {
-      // Tarefa privada: apenas o autor pode excluir
+      if (!canAdmin) {
+        throw new Error('permission-denied');
+      }
+    } else if (data.userId !== currentUserId && data.createdBy !== currentUserId) {
       throw new Error('permission-denied');
     }
 
     await deleteDoc(ref);
   },
 
-  // Query tasks created by a user
   async getTasksByUser(userId: string) {
     try {
-      // Verificar se o usuário está autenticado
       const auth = firebaseAuth() as any;
-      const currentUser = auth.currentUser;
-      
-      if (!currentUser) {
+      if (!auth.currentUser) {
         console.warn('⚠️ FirestoreService.getTasksByUser: Usuário não autenticado, retornando array vazio');
         return [];
       }
-      
-      console.log('🔍 FirestoreService.getTasksByUser: Buscando tarefas para userId:', userId);
-      const q = query(tasksCol() as any, where('userId', '==', userId), orderBy('createdAt', 'desc'));
-      const snap = await getDocs(q);
-      const tasks = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+
+      // Duas consultas separadas para respeitar privacidade:
+      // 1) Tarefas criadas pelo usuário (inclui privadas)
+      const createdByQuery = query(tasksCol() as any, where('createdBy', '==', userId));
+      // 2) Tarefas atribuídas ao usuário, mas APENAS públicas (private == false)
+      const assignedPublicQuery = query(
+        tasksCol() as any,
+        where('userId', '==', userId),
+        where('private', '==', false)
+      );
+
+      const queries = [createdByQuery, assignedPublicQuery];
+
+      const snapshots = await Promise.all(queries.map(q => getDocs(q)));
+      const dedupMap = new Map<string, any>();
+      snapshots.forEach(snap => {
+        snap.forEach(docSnap => {
+          dedupMap.set(docSnap.id, { id: docSnap.id, ...(docSnap.data() as any) });
+        });
+      });
+
+      const tasks = sortTasksByUpdatedAt(Array.from(dedupMap.values()));
       console.log(`✅ FirestoreService.getTasksByUser: ${tasks.length} tarefas encontradas`);
       return tasks;
     } catch (error: any) {
       console.error('❌ FirestoreService.getTasksByUser: Erro ao buscar tarefas:', error);
-      if (error.code === 'permission-denied') {
-        console.warn('⚠️ Permissão negada - usuário pode não estar autenticado ou não ter acesso aos dados');
-      }
       return [];
     }
   },
 
-  // Query tasks for a family (familyId can be null — Firestore stores null as a value)
   async getTasksByFamily(familyId: string | null) {
     try {
-      // Verificar se o usuário está autenticado
       const auth = firebaseAuth() as any;
       const currentUser = auth.currentUser;
-      
+
       if (!currentUser) {
         console.warn('⚠️ FirestoreService.getTasksByFamily: Usuário não autenticado, retornando array vazio');
         return [];
       }
-      
-      if (!familyId) {
-        console.log('ℹ️ FirestoreService.getTasksByFamily: familyId é null/vazio, retornando array vazio');
+
+      if (!familyId || familyId.startsWith('local_')) {
         return [];
       }
-      
-      // Se for uma família local, não tenta buscar no Firestore
-      if (familyId.startsWith('local_')) {
-        console.log('ℹ️ FirestoreService.getTasksByFamily: familyId é local, retornando array vazio (dados apenas no cache)');
-        return [];
+
+      const publicQuery = query(
+        tasksCol() as any,
+        where('familyId', '==', ensureFamilyId(familyId)),
+        where('private', '==', false)
+      );
+
+  const snapshots = [await getDocs(publicQuery)];
+
+      const userId = currentUser.uid || currentUser.id;
+      if (userId) {
+        // Incluir tarefas privadas do criador com familyId null para aparecerem na visão da família
+        const privateQuery = query(
+          tasksCol() as any,
+          where('familyId', '==', null),
+          where('private', '==', true),
+          where('createdBy', '==', userId)
+        );
+        snapshots.push(await getDocs(privateQuery));
       }
-      
-      console.log('🔍 FirestoreService.getTasksByFamily: Buscando tarefas para familyId:', familyId);
-      const q = query(tasksCol() as any, where('familyId', '==', ensureFamilyId(familyId)), orderBy('createdAt', 'desc'));
-      const snap = await getDocs(q);
-      const tasks = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+
+      const dedupMap = new Map<string, any>();
+      snapshots.forEach(snap => {
+        snap.forEach(docSnap => {
+          dedupMap.set(docSnap.id, { id: docSnap.id, ...(docSnap.data() as any) });
+        });
+      });
+
+      const tasks = sortTasksByUpdatedAt(Array.from(dedupMap.values()));
       console.log(`✅ FirestoreService.getTasksByFamily: ${tasks.length} tarefas encontradas`);
       return tasks;
     } catch (error: any) {
       console.error('❌ FirestoreService.getTasksByFamily: Erro ao buscar tarefas:', error);
       if (error.code === 'permission-denied') {
-        console.warn('⚠️ Permissão negada - usuário pode não ter acesso à família ou não estar autenticado');
+        console.warn('⚠️ Permissão negada - verifique as regras de segurança do Firestore para consultas de tarefas');
       }
       return [];
     }
   },
 
-  // Subscribe to tasks by userId AND familyId combination. Callback receives array of docs.
   subscribeToUserAndFamilyTasks(userId: string, familyId: string | null, callback: (items: any[]) => void) {
-    // We'll run two queries and merge results: by userId and by familyId (if familyId != null)
-  const userQ = query(tasksCol() as any, where('userId', '==', userId), orderBy('createdAt', 'desc'));
-    const unsubUser = onSnapshot(userQ, snap => {
-  const docs = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
-      callback(docs);
-    });
+    const segments = {
+      createdBy: new Map<string, any>(),
+      user: new Map<string, any>(),
+      family: new Map<string, any>()
+    };
 
-    if (familyId !== null) {
-  const familyQ = query(tasksCol() as any, where('familyId', '==', familyId), orderBy('createdAt', 'desc'));
-      const unsubFamily = onSnapshot(familyQ, snap => {
-  const docs = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
-        callback(docs);
-      });
+    const emit = () => {
+      const merged = new Map<string, any>();
+      segments.family.forEach((value, key) => merged.set(key, value));
+      segments.createdBy.forEach((value, key) => merged.set(key, value));
+      segments.user.forEach((value, key) => merged.set(key, value));
+      const all = Array.from(merged.values());
+      // Filtro defensivo: nunca emitir tarefas privadas de outros usuários
+      const filtered = all.filter(t => !(t?.private === true && t?.createdBy !== userId));
+      callback(sortTasksByUpdatedAt(filtered));
+    };
 
-      return () => { unsubUser(); unsubFamily(); };
+    const unsubscribers: Array<() => void> = [];
+
+    const createdByQuery = query(tasksCol() as any, where('createdBy', '==', userId));
+    unsubscribers.push(
+      onSnapshot(createdByQuery, snap => {
+        segments.createdBy.clear();
+        snap.forEach(docSnap => {
+          segments.createdBy.set(docSnap.id, { id: docSnap.id, ...(docSnap.data() as any) });
+        });
+        emit();
+      })
+    );
+
+    // Assinatura de tarefas atribuídas ao usuário: somente públicas
+    const userQuery = query(
+      tasksCol() as any,
+      where('userId', '==', userId),
+      where('private', '==', false)
+    );
+    unsubscribers.push(
+      onSnapshot(userQuery, snap => {
+        segments.user.clear();
+        snap.forEach(docSnap => {
+          segments.user.set(docSnap.id, { id: docSnap.id, ...(docSnap.data() as any) });
+        });
+        emit();
+      })
+    );
+
+    if (familyId) {
+      const familyQuery = query(
+        tasksCol() as any,
+        where('familyId', '==', ensureFamilyId(familyId)),
+        where('private', '==', false)
+      );
+
+      unsubscribers.push(
+        onSnapshot(familyQuery, snap => {
+          segments.family.clear();
+          snap.forEach(docSnap => {
+            segments.family.set(docSnap.id, { id: docSnap.id, ...(docSnap.data() as any) });
+          });
+          emit();
+        })
+      );
     }
 
-    return () => { unsubUser(); };
+    return () => {
+      unsubscribers.forEach(unsub => {
+        try {
+          unsub();
+        } catch (error) {
+          console.warn('[FirestoreService] Erro ao cancelar inscrição de listener:', error);
+        }
+      });
+    };
   },
 
-  // History methods
   async addHistoryItem(item: RemoteHistoryItem) {
     const toSave = {
       ...item,
@@ -221,15 +327,15 @@ export const FirestoreService = {
   },
 
   async getHistoryByUser(userId: string) {
-  const q = query(historyCol() as any, where('userId', '==', userId), orderBy('createdAt', 'desc'));
+    const q = query(historyCol() as any, where('userId', '==', userId), orderBy('createdAt', 'desc'));
     const snap = await getDocs(q);
-  return snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+    return mapSnapshot(snap);
   },
 
   async getHistoryByFamily(familyId: string | null) {
-  const q = query(historyCol() as any, where('familyId', '==', ensureFamilyId(familyId)), orderBy('createdAt', 'desc'));
+    const q = query(historyCol() as any, where('familyId', '==', ensureFamilyId(familyId)), orderBy('createdAt', 'desc'));
     const snap = await getDocs(q);
-  return snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+    return mapSnapshot(snap);
   }
 };
 

@@ -94,7 +94,9 @@ class LocalFamilyService {
         joinedAt: now
       }];
 
-      return family;
+  // Garantir publicação do código no índice público
+  try { await this.ensureInviteCodeMapping(familyId); } catch { /* noop */ }
+  return family;
     } catch (error) {
       console.error('❌ Erro ao criar família no Firebase:', error);
       throw new Error('Não foi possível criar a família. Verifique sua conexão com a internet.');
@@ -133,7 +135,9 @@ class LocalFamilyService {
         members: members as FamilyUser[]
       };
 
-      console.log('✅ Família encontrada:', family.name);
+  console.log('✅ Família encontrada:', family.name);
+  // Tentar repopular mapping se admin abrir a família (maior chance de possuir permissão)
+  try { await this.ensureInviteCodeMapping(familyId); } catch { /* noop */ }
       return family;
     } catch (error) {
       console.error('❌ Erro ao buscar família:', error);
@@ -175,6 +179,72 @@ class LocalFamilyService {
     }
   }
 
+  /**
+   * Garante que exista um documento em /inviteCodes/{code} apontando para a família.
+   * Útil para famílias criadas antes do índice público ou quando o documento foi removido.
+   */
+  async ensureInviteCodeMapping(familyId: string): Promise<void> {
+    try {
+      const db = this.getFirestore();
+      const familyRef = doc(db, 'families', familyId);
+      const familySnap = await getDoc(familyRef);
+      if (!familySnap.exists()) {
+        console.warn('[ensureInviteCodeMapping] Família não encontrada:', familyId);
+        return;
+      }
+
+      const familyData = familySnap.data() as any;
+  let code: string | undefined = familyData?.inviteCode;
+  let expiry: Date | undefined = familyData?.inviteCodeExpiry?.toDate?.() || (familyData?.inviteCodeExpiry ? new Date(familyData.inviteCodeExpiry) : undefined);
+
+      // Se não houver código, gerar e atualizar na família
+      if (!code) {
+        code = this.generateInviteCode();
+        expiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        await updateDoc(familyRef, {
+          inviteCode: code,
+          inviteCodeExpiry: Timestamp.fromDate(expiry)
+        });
+      }
+
+      const inviteMapRef = doc(db, 'inviteCodes', (code as string).trim().toUpperCase());
+      const inviteMapSnap = await getDoc(inviteMapRef);
+
+      const now = new Date();
+      // Se o expiry da família estiver ausente ou expirado, estender para +24h
+      let finalExpiry = expiry;
+      if (!finalExpiry || finalExpiry < now) {
+        finalExpiry = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+        await updateDoc(familyRef, { inviteCodeExpiry: Timestamp.fromDate(finalExpiry) });
+      }
+
+      if (!inviteMapSnap.exists()) {
+        await setDoc(inviteMapRef, {
+          code: code,
+          familyId: familyId,
+          createdAt: Timestamp.fromDate(now),
+          expiry: Timestamp.fromDate(finalExpiry)
+        });
+        console.log('✅ [ensureInviteCodeMapping] Mapeamento criado para código:', code);
+      } else {
+        const data = inviteMapSnap.data() as any;
+        // Corrigir inconsistências (familyId diferente ou expirado): atualizar
+        const mapExpiry = data?.expiry?.toDate?.() || (data?.expiry ? new Date(data.expiry) : undefined);
+        if (data.familyId !== familyId || (mapExpiry && mapExpiry < now)) {
+          await setDoc(inviteMapRef, {
+            code: code,
+            familyId: familyId,
+            createdAt: Timestamp.fromDate(now),
+            expiry: Timestamp.fromDate(finalExpiry)
+          });
+          console.log('🔄 [ensureInviteCodeMapping] Mapeamento atualizado para código:', code);
+        }
+      }
+    } catch (error) {
+      console.warn('⚠️ [ensureInviteCodeMapping] Falha ao garantir mapeamento:', error);
+    }
+  }
+
   async joinFamily(inviteCode: string, user: FamilyUser): Promise<Family> {
     try {
       console.log('🔍 Buscando família com código:', inviteCode);
@@ -204,16 +274,6 @@ class LocalFamilyService {
           throw new Error('Código de convite expirado');
         }
       }
-
-      // Buscar dados básicos da família para logs e consistência
-      const familyRef = doc(db, 'families', familyId);
-      const familySnap = await getDoc(familyRef);
-      if (!familySnap.exists()) {
-        console.error('❌ Família não encontrada para o código');
-        throw new Error('Família não encontrada');
-      }
-      const familyData = familySnap.data();
-      console.log('🏷️ Família:', familyId, familyData?.name);
 
       // Verificar se o usuário já é membro
       const existingMemberRef = doc(db, 'families', familyId, 'members', user.id);
@@ -287,13 +347,38 @@ class LocalFamilyService {
 
   async getFamilyTasks(familyId: string, userId?: string): Promise<Task[]> {
     try {
-      console.log('🔍 Buscando tarefas da família:', familyId);
+      console.log(`🔍 Buscando tarefas para família: ${familyId}${userId ? ` e usuário: ${userId}` : ''}`);
       const db = this.getFirestore();
       const tasksRef = collection(db, 'tasks');
-      const q = query(tasksRef, where('familyId', '==', familyId));
-      const querySnap = await getDocs(q);
 
-      let tasks = querySnap.docs.map(doc => {
+      // Consulta para tarefas públicas da família
+      const publicTasksQuery = query(
+        tasksRef,
+        where('familyId', '==', familyId),
+        where('private', '==', false)
+      );
+
+      // Executar consulta de tarefas públicas
+      const publicTasksSnap = await getDocs(publicTasksQuery);
+
+      const snapshots = [publicTasksSnap];
+
+      if (userId) {
+        // Consulta para tarefas privadas do usuário criadas por ele (familyId null)
+        const privateTasksQuery = query(
+          tasksRef,
+          where('familyId', '==', null),
+          where('private', '==', true),
+          where('createdBy', '==', userId)
+        );
+
+        const privateTasksSnap = await getDocs(privateTasksQuery);
+        snapshots.push(privateTasksSnap);
+      } else {
+        console.warn('⚠️ [getFamilyTasks] userId não fornecido. Buscando apenas tarefas públicas da família.');
+      }
+
+      const processSnap = (snap: any) => snap.docs.map((doc: any) => {
         const data = doc.data();
         return {
           ...data,
@@ -305,15 +390,13 @@ class LocalFamilyService {
         } as Task;
       });
 
-      // Filtrar tarefas privadas
-      if (userId) {
-        tasks = tasks.filter(t => !t.private || t.createdBy === userId);
-      } else {
-        tasks = tasks.filter(t => !t.private);
-      }
+      let tasks = snapshots.flatMap(processSnap);
+
+      // Remover duplicatas caso uma tarefa seja acidentalmente marcada de forma inconsistente
+      const uniqueTasks = Array.from(new Map(tasks.map(t => [t.id, t])).values());
 
       // Ordenar por data de edição/criação
-      tasks.sort((a, b) => {
+      uniqueTasks.sort((a, b) => {
         const getTime = (date: Date | string | null | undefined) => {
           if (!date) return 0;
           return date instanceof Date ? date.getTime() : new Date(date).getTime();
@@ -323,11 +406,11 @@ class LocalFamilyService {
         return dateB - dateA;
       });
 
-      console.log('✅ Tarefas encontradas:', tasks.length);
-      return tasks;
+      console.log('✅ Tarefas encontradas:', uniqueTasks.length);
+      return uniqueTasks;
     } catch (error) {
       console.error('❌ Erro ao buscar tarefas:', error);
-      return [];
+      throw new Error('Não foi possível buscar as tarefas da família.');
     }
   }
 
@@ -428,6 +511,62 @@ class LocalFamilyService {
       console.error('❌ Erro ao atualizar nome da família:', error);
       throw new Error('Não foi possível atualizar o nome da família.');
     }
+  }
+
+  /**
+   * Regenera o código de convite de uma família (apenas para administradores via regras).
+   * - Gera novo código e define validade para +24h
+   * - Atualiza o doc da família
+   * - Cria/atualiza o mapping em inviteCodes/{newCode}
+   * - Remove o mapping antigo inviteCodes/{oldCode} (se existir)
+   * Retorna o objeto Family atualizado.
+   */
+  async regenerateInviteCode(familyId: string): Promise<Family> {
+    const db = this.getFirestore();
+    const familyRef = doc(db, 'families', familyId);
+    const familySnap = await getDoc(familyRef);
+    if (!familySnap.exists()) {
+      throw new Error('Família não encontrada');
+    }
+
+    const current = familySnap.data() as any;
+    const oldCode: string | undefined = current?.inviteCode;
+    const newCode = this.generateInviteCode();
+    const now = new Date();
+    const newExpiry = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+
+    // Atualiza doc da família (regras garantem apenas admin pode)
+    await updateDoc(familyRef, {
+      inviteCode: newCode,
+      inviteCodeExpiry: Timestamp.fromDate(newExpiry)
+    });
+
+    // Cria/atualiza mapping do novo código
+    const newMapRef = doc(db, 'inviteCodes', newCode);
+    await setDoc(newMapRef, {
+      code: newCode,
+      familyId: familyId,
+      createdAt: Timestamp.fromDate(now),
+      expiry: Timestamp.fromDate(newExpiry)
+    });
+
+    // Remove mapping antigo (se existia)
+    if (oldCode) {
+      try {
+        const oldMapRef = doc(db, 'inviteCodes', oldCode);
+        const oldSnap = await getDoc(oldMapRef);
+        if (oldSnap.exists()) {
+          await deleteDoc(oldMapRef);
+        }
+      } catch (e) {
+        console.warn('[regenerateInviteCode] Falha ao remover mapping antigo:', e);
+      }
+    }
+
+    // Retornar família atualizada via getFamilyById (para resolver datas)
+    const updated = await this.getFamilyById(familyId);
+    if (!updated) throw new Error('Falha ao carregar família atualizada');
+    return updated;
   }
 
   async deleteFamilyTask(taskId: string): Promise<void> {

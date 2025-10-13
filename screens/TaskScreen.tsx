@@ -5,16 +5,16 @@ import {
   Text,
   StyleSheet,
   FlatList,
-  Pressable,
-  TextInput,
-  Modal,
-  ScrollView,
-  Platform,
-  KeyboardAvoidingView,
-  Image,
   Dimensions,
   AppState,
-  ActivityIndicator
+  ActivityIndicator,
+  Pressable,
+  Platform,
+  ScrollView,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -68,12 +68,16 @@ interface Task {
   completed: boolean;
   status: TaskStatus;
   category: string;
+  priority?: 'baixa' | 'media' | 'alta';
   dueDate?: Date;
   dueTime?: Date;
   repeat: RepeatConfig;
   userId: string;
   approvalId?: string;
   createdAt: Date;
+  updatedAt?: Date;
+  completedAt?: Date;
+  familyId?: string | null;
   // Campos de autoria
   createdBy: string;
   createdByName: string;
@@ -126,6 +130,8 @@ export const DEFAULT_CATEGORIES: CategoryConfig[] = [
     isDefault: true
   }
 ];
+
+const HISTORY_DAYS_TO_KEEP = 7;
 
 export const AVAILABLE_ICONS = [
   'briefcase', 'home', 'fitness', 'book', 'car', 'restaurant',
@@ -212,6 +218,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   const [isCreatingFamilyMode, setIsCreatingFamilyMode] = useState(false);
   const [newFamilyNameInput, setNewFamilyNameInput] = useState('');
   const [isCreatingFamily, setIsCreatingFamily] = useState(false);
+  // Estado para contagem regressiva do código
+  const [codeCountdown, setCodeCountdown] = useState<string>('');
 
   const [selectedColorIndex, setSelectedColorIndex] = useState(0);
 
@@ -371,6 +379,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       completed: remoteTask.completed,
       status: remoteTask.status,
       category: remoteTask.category,
+      priority: (remoteTask as any).priority || 'media',
+      familyId: (remoteTask as any).familyId ?? null,
       dueDate: dueDate,
       dueTime: dueTime, // Conversão mais segura, sem fallback para dueDate
       repeat: {
@@ -381,6 +391,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       userId: remoteTask.userId,
       approvalId: remoteTask.approvalId,
       createdAt: safeToDate(remoteTask.createdAt) || new Date(), // Garantir que createdAt seja sempre uma data válida
+      updatedAt: safeToDate(remoteTask.updatedAt) || safeToDate(remoteTask.editedAt) || safeToDate(remoteTask.createdAt) || new Date(),
+      completedAt: safeToDate((remoteTask as any).completedAt) || undefined,
       // Campos de autoria com fallback para dados antigos
       createdBy: remoteTask.createdBy || remoteTask.userId,
       createdByName: remoteTask.createdByName || 'Usuário',
@@ -495,6 +507,12 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           const remoteIds = new Set(convertedTasks.map(t => t.id));
           currentTasks.forEach(localTask => {
             if (!remoteIds.has(localTask.id)) {
+              // Preservar tarefas privadas do criador mesmo se ausentes no remoto
+              const isCreatorPrivate = (localTask as any).private === true && localTask.createdBy === user.id;
+              if (isCreatorPrivate) {
+                console.log(`🛡️ Preservando tarefa privada do criador ausente no servidor: ${localTask.title}`);
+                return;
+              }
               mergedTasksMap.delete(localTask.id);
               console.log(`➖ Tarefa removida (não existe mais no servidor remoto): ${localTask.title}`);
             }
@@ -547,6 +565,32 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   useEffect(() => {
     verificarTarefasVencidas();
   }, [tasks, lastUpdate]);
+
+  // Contagem regressiva do código de convite
+  useEffect(() => {
+    let timer: any;
+    const updateCountdown = () => {
+      const expiry: any = currentFamily?.inviteCodeExpiry;
+      const expiryDate = expiry ? (expiry instanceof Date ? expiry : new Date(expiry)) : null;
+      if (!expiryDate || isNaN(expiryDate.getTime())) {
+        setCodeCountdown('');
+        return;
+      }
+      const diff = expiryDate.getTime() - Date.now();
+      if (diff <= 0) {
+        setCodeCountdown('expirado');
+        return;
+      }
+      const totalSeconds = Math.floor(diff / 1000);
+      const h = Math.floor(totalSeconds / 3600);
+      const m = Math.floor((totalSeconds % 3600) / 60);
+      const s = totalSeconds % 60;
+      setCodeCountdown(`${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`);
+    };
+    updateCountdown();
+    timer = setInterval(updateCountdown, 1000);
+    return () => clearInterval(timer);
+  }, [currentFamily?.inviteCodeExpiry]);
 
   // useEffect para executar limpeza do histórico quando há atualizações
   useEffect(() => {
@@ -695,13 +739,13 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           return;
         }
 
-        // Primeiro, carregar histórico do cache local
-        console.log('📖 Carregando histórico do cache local...');
-        const localHistory = await LocalStorageService.getHistory(100);
-        setHistory(localHistory);
-        
-        // Limpar histórico antigo (manter apenas 15 dias)
-        await LocalStorageService.clearOldHistory(15);
+    // Primeiro, carregar histórico do cache local
+    console.log('📖 Carregando histórico do cache local...');
+    const localHistory = await LocalStorageService.getHistory(100);
+    setHistory(localHistory);
+
+    // Limpar histórico antigo (manter apenas 7 dias)
+    await LocalStorageService.clearOldHistory(HISTORY_DAYS_TO_KEEP);
 
         if (currentFamily && currentFamily.id && !isOffline) {
           console.log('📖 Carregando histórico da família...');
@@ -711,19 +755,21 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             currentFamily.id,
             (updatedTasks) => {
               const convertedTasks: Task[] = updatedTasks
-                    .map(remoteTaskToTask)
-                    .filter(task => {
+                .map(remoteTaskToTask)
+                .filter(task => {
                   // Se a tarefa estiver na lista de espera, não a atualize
                   if (pendingSyncIds.includes(task.id)) {
                     console.log(`🚫 Tarefa ${task.id} ignorada na atualização remota (pendente de sincronização).`);
                     return false; // Não incluir esta atualização
                   }
-                    // Filtrar tarefas privadas de outros usuários
-                    const isPrivate = (task as any).private === true;
-                    if (isPrivate && task.createdBy && task.createdBy !== user.id) {
-                      console.log(`🔒 Tarefa privada ${task.id} ignorada (não pertence ao usuário atual).`);
-                      return false;
-                    }
+
+                  // Filtrar tarefas privadas de outros usuários
+                  const isPrivate = (task as any).private === true;
+                  if (isPrivate && task.createdBy && task.createdBy !== user.id) {
+                    console.log(`🔒 Tarefa privada ${task.id} ignorada (não pertence ao usuário atual).`);
+                    return false;
+                  }
+
                   return true; // Incluir esta atualização
                 });
 
@@ -731,7 +777,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
               setTasks(prevTasks => {
                 const nonPendingTasks = prevTasks.filter(t => !pendingSyncIds.includes(t.id));
                 const pendingTasks = prevTasks.filter(t => pendingSyncIds.includes(t.id));
-                
+
                 // Criar um mapa de tarefas atualizadas para acesso rápido
                 const updatedTasksMap = new Map(convertedTasks.map(t => [t.id, t]));
 
@@ -747,7 +793,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
 
                 return [...mergedNonPending, ...pendingTasks];
               });
-            }
+            },
+            user.id
           );
           
           // Carregar histórico inicial da família
@@ -759,7 +806,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             return;
           }
           
-          // Converter histórico da família para formato local
+          // Converter histórico da família para formato local (usar createdAt como timestamp)
           const convertedHistory: HistoryItem[] = familyHistory.map(item => {
             // Verificar se o item tem propriedades necessárias
             if (!item || typeof item !== 'object') {
@@ -777,16 +824,18 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
               };
             }
 
+            const ts = safeToDate((item as any).createdAt) || safeToDate((item as any).timestamp) || new Date();
+
             return {
-              id: item.id || 'unknown-' + Date.now(),
-              action: item.action || 'created',
-              taskTitle: item.taskTitle || 'Tarefa desconhecida',
-              taskId: item.taskId || '',
-              timestamp: item.timestamp instanceof Date ? item.timestamp : new Date(),
-              details: item.details || '',
-              userId: item.userId || '',
-              userName: item.userName || 'Usuário desconhecido',
-              userRole: item.userRole || ''
+              id: (item as any).id || 'unknown-' + Date.now(),
+              action: (item as any).action || 'created',
+              taskTitle: (item as any).taskTitle || 'Tarefa desconhecida',
+              taskId: (item as any).taskId || '',
+              timestamp: ts,
+              details: (item as any).details || '',
+              userId: (item as any).userId || '',
+              userName: (item as any).userName || 'Usuário desconhecido',
+              userRole: (item as any).userRole || ''
             };
           });
 
@@ -812,18 +861,47 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             currentFamily.id,
             (updatedHistory) => {
               const convertedUpdatedHistory: HistoryItem[] = updatedHistory.map(item => ({
-                id: item.id,
-                action: item.action,
-                taskTitle: item.taskTitle,
-                taskId: item.taskId,
-                timestamp: item.timestamp,
-                details: item.details,
-                userId: item.userId,
-                userName: item.userName,
-                userRole: item.userRole
+                id: (item as any).id,
+                action: (item as any).action,
+                taskTitle: (item as any).taskTitle,
+                taskId: (item as any).taskId,
+                // Garantir que timestamp esteja preenchido corretamente
+                timestamp: safeToDate((item as any).createdAt) || safeToDate((item as any).timestamp) || new Date(),
+                details: (item as any).details,
+                userId: (item as any).userId,
+                userName: (item as any).userName,
+                userRole: (item as any).userRole
               }));
 
-              setHistory(convertedUpdatedHistory);
+              // Mesclar com o histórico atual em vez de substituir, evitando "sumiço"
+              setHistory(prev => {
+                const cutoffDate = new Date();
+                cutoffDate.setDate(cutoffDate.getDate() - HISTORY_DAYS_TO_KEEP);
+
+                // Combinar listas (novos primeiro para priorizar remotos)
+                const combined = [...convertedUpdatedHistory, ...prev];
+
+                const result: HistoryItem[] = [];
+                for (const item of combined) {
+                  const itemDate = item.timestamp instanceof Date ? item.timestamp : safeToDate(item.timestamp);
+                  if (!itemDate || itemDate < cutoffDate) continue; // aplicar retenção
+
+                  // Evitar duplicatas: mesmo taskId + action com timestamps muito próximos
+                  const duplicateIndex = result.findIndex(r =>
+                    r.taskId === item.taskId &&
+                    r.action === item.action &&
+                    Math.abs((r.timestamp as Date).getTime() - itemDate.getTime()) < 5000
+                  );
+                  if (duplicateIndex === -1) {
+                    result.push({ ...item, timestamp: itemDate });
+                  }
+                }
+
+                // Ordenar por timestamp desc e limitar quantidade
+                return result
+                  .sort((a, b) => (b.timestamp as Date).getTime() - (a.timestamp as Date).getTime())
+                  .slice(0, 100);
+              });
             },
             50
           );
@@ -871,10 +949,47 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         
         // Recarregar dados da família se houver
         if (currentFamily) {
-            const familyTasks = await familyService.getFamilyTasks(currentFamily.id, user.id);
-          const convertedTasks: Task[] = familyTasks.map(remoteTaskToTask as any);
-          setTasks(convertedTasks);
-          console.log(`🔄 ${familyTasks.length} tarefas da família recarregadas`);
+          const familyTasks = await familyService.getFamilyTasks(currentFamily.id, user.id);
+          // Converter e filtrar tarefas privadas que não pertencem ao usuário atual
+          let convertedTasks: Task[] = familyTasks.map(remoteTaskToTask as any);
+          convertedTasks = convertedTasks.filter(t => {
+            const isPrivate = (t as any).private === true;
+            if (isPrivate && t.createdBy && t.createdBy !== user.id) return false;
+            return true;
+          });
+
+          // Aplicar o mesmo merge inteligente usado no reloadFamilyTasks para preservar privadas do criador
+          setTasks(currentTasks => {
+            const mergedTasksMap = new Map(currentTasks.map(t => [t.id, t]));
+
+            convertedTasks.forEach(remoteTask => {
+              const existingTask = mergedTasksMap.get(remoteTask.id);
+              if (!existingTask) {
+                mergedTasksMap.set(remoteTask.id, remoteTask);
+              } else {
+                const existingTime = existingTask.editedAt || existingTask.createdAt;
+                const remoteTime = remoteTask.editedAt || remoteTask.createdAt;
+                if (remoteTime > existingTime) {
+                  mergedTasksMap.set(remoteTask.id, remoteTask);
+                }
+              }
+            });
+
+            const remoteIds = new Set(convertedTasks.map(t => t.id));
+            currentTasks.forEach(localTask => {
+              if (!remoteIds.has(localTask.id)) {
+                const isCreatorPrivate = (localTask as any).private === true && localTask.createdBy === user.id;
+                if (isCreatorPrivate) {
+                  return;
+                }
+                mergedTasksMap.delete(localTask.id);
+              }
+            });
+
+            return Array.from(mergedTasksMap.values());
+          });
+
+          console.log(`🔄 ${familyTasks.length} tarefas da família recarregadas (merge aplicado)`);
         }
       }
     } catch (error) {
@@ -1282,8 +1397,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       
       // Filtrar por familyId: apenas tarefas da família atual ou tarefas sem família do usuário
       if (currentFamily) {
-        // Se tem família, mostrar apenas tarefas da família atual
-        if ((task as any).familyId !== currentFamily.id) {
+        // Se tem família, mostrar tarefas da família atual OU tarefas privadas do próprio usuário (familyId null)
+        const isMyPrivate = (task as any).private === true && task.createdBy === user.id && ((task as any).familyId == null);
+        if ((task as any).familyId !== currentFamily.id && !isMyPrivate) {
           return false;
         }
       } else {
@@ -1336,8 +1452,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       
       // Filtrar por familyId: apenas tarefas da família atual ou tarefas sem família do usuário
       if (currentFamily) {
-        // Se tem família, mostrar apenas tarefas da família atual
-        if ((task as any).familyId !== currentFamily.id) {
+        // Se tem família, mostrar tarefas da família atual OU tarefas privadas do próprio usuário (familyId null)
+        const isMyPrivate = (task as any).private === true && task.createdBy === user.id && ((task as any).familyId == null);
+        if ((task as any).familyId !== currentFamily.id && !isMyPrivate) {
           return false;
         }
       } else {
@@ -1406,11 +1523,13 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     // Adicionar ao histórico local (estado da aplicação)
     setHistory(prev => {
       const newHistory = [historyItem, ...prev];
-      // Manter apenas os últimos 15 dias
-      const fifteenDaysAgo = new Date();
-      fifteenDaysAgo.setDate(fifteenDaysAgo.getDate() - 15);
-      
-      return newHistory.filter(item => item.timestamp >= fifteenDaysAgo);
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - HISTORY_DAYS_TO_KEEP);
+
+      return newHistory.filter(item => {
+        const itemDate = item.timestamp instanceof Date ? item.timestamp : safeToDate(item.timestamp);
+        return !!itemDate && itemDate >= cutoffDate;
+      });
     });
 
     // Salvar no cache local (LocalStorage)
@@ -1457,10 +1576,13 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   };
 
   const clearOldHistory = () => {
-    const fifteenDaysAgo = new Date();
-    fifteenDaysAgo.setDate(fifteenDaysAgo.getDate() - 15);
-    
-    setHistory(prev => prev.filter(item => item.timestamp >= fifteenDaysAgo));
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - HISTORY_DAYS_TO_KEEP);
+
+    setHistory(prev => prev.filter(item => {
+      const itemDate = item.timestamp instanceof Date ? item.timestamp : safeToDate(item.timestamp);
+      return !!itemDate && itemDate >= cutoffDate;
+    }));
   };
 
   // Executar limpeza do histórico a cada renderização (otimização)
@@ -1701,17 +1823,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         return;
       }
     }
-    
-    if (user.role === 'dependente' && !task.completed) {
-      // Dependente solicita aprovação para completar tarefa
-      requestTaskApproval(task);
-    } else if (user.role === 'admin') {
-      // Admin pode completar/descompletar diretamente
-      await handleTaskToggle(task);
-    } else {
-      // Para convidados ou outras situações
-      await handleTaskToggle(task);
-    }
+
+    // Para admins e demais papéis, seguir para alternar a tarefa normalmente
+    await handleTaskToggle(task);
   }, [tasks, user, currentFamily, isOffline]);
 
   const handleTaskToggle = async (task: Task) => {
@@ -2427,6 +2541,15 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       if (familyData) {
         setCurrentFamily(familyData);
         setFamilyMembers(familyData.members);
+        // Sincronizar papel do usuário com os dados da família
+        const myMember = familyData.members.find(m => m.id === user.id);
+        if (myMember && myMember.role && myMember.role !== user.role) {
+          try {
+            if (onUserRoleChange) await onUserRoleChange(myMember.role);
+          } catch (e) {
+            console.warn('Falha ao sincronizar role do usuário ao abrir Gerenciar Família:', e);
+          }
+        }
         setIsCreatingFamilyMode(false);
       }
     } catch (error) {
@@ -2706,17 +2829,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                   <Ionicons name="checkmark" size={18} color="#fff" />
                 )}
               </View>
-            </Pressable>
-            
-            <View style={styles.taskTextContent}>
-              <Text style={[
-                styles.taskTitle,
-                item.completed && styles.taskTitleCompleted,
-                isPendingRecurring && styles.taskTitlePending
-              ]}>
+              <Text style={styles.taskTitle}>
                 {sanitizedTitle || 'Sem título'}
               </Text>
-              
               {sanitizedDescription && (
                 <Text style={[
                   styles.taskDescription,
@@ -2725,7 +2840,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                   {sanitizedDescription}
                 </Text>
               )}
-            </View>
+            </Pressable>
           </View>
         </View>
 
@@ -2743,7 +2858,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
               </Text>
             </View>
           )}
-          
+
           {item.repeat.type !== RepeatType.NONE && (
             <View style={styles.scheduleItem}>
               <Ionicons 
@@ -2757,24 +2872,26 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             </View>
           )}
 
-          {/* Botões de ação no final da coluna de informações */}
-          <View style={styles.scheduleActions}>
-            <Pressable 
-              onPress={() => editTask(item)}
-              style={styles.scheduleActionButton}
-            >
-              <Ionicons name="pencil-outline" size={16} color="#007AFF" />
-            </Pressable>
-            
-            <Pressable 
-              onPress={() => deleteTask(item.id)}
-              style={styles.scheduleActionButton}
-            >
-              <Ionicons name="trash-outline" size={16} color="#e74c3c" />
-            </Pressable>
-          </View>
+          {/* Botões de ação no final da coluna de informações (apenas para administradores) */}
+          {user.role === 'admin' && (
+            <View style={styles.scheduleActions}>
+              <Pressable 
+                onPress={() => editTask(item)}
+                style={styles.scheduleActionButton}
+              >
+                <Ionicons name="pencil-outline" size={16} color="#007AFF" />
+              </Pressable>
+
+              <Pressable 
+                onPress={() => deleteTask(item.id)}
+                style={styles.scheduleActionButton}
+              >
+                <Ionicons name="trash-outline" size={16} color="#e74c3c" />
+              </Pressable>
+            </View>
+          )}
         </View>
-        
+
         {/* Indicador de status de aprovação */}
         {item.status === 'pendente_aprovacao' && (
           <View style={styles.approvalStatus}>
@@ -2782,14 +2899,12 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             <Text style={styles.approvalStatusText}>Pendente Aprovação</Text>
           </View>
         )}
-        
         {item.status === 'aprovada' && (
           <View style={[styles.approvalStatus, styles.approvalStatusApproved]}>
             <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />
             <Text style={[styles.approvalStatusText, styles.approvalStatusTextApproved]}>Aprovada</Text>
           </View>
         )}
-        
         {item.status === 'rejeitada' && (
           <View style={[styles.approvalStatus, styles.approvalStatusRejected]}>
             <Ionicons name="close-circle" size={16} color="#e74c3c" />
@@ -2856,6 +2971,15 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
               setTasks(convertedTasks);
               // atualizar lista de membros
               setFamilyMembers(newFamily.members);
+              // Sincronizar papel do usuário com a família (evitar ficar "admin" por engano)
+              const myMember = newFamily.members.find(m => m.id === user.id);
+              if (myMember && myMember.role && myMember.role !== user.role) {
+                try {
+                  if (onUserRoleChange) await onUserRoleChange(myMember.role);
+                } catch (e) {
+                  console.warn('Falha ao sincronizar role do usuário após entrar na família:', e);
+                }
+              }
               // histórico local
               await addToHistory('created', 'Entrada em nova família', '');
             } catch (e) {
@@ -3548,7 +3672,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
 
               <Text style={styles.manualSubtitle}>📜 Histórico</Text>
               <Text style={styles.manualListItem}>• <Ionicons name="time" size={16} color="#007AFF" /> <Text style={{fontWeight: '600'}}>Acesso:</Text> Acesse através do menu de configurações, opção Histórico.</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="list" size={16} color="#007AFF" /> <Text style={{fontWeight: '600'}}>Conteúdo:</Text> Mostra todas as ações realizadas nas tarefas nos últimos 15 dias.</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="list" size={16} color="#007AFF" /> <Text style={{fontWeight: '600'}}>Conteúdo:</Text> Mostra todas as ações realizadas nas tarefas nos últimos 7 dias.</Text>
               <Text style={styles.manualListItem}>• <Ionicons name="information-circle" size={16} color="#007AFF" /> <Text style={{fontWeight: '600'}}>Detalhes:</Text> Inclui quem criou/editou/concluiu tarefas, com data e hora de cada ação.</Text>
 
               <Text style={styles.manualSubtitle}>💡 Dicas Rápidas</Text>
@@ -3571,43 +3695,50 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       {/* Modal do Histórico */}
       <Modal
         visible={historyModalVisible}
-        animationType="slide"
-        presentationStyle="pageSheet"
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setHistoryModalVisible(false)}
       >
-        <SafeAreaView style={styles.container}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Informações</Text>
+        <View style={styles.modalOverlay}>
+          <View style={styles.historyModalWrapper}>
+            <SafeAreaView style={styles.historyModalSafeArea}>
+              <Text style={styles.modalTitle}>Informações</Text>
 
-            <Text style={styles.historySubtitle}>
-              Últimas ações realizadas (15 dias)
-            </Text>
+              <Text style={styles.historySubtitle}>
+                Últimas ações realizadas (7 dias)
+              </Text>
 
-            {history.length === 0 ? (
-              <View style={styles.emptyHistoryContainer}>
-                <Ionicons name="time-outline" size={64} color="#ccc" />
-                <Text style={styles.emptyHistoryText}>Nenhuma ação registrada</Text>
-                <Text style={styles.emptyHistorySubtext}>
-                  As ações realizadas nas tarefas aparecerão aqui
-                </Text>
+              <View style={styles.historyListContainer}>
+                {history.length === 0 ? (
+                  <View style={styles.emptyHistoryContainer}>
+                    <Ionicons name="time-outline" size={64} color="#ccc" />
+                    <Text style={styles.emptyHistoryText}>Nenhuma ação registrada</Text>
+                    <Text style={styles.emptyHistorySubtext}>
+                      As ações realizadas nas tarefas aparecerão aqui
+                    </Text>
+                  </View>
+                ) : (
+                  <FlatList
+                    data={history}
+                    keyExtractor={(item) => item.id}
+                    showsVerticalScrollIndicator={true}
+                    renderItem={renderHistoryItem}
+                    style={styles.historyList}
+                    contentContainerStyle={styles.historyListContent}
+                  />
+                )}
               </View>
-            ) : (
-              <FlatList
-                data={history}
-                keyExtractor={(item) => item.id}
-                showsVerticalScrollIndicator={false}
-                renderItem={renderHistoryItem}
-              />
-            )}
-            
-            {/* Botão de fechar no final do modal */}
-            <Pressable 
-              style={styles.closeModalButton}
-              onPress={() => setHistoryModalVisible(false)}
-            >
-              <Text style={styles.closeModalButtonText}>Fechar</Text>
-            </Pressable>
+              
+              {/* Botão de fechar no final do modal */}
+              <Pressable 
+                style={styles.closeModalButton}
+                onPress={() => setHistoryModalVisible(false)}
+              >
+                <Text style={styles.closeModalButtonText}>Fechar</Text>
+              </Pressable>
+            </SafeAreaView>
           </View>
-        </SafeAreaView>
+        </View>
       </Modal>
 
       {/* Modal de Aprovação para Admins */}
@@ -3834,6 +3965,32 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                         <Ionicons name="copy" size={18} color="#fff" />
                       </Pressable>
                     </View>
+                    {/* Indicador de validade e ação de regerar */}
+                    {currentFamily?.inviteCodeExpiry && (
+                      <View style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <Text style={styles.inviteCodeExpiry}>
+                          Validade: {new Date(currentFamily.inviteCodeExpiry as any).toLocaleString('pt-BR')} {codeCountdown ? `• ${codeCountdown}` : ''}
+                        </Text>
+                        {user.role === 'admin' && (
+                          <Pressable
+                            style={styles.regenCodeButton}
+                            onPress={async () => {
+                              if (!currentFamily?.id) return;
+                              try {
+                                const updated = await familyService.regenerateInviteCode(currentFamily.id);
+                                setCurrentFamily(updated);
+                                Alert.alert('Novo código gerado', `Código: ${updated.inviteCode}`);
+                              } catch (e) {
+                                Alert.alert('Erro', 'Não foi possível regerar o código.');
+                              }
+                            }}
+                          >
+                            <Ionicons name="refresh" size={16} color="#fff" />
+                            <Text style={styles.regenCodeButtonText}>Regerar código</Text>
+                          </Pressable>
+                        )}
+                      </View>
+                    )}
                   </View>
                 </View>
 
@@ -4797,12 +4954,39 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   // History Styles
+  historyModalWrapper: {
+    width: '90%',
+    maxWidth: 520,
+    maxHeight: '85%',
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  historyModalSafeArea: {
+    flex: 1,
+  },
   historySubtitle: {
     fontSize: 14,
     color: '#666',
     textAlign: 'center',
     marginBottom: 20,
     paddingHorizontal: 20,
+  },
+  historyListContainer: {
+    flex: 1,
+    width: '100%',
+    marginBottom: 12,
+  },
+  historyList: {
+    flex: 1,
+  },
+  historyListContent: {
+    paddingBottom: 12,
   },
   emptyHistoryContainer: {
     flex: 1,
@@ -5154,6 +5338,21 @@ const styles = StyleSheet.create({
     color: '#666',
     fontStyle: 'italic',
     marginTop: 5,
+  },
+  regenCodeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#007AFF',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginLeft: 8
+  },
+  regenCodeButtonText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+    marginLeft: 6
   },
   activeInvites: {
     marginTop: 15,

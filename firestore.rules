@@ -94,17 +94,26 @@ service cloud.firestore {
         // Se a tarefa for privada, familyId DEVE ser null
         && (request.resource.data.private != true || request.resource.data.familyId == null);
 
-      allow get, list: if isAuthenticated() && (
-        // Tarefas privadas (familyId == null OU private == true): apenas o criador pode ver
+      // Permite ler (get) ou listar (list) tarefas sob condições específicas
+      allow read: if isAuthenticated() && (
+        // 1. Tarefas de família (públicas): qualquer membro pode ler
         (
-          (resource.data.familyId == null || resource.data.private == true) 
-          && resource.data.userId == authId()
-        )
-        // Tarefas da família (familyId != null E private != true): membros podem ver
-        || (
-          resource.data.familyId != null 
-          && resource.data.private != true 
+          resource.data.familyId != null
+          && resource.data.private != true
           && isMemberOf(resource.data.familyId)
+        )
+        // 2. Tarefas privadas (com ou sem familyId): apenas o criador pode ler
+        || (
+          resource.data.private == true
+          && resource.data.createdBy == authId()
+        )
+        // 3. Tarefas pessoais sem familyId: autor pode ler
+        || (
+          resource.data.familyId == null
+          && (
+            resource.data.createdBy == authId()
+            || resource.data.userId == authId()
+          )
         )
       );
 
