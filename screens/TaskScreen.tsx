@@ -1275,9 +1275,24 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   // Funções para filtrar tarefas por data
   const getTodayTasks = () => {
     return tasks.filter(task => {
+      // Filtrar por categoria
       if (filterCategory !== 'all' && task.category !== filterCategory) {
         return false;
       }
+      
+      // Filtrar por familyId: apenas tarefas da família atual ou tarefas sem família do usuário
+      if (currentFamily) {
+        // Se tem família, mostrar apenas tarefas da família atual
+        if ((task as any).familyId !== currentFamily.id) {
+          return false;
+        }
+      } else {
+        // Se não tem família, mostrar apenas tarefas pessoais (sem familyId ou do próprio usuário)
+        if ((task as any).familyId || (task.userId && task.userId !== user.id)) {
+          return false;
+        }
+      }
+      
       // Excluir tarefas concluídas da página principal
       if (task.completed) {
         return false;
@@ -1314,9 +1329,24 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
 
   const getUpcomingTasks = () => {
     return tasks.filter(task => {
+      // Filtrar por categoria
       if (filterCategory !== 'all' && task.category !== filterCategory) {
         return false;
       }
+      
+      // Filtrar por familyId: apenas tarefas da família atual ou tarefas sem família do usuário
+      if (currentFamily) {
+        // Se tem família, mostrar apenas tarefas da família atual
+        if ((task as any).familyId !== currentFamily.id) {
+          return false;
+        }
+      } else {
+        // Se não tem família, mostrar apenas tarefas pessoais (sem familyId ou do próprio usuário)
+        if ((task as any).familyId || (task.userId && task.userId !== user.id)) {
+          return false;
+        }
+      }
+      
       // Incluir tarefas recorrentes que foram concluídas e reagendadas para o futuro
       // ou tarefas não concluídas que têm data futura
       return task.dueDate && (
