@@ -1216,13 +1216,6 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         console.log(`📱 Nova tarefa criada e adicionada à fila de sincronização: taskId=${remoteTask.id}` +
           `${currentFamily ? ` familyId=${currentFamily.id}` : ''}`);
         
-        // Recarregar tarefas da família para garantir sincronização
-        if (currentFamily && !isOffline) {
-          setTimeout(() => {
-            reloadFamilyTasks();
-          }, 1000); // Aguardar 1 segundo para garantir que a tarefa foi salva
-        }
-        
         // Adicionar ao histórico
         await addToHistory('created', newTask.title, newTask.id);
       }
