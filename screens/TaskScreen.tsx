@@ -2822,6 +2822,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           onUserImageChange={onUserImageChange}
           onUserRoleChange={onUserRoleChange}
           onSettings={handleSettings}
+          onHistory={() => setHistoryModalVisible(true)}
+          onInfo={() => setSettingsModalVisible(true)}
           onLogout={handleLogout}
           notificationCount={user.role === 'admin' ? notifications.filter(n => !n.read).length : 0}
           onNotifications={user.role === 'admin' ? async () => {

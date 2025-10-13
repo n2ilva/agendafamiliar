@@ -25,6 +25,8 @@ interface HeaderProps {
   onUserImageChange?: (newImageUrl: string) => void;
   onUserRoleChange?: (newRole: UserRole) => void;
   onSettings: () => void;
+  onHistory: () => void;
+  onInfo: () => void;
   onLogout: () => void;
   notificationCount?: number;
   onNotifications?: () => void;
@@ -45,7 +47,9 @@ export const Header: React.FC<HeaderProps> = ({
   onUserNameChange,
   onUserImageChange,
   onUserRoleChange, 
-  onSettings, 
+  onSettings,
+  onHistory,
+  onInfo,
   onLogout,
   notificationCount = 0,
   onNotifications,
@@ -168,11 +172,6 @@ export const Header: React.FC<HeaderProps> = ({
     }
   };
 
-  const handleHistoryPress = () => {
-    setMenuVisible(false);
-    onSettings(); // Esta função irá abrir o histórico
-  };
-
   const handleRoleChange = () => {
     if (onUserRoleChange && selectedRole !== userRole) {
       onUserRoleChange(selectedRole);
@@ -276,7 +275,7 @@ export const Header: React.FC<HeaderProps> = ({
 
           <View style={styles.menuContainer}>
             <Pressable onPress={() => setMenuVisible(true)} style={styles.iconButton}>
-              <Ionicons name="ellipsis-vertical" size={24} color="#333" />
+              <Ionicons name="settings-outline" size={24} color="#333" />
             </Pressable>
           </View>
 
@@ -311,9 +310,19 @@ export const Header: React.FC<HeaderProps> = ({
                     <View style={styles.menuSeparator} />
                   </>
                 )}
-                <Pressable onPress={handleHistoryPress} style={styles.menuItem}>
-                  <Ionicons name="settings-outline" size={18} color="#333" />
-                  <Text style={styles.menuText}>Configurações</Text>
+                <Pressable onPress={() => { setMenuVisible(false); onHistory(); }} style={styles.menuItem}>
+                  <Ionicons name="time-outline" size={18} color="#333" />
+                  <Text style={styles.menuText}>Histórico</Text>
+                </Pressable>
+                <View style={styles.menuSeparator} />
+                <Pressable onPress={() => { setMenuVisible(false); onInfo(); }} style={styles.menuItem}>
+                  <Ionicons name="information-circle-outline" size={18} color="#333" />
+                  <Text style={styles.menuText}>Manual e Informações</Text>
+                </Pressable>
+                <View style={styles.menuSeparator} />
+                <Pressable onPress={() => { setMenuVisible(false); onSettings(); }} style={styles.menuItem}>
+                  <Ionicons name="sync-outline" size={18} color="#333" />
+                  <Text style={styles.menuText}>Atualizar Dados</Text>
                 </Pressable>
                 <View style={styles.menuSeparator} />
                 {/* Logout no final do menu */}
