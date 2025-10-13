@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FamilyUser, UserRole } from '../types/FamilyTypes';
 import { firebaseAuth } from '../config/firebase';
-import { onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
 
 const USER_STORAGE_KEY = 'familyApp_currentUser';
 
@@ -32,7 +32,23 @@ class LocalAuthService {
   }
 
   static async logout() {
+    console.log('🚪 Executando logout completo');
+    
+    // Remover dados do AsyncStorage
     await AsyncStorage.removeItem(USER_STORAGE_KEY);
+    
+    // Fazer logout do Firebase também (se houver usuário logado)
+    try {
+      const auth = firebaseAuth() as any;
+      if (auth && auth.currentUser) {
+        console.log('🔥 Fazendo logout do Firebase Auth');
+        await signOut(auth);
+      }
+    } catch (error) {
+      console.warn('⚠️ Erro ao fazer logout do Firebase:', error);
+      // Continuar mesmo se houver erro no Firebase
+    }
+    
     return { success: true, error: undefined };
   }
 

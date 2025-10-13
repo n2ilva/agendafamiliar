@@ -1,10 +1,15 @@
 // Inicialização do Firebase (modular SDK)
 import { initializeApp } from 'firebase/app';
 import { getAnalytics, isSupported } from 'firebase/analytics';
-import { getAuth } from 'firebase/auth';
+import { getAuth, initializeAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// Importar a persistência para React Native
+// @ts-ignore - O Firebase 12.x pode ter exportação diferente
+import { getReactNativePersistence } from '@firebase/auth/dist/rn/index.js';
 
 // ATENÇÃO: estas chaves vieram do arquivo fornecido pelo usuário.
 // Mantenha este arquivo seguro e não comite credenciais públicas em repositórios públicos.
@@ -46,7 +51,27 @@ let _storage: ReturnType<typeof getStorage> | null = null;
 function getFirebaseAuth() {
   if (_auth) return _auth;
   try {
-    _auth = getAuth(app);
+    // Usar initializeAuth com persistência para React Native
+    if (Platform.OS !== 'web') {
+      try {
+        _auth = initializeAuth(app, {
+          persistence: getReactNativePersistence(AsyncStorage)
+        });
+        console.log('✅ Firebase Auth inicializado com persistência React Native');
+      } catch (error: any) {
+        // Se initializeAuth falhar (já inicializado), usar getAuth
+        if (error?.code === 'auth/already-initialized') {
+          _auth = getAuth(app);
+          console.log('ℹ️ Firebase Auth já estava inicializado');
+        } else {
+          throw error;
+        }
+      }
+    } else {
+      // Para web, usar getAuth normal (persistência é automática)
+      _auth = getAuth(app);
+      console.log('✅ Firebase Auth inicializado para web');
+    }
   } catch (e) {
     // Em ambientes de teste ou não suportados, retornar um stub vazio
     console.warn('getAuth falhou durante inicialização (ambiente de teste?). Retornando stub.');
