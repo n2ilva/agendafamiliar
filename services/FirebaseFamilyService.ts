@@ -2,7 +2,7 @@ import { familyService as localFamilyService } from './LocalFamilyService';
 import { Family, FamilyUser, Task } from '../types/FamilyTypes';
 
 class FirebaseFamilyService {
-  // Forwarding adapter: methods used by the app will be proxied to localFamilyService.
+  // Adapter: redireciona métodos para localFamilyService
 
   async createFamily(name: string, adminUser: FamilyUser): Promise<Family> {
     return await localFamilyService.createFamily(name, adminUser);
@@ -32,7 +32,6 @@ class FirebaseFamilyService {
     return localFamilyService.subscribeToFamilyTasks(familyId, callback, userId);
   }
 
-  // History / approvals / admin operations forwarded to local service
   async getFamilyHistory(familyId: string, limit?: number): Promise<any[]> {
     return await localFamilyService.getFamilyHistory(familyId, limit);
   }
@@ -42,7 +41,7 @@ class FirebaseFamilyService {
   }
 
   async addFamilyHistoryItem(familyId: string, item: any): Promise<any> {
-    // Support legacy signature: addFamilyHistoryItem(familyId, action, taskTitle, taskId, userId, userName, userRole, details)
+    // Suporte para assinatura legada com múltiplos parâmetros
     if (typeof item === 'string' || Array.isArray(arguments) && arguments.length > 2) {
       const args: any = arguments;
       if (args.length >= 3) {

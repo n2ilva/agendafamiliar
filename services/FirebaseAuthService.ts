@@ -11,11 +11,10 @@ const FirebaseAuthService = {
       const userCred = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCred.user;
 
-      // Create a users doc in Firestore (id = uid)
+      // Criar documento do usuário no Firestore
       try {
         const db = firebaseFirestore() as any;
         const usersCol = collection(db, 'users');
-        // Use setDoc with uid to ensure predictable id
         const userRef = doc(db, 'users', user.uid);
         await setDoc(userRef, {
           id: user.uid,
@@ -48,4 +47,3 @@ const FirebaseAuthService = {
 };
 
 export default FirebaseAuthService;
-// file ends here

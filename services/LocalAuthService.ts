@@ -7,7 +7,6 @@ const USER_STORAGE_KEY = 'familyApp_currentUser';
 
 class LocalAuthService {
   static async registerUser(email: string, password: string, name: string, role: UserRole = 'dependente') {
-    // Create a local user object and persist in AsyncStorage
     const id = `local_${Date.now()}`;
     const user: FamilyUser = {
       id,
@@ -34,10 +33,9 @@ class LocalAuthService {
   static async logout() {
     console.log('🚪 Executando logout completo');
     
-    // Remover dados do AsyncStorage
     await AsyncStorage.removeItem(USER_STORAGE_KEY);
     
-    // Fazer logout do Firebase também (se houver usuário logado)
+    // Logout do Firebase se houver usuário autenticado
     try {
       const auth = firebaseAuth() as any;
       if (auth && auth.currentUser) {
@@ -46,7 +44,6 @@ class LocalAuthService {
       }
     } catch (error) {
       console.warn('⚠️ Erro ao fazer logout do Firebase:', error);
-      // Continuar mesmo se houver erro no Firebase
     }
     
     return { success: true, error: undefined };
@@ -55,7 +52,7 @@ class LocalAuthService {
   static onAuthStateChange(callback: (user: FamilyUser | null) => void) {
     console.log('🔔 Configurando listener de autenticação');
     
-    // Primeiro, verifica o usuário local
+    // Verifica usuário local primeiro
     (async () => {
       const raw = await AsyncStorage.getItem(USER_STORAGE_KEY);
       if (raw) {
@@ -64,7 +61,7 @@ class LocalAuthService {
       }
     })();
 
-    // Também monitora mudanças no Firebase Auth
+    // Monitora mudanças no Firebase Auth
     try {
       const auth = firebaseAuth() as any;
       console.log('🔥 Configurando onAuthStateChanged do Firebase');
@@ -73,22 +70,19 @@ class LocalAuthService {
         console.log('🔥 Firebase Auth State Changed:', firebaseUser ? `Usuário: ${firebaseUser.email}` : 'Nenhum usuário');
         
         if (firebaseUser) {
-          // Usuário logado no Firebase - criar/atualizar objeto FamilyUser
           const raw = await AsyncStorage.getItem(USER_STORAGE_KEY);
           let familyUser: FamilyUser;
           
           if (raw) {
-            // Atualizar usuário existente
             familyUser = JSON.parse(raw);
             familyUser.id = firebaseUser.uid;
             familyUser.email = firebaseUser.email || familyUser.email;
           } else {
-            // Criar novo usuário
             familyUser = {
               id: firebaseUser.uid,
               name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Usuário',
               email: firebaseUser.email || '',
-              role: 'admin', // Usuários do Firebase são admin por padrão
+              role: 'admin',
               isGuest: false,
               familyId: '',
               joinedAt: new Date()
@@ -99,7 +93,6 @@ class LocalAuthService {
           console.log('✅ FamilyUser salvo no AsyncStorage:', familyUser.name);
           callback(familyUser);
         } else {
-          // Logout do Firebase - limpar storage local
           console.log('🚪 Firebase logout detectado - limpando AsyncStorage');
           await AsyncStorage.removeItem(USER_STORAGE_KEY);
           callback(null);
@@ -109,14 +102,11 @@ class LocalAuthService {
       return unsubscribe;
     } catch (error) {
       console.warn('⚠️ Erro ao configurar Firebase Auth listener:', error);
-      // Retorna função de unsubscribe vazia em caso de erro
       return () => {};
     }
   }
 
   static getCurrentUser() {
-    // For compatibility with FirebaseAuthService.getCurrentUser returning a User-like object,
-    // we'll return null (most code uses our local user objects via other methods)
     return null;
   }
 
@@ -130,15 +120,14 @@ class LocalAuthService {
   }
 
   static startAuthKeepAlive() {
-    // noop for local
+    // Não utilizado em modo local
   }
 
   static stopAuthKeepAlive() {
-    // noop for local
+    // Não utilizado em modo local
   }
 
   static async initializeOfflineSupport(): Promise<void> {
-    // Already local storage; nothing to initialize
     return;
   }
 
@@ -177,17 +166,15 @@ class LocalAuthService {
   }
 
   static async resetPassword(email: string) {
-    // local mode: pretend success
     return { success: true, error: undefined };
   }
 
   static async uploadProfileImage(imageUri: string) {
-    // local mode: return a data URI placeholder
     return { success: true, photoURL: imageUri, error: undefined };
   }
 
   static async deleteOldProfileImage(photoURL: string): Promise<void> {
-    // noop
+    // Não implementado em modo local
   }
 
   static async updateUserRole(userId: string, newRole: UserRole) {

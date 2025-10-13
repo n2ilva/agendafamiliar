@@ -22,12 +22,8 @@ export default function App() {
   const [loading, setLoading] = useState<boolean>(true);
   const [familyConfigured, setFamilyConfigured] = useState<boolean>(false);
 
-
-  // Verificar se há usuário logado ao inicializar o app
   useEffect(() => {
     (async () => {
-      // Inicializar conectividade o quanto antes para que telas de login
-      // possam decidir entre auth remoto ou local
       try {
         await ConnectivityService.initialize();
       } catch (e) {
@@ -37,7 +33,6 @@ export default function App() {
     })();
   }, []);
 
-  // Verificar usuário persistido no AsyncStorage
   const checkPersistedUser = async () => {
     try {
       const savedUser = await AsyncStorage.getItem(USER_STORAGE_KEY);
@@ -45,13 +40,11 @@ export default function App() {
         const userData = JSON.parse(savedUser);
         console.log('👤 Usuário encontrado no storage local:', userData.name);
         
-        // Verificar se o usuário tem família no Firebase
         try {
           const userFamily = await familyService.getUserFamily(userData.id);
           
           if (userFamily) {
             console.log('🏠 Família encontrada no Firebase:', userFamily.name);
-            // Atualizar o familyId do usuário se necessário
             if (!userData.familyId || userData.familyId !== userFamily.id) {
               userData.familyId = userFamily.id;
               await saveUserToStorage(userData);
@@ -64,7 +57,6 @@ export default function App() {
           }
         } catch (error) {
           console.error('❌ Erro ao verificar família do usuário:', error);
-          // Se houver erro, usar o familyId do storage
           setFamilyConfigured(!!userData.familyId);
         }
         
@@ -77,7 +69,6 @@ export default function App() {
     }
   };
 
-  // Salvar usuário no AsyncStorage
   const saveUserToStorage = async (userData: FamilyUser) => {
     try {
       await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(userData));
@@ -87,7 +78,6 @@ export default function App() {
     }
   };
 
-  // Remover usuário do AsyncStorage
   const removeUserFromStorage = async () => {
     try {
       await AsyncStorage.removeItem(USER_STORAGE_KEY);
@@ -97,22 +87,19 @@ export default function App() {
     }
   };
 
-  // Observar mudanças de autenticação
   useEffect(() => {
   const unsubscribe = LocalAuthService.onAuthStateChange(async (authUser) => {
       if (authUser) {
         setUser(authUser);
         await saveUserToStorage(authUser);
         await LocalAuthService.initializeOfflineSupport();
-        await BackgroundSyncService.registerBackgroundSyncAsync(); // Registrar tarefa de background
+        await BackgroundSyncService.registerBackgroundSyncAsync();
         
-        // Verificar se o usuário tem família no Firebase
         try {
           const userFamily = await familyService.getUserFamily(authUser.id);
           
           if (userFamily) {
             console.log('🏠 Família encontrada no Firebase:', userFamily.name);
-            // Atualizar o familyId do usuário se necessário
             if (!authUser.familyId || authUser.familyId !== userFamily.id) {
               authUser.familyId = userFamily.id;
               setUser(authUser);
@@ -126,15 +113,13 @@ export default function App() {
           }
         } catch (error) {
           console.error('❌ Erro ao verificar família:', error);
-          // Se houver erro, usar o familyId do authUser
           setFamilyConfigured(!!authUser.familyId);
         }
       } else {
-        // Sempre limpar o estado quando o sistema de autenticação indica logout
         console.log('🚪 Auth indica logout - limpando estado da aplicação');
         setUser(null);
         setFamilyConfigured(false);
-        await removeUserFromStorage(); // Garantir que o storage local também seja limpo
+        await removeUserFromStorage();
       }
       setLoading(false);
     });
@@ -144,26 +129,18 @@ export default function App() {
 
   const handleUserNameChange = async (newName: string) => {
     if (user) {
-      // Atualizar estado local primeiro (para responsividade)
       const updatedUser = { ...user, name: newName };
       setUser(updatedUser);
-      
-      // Salvar no AsyncStorage
       await saveUserToStorage(updatedUser);
-      
       console.log('✅ Nome do usuário atualizado no App.tsx');
     }
   };
 
   const handleUserImageChange = async (newImageUrl: string) => {
     if (user) {
-      // Atualizar estado local primeiro (para responsividade)
       const updatedUser = { ...user, picture: newImageUrl };
       setUser(updatedUser);
-      
-      // Salvar no AsyncStorage
       await saveUserToStorage(updatedUser);
-      
       console.log('✅ Foto do usuário atualizada no App.tsx');
     }
   };
@@ -182,15 +159,9 @@ export default function App() {
           style: 'destructive',
           onPress: async () => {
             try {
-              // Logout (local)
               await LocalAuthService.logout();
-              
-              // Remover dados do usuário do storage local
               await removeUserFromStorage();
-
-              // Cancelar registro da tarefa de background
               await BackgroundSyncService.unregisterBackgroundSyncAsync();
-              
             } catch (error) {
               console.error('Erro no logout:', error);
             } finally {
@@ -204,7 +175,6 @@ export default function App() {
 
   const handleFamilySetup = async (familyId: string) => {
     if (user) {
-      // Atualizar usuário com familyId
       const updatedUser = { ...user, familyId };
       setUser(updatedUser);
       await saveUserToStorage(updatedUser);
