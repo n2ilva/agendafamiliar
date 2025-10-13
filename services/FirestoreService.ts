@@ -52,6 +52,23 @@ export const FirestoreService = {
       createdAt: task.createdAt || serverTimestamp()
     } as any;
 
+    // Log de debug para tarefas privadas
+    if ((task as any).private === true) {
+      console.log('🔒 [FirestoreService] Salvando tarefa PRIVADA:', {
+        id: task.id,
+        title: task.title,
+        private: (task as any).private,
+        familyId: taskToSave.familyId,
+        userId: task.userId
+      });
+      
+      // Validação crítica: tarefas privadas DEVEM ter familyId = null
+      if (taskToSave.familyId !== null) {
+        console.error('❌ ERRO CRÍTICO: Tarefa privada com familyId não-null!', taskToSave);
+        throw new Error('Tarefas privadas devem ter familyId = null');
+      }
+    }
+
     try {
       if (task.id) {
         const ref = doc(firebaseFirestore() as any, 'tasks', task.id);

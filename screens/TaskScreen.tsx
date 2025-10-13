@@ -306,6 +306,17 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       createdByName: task.createdByName,
     };
 
+    // Log para debug de tarefas privadas
+    if ((task as any)?.private === true) {
+      console.log('🔒 Tarefa PRIVADA detectada:', {
+        id: remoteTask.id,
+        title: remoteTask.title,
+        private: remoteTask.private,
+        familyId: remoteTask.familyId,
+        userId: remoteTask.userId
+      });
+    }
+
     console.log('📤 Dados preparados para envio remota:', {
       id: remoteTask.id,
       title: remoteTask.title,

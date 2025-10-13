@@ -84,10 +84,17 @@ service cloud.firestore {
         && (request.resource.data.private != true || request.resource.data.familyId == null);
 
       allow get, list: if isAuthenticated() && (
-        // Tarefas privadas (familyId == null): apenas o criador pode ver
-        (resource.data.familyId == null && resource.data.userId == authId())
-        // Tarefas da família (familyId != null): membros podem ver
-        || (resource.data.familyId != null && isMemberOf(resource.data.familyId))
+        // Tarefas privadas (familyId == null OU private == true): apenas o criador pode ver
+        (
+          (resource.data.familyId == null || resource.data.private == true) 
+          && resource.data.userId == authId()
+        )
+        // Tarefas da família (familyId != null E private != true): membros podem ver
+        || (
+          resource.data.familyId != null 
+          && resource.data.private != true 
+          && isMemberOf(resource.data.familyId)
+        )
       );
 
       allow update: if isAuthenticated() && (
