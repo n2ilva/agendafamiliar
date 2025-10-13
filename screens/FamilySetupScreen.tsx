@@ -16,6 +16,7 @@ import Alert from '../utils/Alert';
 
 interface Props {
   onFamilySetup: (familyId: string) => void;
+  onLogout: () => void;
   userEmail: string;
   userName: string;
   userId: string;
@@ -23,7 +24,7 @@ interface Props {
 
 type SetupStep = 'choose' | 'create-family' | 'join-family';
 
-export default function FamilySetupScreen({ onFamilySetup, userEmail, userName, userId }: Props) {
+export default function FamilySetupScreen({ onFamilySetup, onLogout, userEmail, userName, userId }: Props) {
   const [currentStep, setCurrentStep] = useState<SetupStep>('choose');
   const [familyName, setFamilyName] = useState('');
   const [familyCode, setFamilyCode] = useState('');
@@ -165,6 +166,18 @@ export default function FamilySetupScreen({ onFamilySetup, userEmail, userName, 
           </Text>
         </Pressable>
       </View>
+
+      {/* Botão para voltar ao login */}
+      <Pressable
+        style={({ pressed }) => [
+          styles.logoutButton,
+          pressed && { opacity: 0.7 }
+        ]}
+        onPress={onLogout}
+      >
+        <Ionicons name="log-out-outline" size={20} color="#666" />
+        <Text style={styles.logoutButtonText}>Entrar com outro email</Text>
+      </Pressable>
     </View>
   );
 
@@ -389,5 +402,23 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     color: '#007AFF',
+  },
+  logoutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 30,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    backgroundColor: '#f5f5f5',
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  logoutButtonText: {
+    fontSize: 14,
+    color: '#666',
+    marginLeft: 8,
+    fontWeight: '500',
   },
 });

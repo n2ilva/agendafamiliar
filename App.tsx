@@ -227,6 +227,7 @@ export default function App() {
         ) : (
           <FamilySetupScreen
             onFamilySetup={handleFamilySetup}
+            onLogout={handleLogout}
             userEmail={user.email || ''}
             userName={user.name}
             userId={user.id}
