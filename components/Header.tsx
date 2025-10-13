@@ -320,11 +320,6 @@ export const Header: React.FC<HeaderProps> = ({
                   <Text style={styles.menuText}>Manual e Informações</Text>
                 </Pressable>
                 <View style={styles.menuSeparator} />
-                <Pressable onPress={() => { setMenuVisible(false); onSettings(); }} style={styles.menuItem}>
-                  <Ionicons name="sync-outline" size={18} color="#333" />
-                  <Text style={styles.menuText}>Atualizar Dados</Text>
-                </Pressable>
-                <View style={styles.menuSeparator} />
                 {/* Logout no final do menu */}
                 <Pressable onPress={() => { setMenuVisible(false); handleLogout(); }} style={styles.menuItem}>
                   <Ionicons name="log-out-outline" size={18} color="#e74c3c" />
