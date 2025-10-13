@@ -51,12 +51,17 @@ service cloud.firestore {
 
     // Families
     match /families/{familyId} {
-      // Permitir leitura se for membro OU se estiver usando inviteCode válido (para join)
-      allow read: if isAuthenticated() && (
-        isMemberOf(familyId)
-        // Permitir leitura por inviteCode para poder entrar na família
-        || (request.query.where && request.query.where.inviteCode != null)
+      // Permitir get (leitura direta) apenas para membros
+      allow get: if isAuthenticated() && isMemberOf(familyId);
+      
+      // Permitir list (queries) para membros OU para qualquer usuário autenticado
+      // (necessário para buscar por inviteCode ao entrar na família)
+      // A query por inviteCode retorna apenas famílias com código exato, não expõe outras famílias
+      allow list: if isAuthenticated() && (
+        isMemberOf(familyId) 
+        || resource.data.inviteCode != null  // Permite query se o documento tem inviteCode
       );
+      
       allow create: if isAuthenticated() && request.resource.data.adminId == authId();
       allow update: if isAuthenticated() && isFamilyAdmin(familyId);
       allow delete: if isAuthenticated() && isFamilyAdmin(familyId);

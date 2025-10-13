@@ -28,8 +28,22 @@ export default function FamilySetupScreen({ onFamilySetup, userEmail, userName, 
   const [familyName, setFamilyName] = useState('');
   const [familyCode, setFamilyCode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  // estado temporário para exibir inviteCode na UI (para testes manuais)
   const [lastInviteCode, setLastInviteCode] = useState<string | null>(null);
+
+  // Validação do código da família: apenas caracteres alfanuméricos válidos (evitando ambiguidade)
+  // Formato: 6 caracteres (A-Z, 2-9, sem 0, 1, I, O para evitar confusão)
+  const handleCodeChange = (text: string) => {
+    // Remove caracteres inválidos e limita a 6 caracteres
+    const validChars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+    const filtered = text
+      .toUpperCase()
+      .split('')
+      .filter(char => validChars.includes(char))
+      .slice(0, 6)
+      .join('');
+    
+    setFamilyCode(filtered);
+  };
 
   const handleRoleSelection = (role: 'admin' | 'dependent') => {
     if (role === 'admin') {
@@ -319,11 +333,12 @@ export default function FamilySetupScreen({ onFamilySetup, userEmail, userName, 
       <View style={styles.formContainer}>
         <TextInput
           style={styles.input}
-          placeholder="Código da família"
+          placeholder="Código da família (6 caracteres)"
           value={familyCode}
-          onChangeText={(text) => setFamilyCode(text.toUpperCase())}
-          maxLength={20}
+          onChangeText={handleCodeChange}
+          maxLength={6}
           autoCapitalize="characters"
+          autoCorrect={false}
         />
 
         <Pressable
@@ -356,11 +371,12 @@ export default function FamilySetupScreen({ onFamilySetup, userEmail, userName, 
       <View style={styles.formContainer}>
         <TextInput
           style={styles.input}
-          placeholder="Código da família"
+          placeholder="Código da família (6 caracteres)"
           value={familyCode}
-          onChangeText={(text) => setFamilyCode(text.toUpperCase())}
-          maxLength={20}
+          onChangeText={handleCodeChange}
+          maxLength={6}
           autoCapitalize="characters"
+          autoCorrect={false}
         />
 
         <Pressable
