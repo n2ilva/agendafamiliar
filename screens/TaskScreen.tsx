@@ -241,7 +241,6 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   
   // Estado para modal de configurações
   const [settingsModalVisible, setSettingsModalVisible] = useState(false);
-  const [manualModalVisible, setManualModalVisible] = useState(false);
   
   // Estado para atualização automática
   const [lastUpdate, setLastUpdate] = useState(new Date());
@@ -2553,22 +2552,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     setSettingsModalVisible(true);
   };
 
-  const handleShowHistory = () => {
-    setSettingsModalVisible(false);
-    setHistoryModalVisible(true);
-  };
-
   const handleUpdateData = () => {
     setSettingsModalVisible(false);
     forceRefresh();
-  };
-
-  const handleOpenManual = () => {
-    setSettingsModalVisible(false);
-    setManualModalVisible(true);
-  };
-  const handleCloseManual = () => {
-    setManualModalVisible(false);
   };
 
   const handleSystemInfo = () => {
@@ -3487,103 +3473,12 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         </View>
       )}
 
-      {/* Modal de Configurações */}
+      {/* Modal de Manual e Informações */}
       <Modal
         animationType="fade"
         transparent={true}
         visible={settingsModalVisible}
         onRequestClose={() => setSettingsModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, styles.settingsModalContent]}>
-            <Text style={styles.modalTitle}>Configurações</Text>
-
-            <ScrollView
-              style={{ flexGrow: 0 }}
-              contentContainerStyle={{ paddingBottom: 150 }}
-              showsVerticalScrollIndicator={true}
-            >
-              <View style={styles.settingsOptions}>
-                <Pressable 
-                  style={styles.settingsOption}
-                  onPress={handleShowHistory}
-                >
-                  <Ionicons name="time-outline" size={24} color="#007AFF" />
-                  <Text style={styles.settingsOptionText}>Histórico</Text>
-                  <Ionicons name="chevron-forward" size={20} color="#ccc" />
-                </Pressable>
-
-                <Pressable 
-                  style={styles.settingsOption}
-                  onPress={handleOpenManual}
-                >
-                  <Ionicons name="book-outline" size={24} color="#007AFF" />
-                  <Text style={styles.settingsOptionText}>Manual</Text>
-                  <Ionicons name="chevron-forward" size={20} color="#ccc" />
-                </Pressable>
-              </View>
-            </ScrollView>
-
-            {/* Botão de atualizar removido do modal de Configurações (foi movido para a tela principal) */}
-
-            <Pressable
-              style={[styles.closeButton, styles.closeButtonFixed]}
-              onPress={() => setSettingsModalVisible(false)}
-            >
-              <Text style={styles.closeButtonText}>Fechar</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Modal do Histórico */}
-      <Modal
-        visible={historyModalVisible}
-        animationType="slide"
-        presentationStyle="pageSheet"
-      >
-        <SafeAreaView style={styles.container}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Informações</Text>
-
-            <Text style={styles.historySubtitle}>
-              Últimas ações realizadas (15 dias)
-            </Text>
-
-            {history.length === 0 ? (
-              <View style={styles.emptyHistoryContainer}>
-                <Ionicons name="time-outline" size={64} color="#ccc" />
-                <Text style={styles.emptyHistoryText}>Nenhuma ação registrada</Text>
-                <Text style={styles.emptyHistorySubtext}>
-                  As ações realizadas nas tarefas aparecerão aqui
-                </Text>
-              </View>
-            ) : (
-              <FlatList
-                data={history}
-                keyExtractor={(item) => item.id}
-                showsVerticalScrollIndicator={false}
-                renderItem={renderHistoryItem}
-              />
-            )}
-            
-            {/* Botão de fechar no final do modal */}
-            <Pressable 
-              style={styles.closeModalButton}
-              onPress={() => setHistoryModalVisible(false)}
-            >
-              <Text style={styles.closeModalButtonText}>Fechar</Text>
-            </Pressable>
-          </View>
-        </SafeAreaView>
-      </Modal>
-
-      {/* Modal do Manual */}
-      <Modal
-        animationType="fade"
-        transparent={true}
-        visible={manualModalVisible}
-        onRequestClose={handleCloseManual}
       >
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, styles.manualModalContent]}>
@@ -3642,12 +3537,54 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
 
             <Pressable
               style={[styles.closeButton, styles.closeButtonFixed]}
-              onPress={handleCloseManual}
+              onPress={() => setSettingsModalVisible(false)}
             >
               <Text style={styles.closeButtonText}>Fechar</Text>
             </Pressable>
           </View>
         </View>
+      </Modal>
+
+      {/* Modal do Histórico */}
+      <Modal
+        visible={historyModalVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+      >
+        <SafeAreaView style={styles.container}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Informações</Text>
+
+            <Text style={styles.historySubtitle}>
+              Últimas ações realizadas (15 dias)
+            </Text>
+
+            {history.length === 0 ? (
+              <View style={styles.emptyHistoryContainer}>
+                <Ionicons name="time-outline" size={64} color="#ccc" />
+                <Text style={styles.emptyHistoryText}>Nenhuma ação registrada</Text>
+                <Text style={styles.emptyHistorySubtext}>
+                  As ações realizadas nas tarefas aparecerão aqui
+                </Text>
+              </View>
+            ) : (
+              <FlatList
+                data={history}
+                keyExtractor={(item) => item.id}
+                showsVerticalScrollIndicator={false}
+                renderItem={renderHistoryItem}
+              />
+            )}
+            
+            {/* Botão de fechar no final do modal */}
+            <Pressable 
+              style={styles.closeModalButton}
+              onPress={() => setHistoryModalVisible(false)}
+            >
+              <Text style={styles.closeModalButtonText}>Fechar</Text>
+            </Pressable>
+          </View>
+        </SafeAreaView>
       </Modal>
 
       {/* Modal de Aprovação para Admins */}
