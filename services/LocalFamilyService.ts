@@ -169,27 +169,49 @@ class LocalFamilyService {
   async joinFamily(inviteCode: string, user: FamilyUser): Promise<Family> {
     try {
       console.log('🔍 Buscando família com código:', inviteCode);
+      console.log('👤 Usuário tentando entrar:', user.id, user.name);
+      
       const db = this.getFirestore();
       const familiesRef = collection(db, 'families');
-      const q = query(familiesRef, where('inviteCode', '==', inviteCode.toUpperCase()));
+      const searchCode = inviteCode.trim().toUpperCase();
+      console.log('🔎 Código de busca (normalizado):', searchCode);
+      
+      const q = query(familiesRef, where('inviteCode', '==', searchCode));
+      
+      console.log('📡 Executando query no Firestore...');
       const querySnap = await getDocs(q);
+      console.log(`📊 Resultados encontrados: ${querySnap.size}`);
 
       if (querySnap.empty) {
-        throw new Error('Código de convite inválido');
+        console.error('❌ Nenhuma família encontrada com o código:', searchCode);
+        throw new Error('Código de convite inválido ou família não encontrada');
       }
 
       const familyDoc = querySnap.docs[0];
       const familyData = familyDoc.data();
+      console.log('✅ Família encontrada:', familyDoc.id, familyData.name);
 
       // Verificar expiração
       if (familyData.inviteCodeExpiry) {
         const expiry = familyData.inviteCodeExpiry.toDate?.() || new Date(familyData.inviteCodeExpiry);
+        console.log('📅 Verificando expiração. Expira em:', expiry);
         if (Date.now() > expiry.getTime()) {
+          console.error('⏰ Código expirado!');
           throw new Error('Código de convite expirado');
         }
       }
 
+      // Verificar se o usuário já é membro
+      const existingMemberRef = doc(db, 'families', familyDoc.id, 'members', user.id);
+      const existingMemberSnap = await getDoc(existingMemberRef);
+      
+      if (existingMemberSnap.exists()) {
+        console.log('ℹ️ Usuário já é membro desta família');
+        return this.getFamilyById(familyDoc.id) as Promise<Family>;
+      }
+
       // Adicionar membro na subcoleção
+      console.log('➕ Adicionando usuário como membro...');
       const memberRef = doc(db, 'families', familyDoc.id, 'members', user.id);
       await setDoc(memberRef, {
         ...user,
@@ -202,7 +224,10 @@ class LocalFamilyService {
       return this.getFamilyById(familyDoc.id) as Promise<Family>;
     } catch (error) {
       console.error('❌ Erro ao entrar na família:', error);
-      throw error;
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error('Erro ao entrar na família. Verifique sua conexão.');
     }
   }
 
