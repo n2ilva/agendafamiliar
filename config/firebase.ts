@@ -6,9 +6,6 @@ import { getStorage } from 'firebase/storage';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// @ts-ignore - Exportação pode variar conforme versão do Firebase
-import { getReactNativePersistence } from '@firebase/auth/dist/rn/index.js';
-
 const firebaseConfig = {
   apiKey: 'AIzaSyB1_83WDBh63SHS8BUofcIz6uA5wUGOvBo',
   authDomain: 'agenda-familiar-472905.firebaseapp.com',
@@ -48,9 +45,30 @@ function getFirebaseAuth() {
   try {
     if (Platform.OS !== 'web') {
       try {
-        _auth = initializeAuth(app, {
-          persistence: getReactNativePersistence(AsyncStorage)
-        });
+        // Evita import estático que quebra no ambiente de testes (Node/Jest)
+        // Tenta obter getReactNativePersistence dinamicamente
+        let rnAuthModule: any = null;
+        try {
+          rnAuthModule = require('firebase/auth/react-native');
+        } catch (e) {
+          // fallback para caminhos antigos (casos raros)
+          try {
+            rnAuthModule = require('@firebase/auth/dist/rn/index.js');
+          } catch (_ignored) {
+            rnAuthModule = null;
+          }
+        }
+
+        const getRNPersistence = rnAuthModule?.getReactNativePersistence;
+
+        if (typeof getRNPersistence === 'function') {
+          _auth = initializeAuth(app, {
+            persistence: getRNPersistence(AsyncStorage)
+          });
+        } else {
+          // Se não conseguir carregar a persistência RN, recorre ao getAuth simples
+          _auth = getAuth(app);
+        }
         console.log('✅ Firebase Auth inicializado com persistência React Native');
       } catch (error: any) {
         if (error?.code === 'auth/already-initialized') {

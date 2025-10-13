@@ -43,6 +43,20 @@ function ensureFamilyId(val: string | null | undefined) {
 }
 
 export const FirestoreService = {
+  // Verifica se um usuário é admin de uma família
+  async checkIsFamilyAdmin(familyId: string | null | undefined, userId?: string): Promise<boolean> {
+    try {
+      if (!familyId || !userId) return false;
+      const db = firebaseFirestore() as any;
+      const famRef = doc(db, 'families', familyId);
+      const famSnap = await getDoc(famRef);
+      if (!famSnap.exists()) return false;
+      const data: any = famSnap.data();
+      return data && data.adminId === userId;
+    } catch {
+      return false;
+    }
+  },
   // Save or update a task. If task.id is provided, write to that doc, otherwise add a new doc.
   async saveTask(task: RemoteTask) {
     const taskToSave = {
@@ -87,7 +101,24 @@ export const FirestoreService = {
   },
 
   async deleteTask(taskId: string) {
-  const ref = doc(firebaseFirestore() as any, 'tasks', taskId);
+    const auth = firebaseAuth() as any;
+    const currentUserId = auth.currentUser?.uid || auth.currentUser?.id;
+    const db = firebaseFirestore() as any;
+    const ref = doc(db, 'tasks', taskId);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) return;
+    const data: any = snap.data();
+    const isPrivate = data.familyId == null || data.private === true;
+
+    if (!isPrivate) {
+      // Tarefa da família: apenas admin pode excluir
+      const canAdmin = await this.checkIsFamilyAdmin(data.familyId, currentUserId);
+      if (!canAdmin) throw new Error('permission-denied');
+    } else if (data.userId !== currentUserId) {
+      // Tarefa privada: apenas o autor pode excluir
+      throw new Error('permission-denied');
+    }
+
     await deleteDoc(ref);
   },
 

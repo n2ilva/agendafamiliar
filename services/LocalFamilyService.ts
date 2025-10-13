@@ -64,6 +64,15 @@ class LocalFamilyService {
 
       console.log('✅ Família criada no Firestore:', familyId);
 
+      // Criar mapeamento público inviteCodes -> família para lookup sem listar families
+      const inviteMapRef = doc(db, 'inviteCodes', inviteCode);
+      await setDoc(inviteMapRef, {
+        code: inviteCode,
+        familyId: familyId,
+        createdAt: Timestamp.fromDate(now),
+        expiry: Timestamp.fromDate(expiry)
+      });
+
       // Adicionar admin como membro
       const memberRef = doc(db, `families/${familyId}/members`, adminUser.id);
       await setDoc(memberRef, {
@@ -172,28 +181,23 @@ class LocalFamilyService {
       console.log('👤 Usuário tentando entrar:', user.id, user.name);
       
       const db = this.getFirestore();
-      const familiesRef = collection(db, 'families');
       const searchCode = inviteCode.trim().toUpperCase();
       console.log('🔎 Código de busca (normalizado):', searchCode);
-      
-      const q = query(familiesRef, where('inviteCode', '==', searchCode));
-      
-      console.log('📡 Executando query no Firestore...');
-      const querySnap = await getDocs(q);
-      console.log(`📊 Resultados encontrados: ${querySnap.size}`);
 
-      if (querySnap.empty) {
-        console.error('❌ Nenhuma família encontrada com o código:', searchCode);
+      // Buscar mapeamento do código em inviteCodes/{code}
+      const inviteMapRef = doc(db, 'inviteCodes', searchCode);
+      const inviteSnap = await getDoc(inviteMapRef);
+      if (!inviteSnap.exists()) {
+        console.error('❌ Código não encontrado no índice público');
         throw new Error('Código de convite inválido ou família não encontrada');
       }
+      const inviteData = inviteSnap.data() as { familyId: string; expiry?: any };
+      const familyId = inviteData.familyId;
+      console.log('✅ Código aponta para família:', familyId);
 
-      const familyDoc = querySnap.docs[0];
-      const familyData = familyDoc.data();
-      console.log('✅ Família encontrada:', familyDoc.id, familyData.name);
-
-      // Verificar expiração
-      if (familyData.inviteCodeExpiry) {
-        const expiry = familyData.inviteCodeExpiry.toDate?.() || new Date(familyData.inviteCodeExpiry);
+      // Verificar expiração no mapeamento
+      if (inviteData.expiry) {
+        const expiry = inviteData.expiry.toDate?.() || new Date(inviteData.expiry);
         console.log('📅 Verificando expiração. Expira em:', expiry);
         if (Date.now() > expiry.getTime()) {
           console.error('⏰ Código expirado!');
@@ -201,27 +205,39 @@ class LocalFamilyService {
         }
       }
 
+      // Buscar dados básicos da família para logs e consistência
+      const familyRef = doc(db, 'families', familyId);
+      const familySnap = await getDoc(familyRef);
+      if (!familySnap.exists()) {
+        console.error('❌ Família não encontrada para o código');
+        throw new Error('Família não encontrada');
+      }
+      const familyData = familySnap.data();
+      console.log('🏷️ Família:', familyId, familyData?.name);
+
       // Verificar se o usuário já é membro
-      const existingMemberRef = doc(db, 'families', familyDoc.id, 'members', user.id);
+      const existingMemberRef = doc(db, 'families', familyId, 'members', user.id);
       const existingMemberSnap = await getDoc(existingMemberRef);
       
       if (existingMemberSnap.exists()) {
         console.log('ℹ️ Usuário já é membro desta família');
-        return this.getFamilyById(familyDoc.id) as Promise<Family>;
+        return this.getFamilyById(familyId) as Promise<Family>;
       }
 
       // Adicionar membro na subcoleção
       console.log('➕ Adicionando usuário como membro...');
-      const memberRef = doc(db, 'families', familyDoc.id, 'members', user.id);
+      const memberRef = doc(db, 'families', familyId, 'members', user.id);
       await setDoc(memberRef, {
         ...user,
         role: 'dependente',
-        familyId: familyDoc.id,
-        joinedAt: Timestamp.now()
+        familyId: familyId,
+        joinedAt: Timestamp.now(),
+        // incluir inviteCode para atender a validação nas regras
+        inviteCode: searchCode
       });
 
-      console.log('✅ Usuário adicionado à família:', familyDoc.id);
-      return this.getFamilyById(familyDoc.id) as Promise<Family>;
+      console.log('✅ Usuário adicionado à família:', familyId);
+      return this.getFamilyById(familyId) as Promise<Family>;
     } catch (error) {
       console.error('❌ Erro ao entrar na família:', error);
       if (error instanceof Error) {

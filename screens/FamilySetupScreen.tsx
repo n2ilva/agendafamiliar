@@ -21,10 +21,10 @@ interface Props {
   userId: string;
 }
 
-type SetupStep = 'select-role' | 'admin-options' | 'create-family' | 'join-family' | 'dependent-join';
+type SetupStep = 'choose' | 'create-family' | 'join-family';
 
 export default function FamilySetupScreen({ onFamilySetup, userEmail, userName, userId }: Props) {
-  const [currentStep, setCurrentStep] = useState<SetupStep>('select-role');
+  const [currentStep, setCurrentStep] = useState<SetupStep>('choose');
   const [familyName, setFamilyName] = useState('');
   const [familyCode, setFamilyCode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -45,20 +45,8 @@ export default function FamilySetupScreen({ onFamilySetup, userEmail, userName, 
     setFamilyCode(filtered);
   };
 
-  const handleRoleSelection = (role: 'admin' | 'dependent') => {
-    if (role === 'admin') {
-      setCurrentStep('admin-options');
-    } else {
-      setCurrentStep('dependent-join');
-    }
-  };
-
-  const handleAdminOption = (option: 'create' | 'join') => {
-    if (option === 'create') {
-      setCurrentStep('create-family');
-    } else {
-      setCurrentStep('join-family');
-    }
+  const goTo = (option: 'create' | 'join') => {
+    setCurrentStep(option === 'create' ? 'create-family' : 'join-family');
   };
 
   const handleCreateFamily = async () => {
@@ -104,7 +92,7 @@ export default function FamilySetupScreen({ onFamilySetup, userEmail, userName, 
     }
   };
 
-  const handleJoinAsAdmin = async () => {
+  const handleJoin = async () => {
     if (!familyCode.trim()) {
       Alert.alert('Erro', 'Por favor, insira o código da família');
       return;
@@ -112,51 +100,7 @@ export default function FamilySetupScreen({ onFamilySetup, userEmail, userName, 
 
     setIsLoading(true);
     try {
-      console.log('🏠 Entrando na família como segundo admin...');
-      
-      await familyService.joinFamily(familyCode.trim(), {
-        id: userId,
-        email: userEmail,
-        name: userName,
-        role: 'admin' as UserRole,
-        isGuest: false,
-        joinedAt: new Date(),
-      });
-
-      // Buscar a família do usuário
-      const joinedFamily = await familyService.getUserFamily(userId);
-
-      Alert.alert(
-        'Sucesso!',
-        'Você entrou na família como administrador.',
-        [
-          {
-            text: 'OK',
-            onPress: () => {
-              console.log('✅ Usuário adicionado como segundo admin');
-              onFamilySetup(joinedFamily?.id || '');
-            }
-          }
-        ]
-      );
-    } catch (error) {
-      console.error('❌ Erro ao entrar na família:', error);
-      Alert.alert('Erro', 'Código da família inválido ou família não encontrada.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleJoinAsDependent = async () => {
-    if (!familyCode.trim()) {
-      Alert.alert('Erro', 'Por favor, insira o código da família');
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      console.log('👶 Entrando na família como dependente...');
-      
+      console.log('� Entrando na família como dependente...');
       await familyService.joinFamily(familyCode.trim(), {
         id: userId,
         email: userEmail,
@@ -166,22 +110,14 @@ export default function FamilySetupScreen({ onFamilySetup, userEmail, userName, 
         joinedAt: new Date(),
       });
 
-      // Buscar a família do usuário
       const joinedFamily = await familyService.getUserFamily(userId);
 
-      Alert.alert(
-        'Sucesso!',
-        'Você entrou na família como dependente.',
-        [
-          {
-            text: 'OK',
-            onPress: () => {
-              console.log('✅ Usuário adicionado como dependente');
-              onFamilySetup(joinedFamily?.id || '');
-            }
-          }
-        ]
-      );
+      Alert.alert('Sucesso!', 'Você entrou na família.', [
+        {
+          text: 'OK',
+          onPress: () => onFamilySetup(joinedFamily?.id || '')
+        }
+      ]);
     } catch (error) {
       console.error('❌ Erro ao entrar na família:', error);
       Alert.alert('Erro', 'Código da família inválido ou família não encontrada.');
@@ -190,12 +126,12 @@ export default function FamilySetupScreen({ onFamilySetup, userEmail, userName, 
     }
   };
 
-  const renderSelectRole = () => (
+  const renderChoose = () => (
     <View style={styles.container}>
       <View style={styles.header}>
         <Ionicons name="people" size={60} color="#007AFF" />
-        <Text style={styles.title}>Configurar Perfil</Text>
-        <Text style={styles.subtitle}>Escolha como você deseja usar o aplicativo:</Text>
+        <Text style={styles.title}>Bem-vindo!</Text>
+        <Text style={styles.subtitle}>Escolha uma opção para começar:</Text>
       </View>
 
       <View style={styles.optionsContainer}>
@@ -204,13 +140,13 @@ export default function FamilySetupScreen({ onFamilySetup, userEmail, userName, 
             styles.roleOption,
             pressed && { opacity: 0.7, transform: [{ scale: 0.98 }] }
           ]}
-          onPress={() => handleRoleSelection('admin')}
+          onPress={() => goTo('create')}
           android_ripple={{ color: 'rgba(0, 122, 255, 0.1)' }}
         >
           <Ionicons name="person-circle" size={40} color="#007AFF" />
-          <Text style={styles.roleTitle}>Administrador</Text>
+          <Text style={styles.roleTitle}>Criar nova família</Text>
           <Text style={styles.roleDescription}>
-            Criar nova família ou entrar como segundo administrador
+            Crie uma nova família e seja o administrador
           </Text>
         </Pressable>
 
@@ -219,53 +155,13 @@ export default function FamilySetupScreen({ onFamilySetup, userEmail, userName, 
             styles.roleOption,
             pressed && { opacity: 0.7, transform: [{ scale: 0.98 }] }
           ]}
-          onPress={() => handleRoleSelection('dependent')}
+          onPress={() => goTo('join')}
           android_ripple={{ color: 'rgba(52, 199, 89, 0.1)' }}
         >
           <Ionicons name="person" size={40} color="#34C759" />
-          <Text style={styles.roleTitle}>Dependente</Text>
+          <Text style={styles.roleTitle}>Entrar em uma família</Text>
           <Text style={styles.roleDescription}>
-            Entrar em uma família existente usando código
-          </Text>
-        </Pressable>
-      </View>
-    </View>
-  );
-
-  const renderAdminOptions = () => (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <Pressable
-          style={styles.backButton}
-          onPress={() => setCurrentStep('select-role')}
-        >
-          <Ionicons name="arrow-back" size={24} color="#007AFF" />
-        </Pressable>
-        <Ionicons name="person-circle" size={60} color="#007AFF" />
-        <Text style={styles.title}>Administrador</Text>
-        <Text style={styles.subtitle}>Escolha uma opção:</Text>
-      </View>
-
-      <View style={styles.optionsContainer}>
-        <Pressable
-          style={styles.roleOption}
-          onPress={() => handleAdminOption('create')}
-        >
-          <Ionicons name="add-circle" size={40} color="#007AFF" />
-          <Text style={styles.roleTitle}>Criar Nova Família</Text>
-          <Text style={styles.roleDescription}>
-            Criar uma nova família e ser o primeiro administrador
-          </Text>
-        </Pressable>
-
-        <Pressable
-          style={styles.roleOption}
-          onPress={() => handleAdminOption('join')}
-        >
-          <Ionicons name="enter" size={40} color="#FF9500" />
-          <Text style={styles.roleTitle}>Entrar como Segundo Admin</Text>
-          <Text style={styles.roleDescription}>
-            Entrar em uma família existente como administrador
+            Use o código da família para entrar como dependente
           </Text>
         </Pressable>
       </View>
@@ -277,7 +173,7 @@ export default function FamilySetupScreen({ onFamilySetup, userEmail, userName, 
       <View style={styles.header}>
         <Pressable
           style={styles.backButton}
-          onPress={() => setCurrentStep('admin-options')}
+          onPress={() => setCurrentStep('choose')}
         >
           <Ionicons name="arrow-back" size={24} color="#007AFF" />
         </Pressable>
@@ -321,12 +217,12 @@ export default function FamilySetupScreen({ onFamilySetup, userEmail, userName, 
       <View style={styles.header}>
         <Pressable
           style={styles.backButton}
-          onPress={() => setCurrentStep('admin-options')}
+          onPress={() => setCurrentStep('choose')}
         >
           <Ionicons name="arrow-back" size={24} color="#007AFF" />
         </Pressable>
         <Ionicons name="enter" size={60} color="#FF9500" />
-        <Text style={styles.title}>Entrar como Admin</Text>
+        <Text style={styles.title}>Entrar na Família</Text>
         <Text style={styles.subtitle}>Insira o código da família:</Text>
       </View>
 
@@ -343,45 +239,7 @@ export default function FamilySetupScreen({ onFamilySetup, userEmail, userName, 
 
         <Pressable
           style={[styles.primaryButton, isLoading && styles.disabledButton]}
-          onPress={handleJoinAsAdmin}
-          disabled={isLoading}
-        >
-          <Text style={styles.primaryButtonText}>
-            {isLoading ? 'Entrando...' : 'Entrar na Família'}
-          </Text>
-        </Pressable>
-      </View>
-    </View>
-  );
-
-  const renderDependentJoin = () => (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <Pressable
-          style={styles.backButton}
-          onPress={() => setCurrentStep('select-role')}
-        >
-          <Ionicons name="arrow-back" size={24} color="#007AFF" />
-        </Pressable>
-        <Ionicons name="person" size={60} color="#34C759" />
-        <Text style={styles.title}>Entrar na Família</Text>
-        <Text style={styles.subtitle}>Insira o código fornecido pelo administrador:</Text>
-      </View>
-
-      <View style={styles.formContainer}>
-        <TextInput
-          style={styles.input}
-          placeholder="Código da família (6 caracteres)"
-          value={familyCode}
-          onChangeText={handleCodeChange}
-          maxLength={6}
-          autoCapitalize="characters"
-          autoCorrect={false}
-        />
-
-        <Pressable
-          style={[styles.primaryButton, isLoading && styles.disabledButton]}
-          onPress={handleJoinAsDependent}
+          onPress={handleJoin}
           disabled={isLoading}
         >
           <Text style={styles.primaryButtonText}>
@@ -394,18 +252,14 @@ export default function FamilySetupScreen({ onFamilySetup, userEmail, userName, 
 
   const renderCurrentStep = () => {
     switch (currentStep) {
-      case 'select-role':
-        return renderSelectRole();
-      case 'admin-options':
-        return renderAdminOptions();
+      case 'choose':
+        return renderChoose();
       case 'create-family':
         return renderCreateFamily();
       case 'join-family':
         return renderJoinFamily();
-      case 'dependent-join':
-        return renderDependentJoin();
       default:
-        return renderSelectRole();
+        return renderChoose();
     }
   };
 

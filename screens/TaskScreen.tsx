@@ -1254,6 +1254,10 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   }, []);
 
   const editTask = useCallback((task: Task) => {
+    if (user.role === 'dependente') {
+      Alert.alert('Sem permissão', 'Somente administradores podem editar tarefas.');
+      return;
+    }
     setNewTaskTitle(task.title);
     setNewTaskDescription(task.description);
     setSelectedCategory(task.category);
@@ -1654,6 +1658,15 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   const toggleTask = useCallback(async (taskId: string) => {
     const task = tasks.find(t => t.id === taskId);
     if (!task) return;
+    // Dependente: só pode solicitar aprovação para concluir; não pode reabrir
+    if (user.role === 'dependente') {
+      if (!task.completed) {
+        await requestTaskApproval(task);
+      } else {
+        Alert.alert('Permissão necessária', 'Somente administradores podem reabrir tarefas.');
+      }
+      return;
+    }
     
     // Verificar se tarefa recorrente pode ser concluída
     if (!task.completed && task.repeat.type !== 'none') {
@@ -1680,9 +1693,13 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   }, [tasks, user, currentFamily, isOffline]);
 
   const handleTaskToggle = async (task: Task) => {
-    // Safety net: dependente não pode concluir diretamente sem aprovação
-    if (user.role === 'dependente' && !task.completed) {
-      await requestTaskApproval(task);
+    // Safety net adicional: dependente não altera diretamente
+    if (user.role === 'dependente') {
+      if (!task.completed) {
+        await requestTaskApproval(task);
+      } else {
+        Alert.alert('Permissão necessária', 'Somente administradores podem reabrir tarefas.');
+      }
       return;
     }
     let updatedTasks: Task[];
@@ -2446,6 +2463,10 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   };
 
   const deleteTask = useCallback((taskId: string) => {
+    if (user.role === 'dependente') {
+      Alert.alert('Sem permissão', 'Somente administradores podem excluir tarefas.');
+      return;
+    }
     const task = tasks.find(t => t.id === taskId);
     if (!task) return;
     

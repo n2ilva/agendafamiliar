@@ -54,24 +54,30 @@ service cloud.firestore {
       // Permitir get (leitura direta) apenas para membros
       allow get: if isAuthenticated() && isMemberOf(familyId);
       
-      // Permitir list (queries) para membros OU para qualquer usuário autenticado
-      // (necessário para buscar por inviteCode ao entrar na família)
-      // A query por inviteCode retorna apenas famílias com código exato, não expõe outras famílias
-      allow list: if isAuthenticated() && (
-        isMemberOf(familyId) 
-        || resource.data.inviteCode != null  // Permite query se o documento tem inviteCode
-      );
+      // Consultas à coleção de famílias (list) somente para membros.
+      // A entrada via código utiliza a coleção "inviteCodes" (abaixo) em vez de consultar famílias diretamente.
+      allow list: if isAuthenticated() && isMemberOf(familyId);
       
       allow create: if isAuthenticated() && request.resource.data.adminId == authId();
       allow update: if isAuthenticated() && isFamilyAdmin(familyId);
       allow delete: if isAuthenticated() && isFamilyAdmin(familyId);
 
       match /members/{memberId} {
+        // Permite ler o próprio membro ou qualquer membro se já for membro da família
         allow read: if isAuthenticated() && (memberId == authId() || isMemberOf(familyId));
+
+        // Permite criar o próprio documento de membro em três casos:
+        // 1) Já é membro (idempotente)
+        // 2) Admin da família
+        // 3) Possui um inviteCode válido que corresponda ao da família e não esteja expirado
         allow create: if isAuthenticated() && memberId == authId() && (
-          // Permitir que o admin da família se adicione como membro
-          get(/databases/$(database)/documents/families/$(familyId)).data.adminId == authId()
-          || isMemberOf(familyId)  // Ou membros existentes podem adicionar outros
+          isMemberOf(familyId)
+          || get(/databases/$(database)/documents/families/$(familyId)).data.adminId == authId()
+          || (
+            request.resource.data.inviteCode is string
+            && request.resource.data.inviteCode == get(/databases/$(database)/documents/families/$(familyId)).data.inviteCode
+            && get(/databases/$(database)/documents/families/$(familyId)).data.inviteCodeExpiry >= request.time
+          )
         );
         allow delete: if isAuthenticated() && (memberId == authId() || isFamilyAdmin(familyId));
       }
@@ -102,14 +108,24 @@ service cloud.firestore {
         )
       );
 
-      allow update: if isAuthenticated() && (
-        resource.data.userId == authId()
-        || isFamilyAdmin(resource.data.familyId)
-      ) && validTaskPayload(request.resource.data)
-      // Ao atualizar, se tornar privada deve ter familyId null
-      && (request.resource.data.private != true || request.resource.data.familyId == null);
+      // Dependente: pode criar, mas não pode editar/finalizar/excluir tarefas da família.
+      // Somente admin pode atualizar tarefas da família. Para tarefas privadas, o próprio autor pode atualizar.
+      allow update: if isAuthenticated()
+        && validTaskPayload(request.resource.data)
+        && (
+          // Tarefa privada (sem familyId): autor pode atualizar
+          (resource.data.familyId == null && resource.data.userId == authId())
+          // Tarefa da família: apenas admin pode atualizar
+          || (resource.data.familyId != null && isFamilyAdmin(resource.data.familyId))
+        )
+        // Ao atualizar, se marcar como privada, familyId deve ser null
+        && (request.resource.data.private != true || request.resource.data.familyId == null);
 
-      allow delete: if isAuthenticated() && (resource.data.userId == authId() || isFamilyAdmin(resource.data.familyId));
+      // Exclusão: somente admin em tarefas da família; em tarefas privadas, o autor pode excluir
+      allow delete: if isAuthenticated() && (
+        (resource.data.familyId == null && resource.data.userId == authId())
+        || isFamilyAdmin(resource.data.familyId)
+      );
     }
 
     // Approvals
@@ -164,5 +180,13 @@ service cloud.firestore {
 
     // Default fallback
     match /{document=**} { allow read, write: if false; }
+
+    // Mapeamento público de códigos de convite -> família
+    // Permite que usuários autenticados validem um código e encontrem a família sem expor dados sensíveis da família
+    match /inviteCodes/{code} {
+      allow get: if isAuthenticated();
+      // Não permitir list para evitar enumeração de códigos
+      allow list: if false;
+    }
   }
 }

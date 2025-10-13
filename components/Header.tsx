@@ -64,6 +64,12 @@ export const Header: React.FC<HeaderProps> = ({
   const [joinModalVisible, setJoinModalVisible] = useState(false);
   const [familyCode, setFamilyCode] = useState('');
   const [joinLoading, setJoinLoading] = useState(false);
+  const [codeError, setCodeError] = useState<string | null>(null);
+
+  const sanitizeInviteCode = (value: string) => {
+    // Mantém apenas A-Z e 0-9, converte para maiúsculas e limita a 6 chars
+    return value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 6);
+  };
 
   const handleImagePicker = async () => {
     console.log('📸 Iniciando seleção de imagem...');
@@ -182,18 +188,20 @@ export const Header: React.FC<HeaderProps> = ({
   const openJoinFamily = () => {
     setMenuVisible(false);
     setFamilyCode('');
+    setCodeError(null);
     setJoinModalVisible(true);
   };
 
   const handleJoinFamily = async () => {
-    if (!familyCode.trim()) {
-      Alert.alert('Código inválido', 'Digite o código da família.');
+    const code = sanitizeInviteCode(familyCode);
+    if (code.length !== 6) {
+      Alert.alert('Código inválido', 'O código deve ter exatamente 6 caracteres (A–Z e 0–9).');
       return;
     }
     if (!onJoinFamilyByCode) return;
     setJoinLoading(true);
     try {
-      await onJoinFamilyByCode(familyCode.trim());
+      await onJoinFamilyByCode(code);
       setJoinModalVisible(false);
       Alert.alert('Sucesso', 'Você entrou na nova família.');
     } catch (e: any) {
@@ -372,11 +380,21 @@ export const Header: React.FC<HeaderProps> = ({
             <TextInput
               style={styles.nameInput}
               value={familyCode}
-              onChangeText={setFamilyCode}
-              placeholder="Código da família"
+              onChangeText={(text) => {
+                const sanitized = sanitizeInviteCode(text);
+                setFamilyCode(sanitized);
+                if (sanitized.length > 0 && sanitized.length < 6) {
+                  setCodeError('O código deve ter 6 caracteres.');
+                } else {
+                  setCodeError(null);
+                }
+              }}
+              placeholder="Código da família (6 caracteres)"
               autoCapitalize="characters"
-              maxLength={8}
+              autoCorrect={false}
+              maxLength={6}
             />
+            {codeError ? <Text style={{ color: '#e74c3c', alignSelf: 'flex-start', marginTop: -12, marginBottom: 8 }}>{codeError}</Text> : null}
             <View style={styles.modalButtons}>
               <Pressable 
                 style={[styles.modalButton, styles.cancelButton]} 
@@ -386,9 +404,13 @@ export const Header: React.FC<HeaderProps> = ({
                 <Text style={styles.buttonText}>Cancelar</Text>
               </Pressable>
               <Pressable 
-                style={[styles.modalButton, styles.saveButton, joinLoading && styles.buttonDisabled]} 
+                style={[
+                  styles.modalButton,
+                  styles.saveButton,
+                  (joinLoading || sanitizeInviteCode(familyCode).length !== 6) && styles.buttonDisabled
+                ]} 
                 onPress={handleJoinFamily}
-                disabled={joinLoading}
+                disabled={joinLoading || sanitizeInviteCode(familyCode).length !== 6}
               >
                 {joinLoading ? (
                   <ActivityIndicator size="small" color="#fff" />

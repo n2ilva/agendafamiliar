@@ -4,6 +4,7 @@ import sharedMocks from './mocks';
 // Mock config/firebase para retornar factory compatível
 jest.mock('../config/firebase', () => ({
   firebaseFirestore: () => ({}),
+  firebaseAuth: () => ({ currentUser: { uid: 'u1' } })
 }));
 
 // Mock do SDK firestore usando mocks compartilhados
