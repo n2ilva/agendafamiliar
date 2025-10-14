@@ -3,7 +3,7 @@ import { FamilyUser, UserRole } from '../types/FamilyTypes';
 import { firebaseAuth, firebaseFirestore, firebaseStorage } from '../config/firebase';
 import { onAuthStateChanged, signOut, updateProfile } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 
 const USER_STORAGE_KEY = 'familyApp_currentUser';
 
@@ -318,7 +318,113 @@ class LocalAuthService {
   }
 
   static async deleteOldProfileImage(photoURL: string): Promise<void> {
-    // Não implementado em modo local
+    try {
+      if (!photoURL) return;
+      const storage = firebaseStorage() as any;
+      // Apenas deleta se for URL do bucket atual
+      if (/firebasestorage.googleapis.com/.test(photoURL)) {
+        // Extrair path depois de /o/ e antes de ?
+        const match = decodeURIComponent(photoURL).match(/\/o\/([^?]+)/);
+        const path = match ? match[1] : null;
+        if (path) {
+          const fileRef = ref(storage, path);
+          await deleteObject(fileRef);
+          console.log('🗑️ Foto antiga removida do Storage:', path);
+        }
+      }
+    } catch (e) {
+      console.warn('[LocalAuthService.deleteOldProfileImage] Falha ao deletar foto antiga:', e);
+    }
+  }
+
+  /**
+   * Define um ícone de perfil (sem upload de imagem). Remove referência de picture se existir.
+   */
+  static async setProfileIcon(iconName: string) {
+    const user = await this.getUserFromLocalStorage();
+    if (!user) return { success: false, error: 'Usuário não encontrado' } as const;
+    try {
+      // Atualiza Firestore users
+      try {
+        const db = firebaseFirestore() as any;
+        const userRef = doc(db, 'users', user.id);
+        const snap = await getDoc(userRef);
+        const payload: any = { profileIcon: iconName, updatedAt: new Date().toISOString() };
+        // Limpa picture (usaremos ícone)
+        payload.picture = null;
+        if (snap.exists()) {
+          await updateDoc(userRef, payload);
+        } else {
+          await setDoc(userRef, { id: user.id, email: user.email, name: user.name, ...payload }, { merge: true });
+        }
+      } catch (e) {
+        console.warn('[LocalAuthService.setProfileIcon] Falha ao atualizar Firestore users:', e);
+      }
+      // Atualiza membro da família
+      try {
+        if (user.familyId) {
+          const db = firebaseFirestore() as any;
+          const memberRef = doc(db, 'families', user.familyId, 'members', user.id);
+          await updateDoc(memberRef, { profileIcon: iconName, picture: null });
+        }
+      } catch (e) {
+        console.warn('[LocalAuthService.setProfileIcon] Falha ao atualizar membro da família:', e);
+      }
+      const updated = { ...user, profileIcon: iconName } as FamilyUser;
+      delete (updated as any).picture;
+      await this.saveUserToLocalStorage(updated);
+      return { success: true } as const;
+    } catch (error: any) {
+      return { success: false, error: error?.message || String(error) } as const;
+    }
+  }
+
+  /**
+   * Remove a foto de perfil atual (se existir) e limpa campos.
+   */
+  static async removeProfilePhoto() {
+    const user = await this.getUserFromLocalStorage();
+    if (!user) return { success: false, error: 'Usuário não encontrado' } as const;
+    const old = user.picture;
+    try {
+      if (old) await this.deleteOldProfileImage(old);
+      // Limpa Auth
+      try {
+        const auth = firebaseAuth() as any;
+        if (auth?.currentUser) {
+          await updateProfile(auth.currentUser, { photoURL: null });
+        }
+      } catch (e) {
+        console.warn('[LocalAuthService.removeProfilePhoto] Falha ao limpar photoURL Auth:', e);
+      }
+      // Firestore users
+      try {
+        const db = firebaseFirestore() as any;
+        const userRef = doc(db, 'users', user.id);
+        const snap = await getDoc(userRef);
+        if (snap.exists()) {
+          await updateDoc(userRef, { picture: null, updatedAt: new Date().toISOString() });
+        }
+      } catch (e) {
+        console.warn('[LocalAuthService.removeProfilePhoto] Falha ao limpar picture em users:', e);
+      }
+      // Membro da família
+      try {
+        if (user.familyId) {
+          const db = firebaseFirestore() as any;
+          const memberRef = doc(db, 'families', user.familyId, 'members', user.id);
+          await updateDoc(memberRef, { picture: null });
+        }
+      } catch (e) {
+        console.warn('[LocalAuthService.removeProfilePhoto] Falha ao limpar picture no membro:', e);
+      }
+      const updated = { ...user } as FamilyUser;
+      delete (updated as any).picture;
+      await this.saveUserToLocalStorage(updated);
+      return { success: true } as const;
+    } catch (error: any) {
+      return { success: false, error: error?.message || String(error) } as const;
+    }
   }
 
   static async updateUserRole(userId: string, newRole: UserRole) {

@@ -7,6 +7,8 @@ export interface FamilyUser {
   name: string;
   email?: string;
   picture?: string;
+  // Ícone alternativo (quando usuário não deseja foto). Ex: 'cat', 'dog', 'rocket'
+  profileIcon?: string;
   role: UserRole;
   isGuest: boolean;
   familyId?: string;

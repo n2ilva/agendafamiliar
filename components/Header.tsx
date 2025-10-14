@@ -18,6 +18,7 @@ import Alert from '../utils/Alert';
 interface HeaderProps {
   userName: string;
   userImage?: string;
+  userProfileIcon?: string;
   userRole?: UserRole;
   familyName?: string;
   familyId?: string;
@@ -41,6 +42,7 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({ 
   userName, 
   userImage,
+  userProfileIcon,
   userRole,
   familyName,
   familyId,
@@ -58,6 +60,9 @@ export const Header: React.FC<HeaderProps> = ({
   syncStatus,
 }) => {
   const [userImageLocal, setUserImageLocal] = useState<string | null>(userImage || null);
+  const [profileIconLocal, setProfileIconLocal] = useState<string | undefined>(userProfileIcon);
+  const [avatarActionsVisible, setAvatarActionsVisible] = useState(false);
+  const [iconPickerVisible, setIconPickerVisible] = useState(false);
   const [nameModalVisible, setNameModalVisible] = useState(false);
   const [profileModalVisible, setProfileModalVisible] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
@@ -115,6 +120,7 @@ export const Header: React.FC<HeaderProps> = ({
           if (uploadResult.success && uploadResult.photoURL) {
             // Atualizar com URL retornada pelo serviço
             setUserImageLocal(uploadResult.photoURL);
+            setProfileIconLocal(undefined); // limpamos ícone se existia
             
             // Notificar componente pai sobre mudança
             if (onUserImageChange) {
@@ -211,6 +217,56 @@ export const Header: React.FC<HeaderProps> = ({
     }
   };
 
+  const handleRemovePhoto = async () => {
+    try {
+      const result = await LocalAuthService.removeProfilePhoto();
+      if (result.success) {
+        setUserImageLocal(null);
+        Alert.alert('Sucesso', 'Foto removida.');
+      } else {
+        Alert.alert('Erro', result.error || 'Falha ao remover foto.');
+      }
+    } catch (e) {
+      Alert.alert('Erro', 'Erro inesperado ao remover foto.');
+    }
+  };
+
+  const AVAILABLE_ICONS = ['person','happy','planet','rocket','sparkles','leaf','paw','heart','star','game-controller','book','bicycle'];
+
+  const handleSelectIcon = async (icon: string) => {
+    try {
+      const result = await LocalAuthService.setProfileIcon(icon);
+      if (result.success) {
+        setProfileIconLocal(icon);
+        setUserImageLocal(null);
+        setIconPickerVisible(false);
+        Alert.alert('Sucesso', 'Ícone de perfil atualizado.');
+      } else {
+        Alert.alert('Erro', result.error || 'Não foi possível definir o ícone.');
+      }
+    } catch (e) {
+      Alert.alert('Erro', 'Erro ao definir ícone.');
+    }
+  };
+
+  const renderAvatar = () => {
+    if (userImageLocal) {
+      return <Image source={{ uri: userImageLocal }} style={styles.avatar} />;
+    }
+    if (profileIconLocal) {
+      return (
+        <View style={[styles.defaultAvatar, styles.iconAvatar]}> 
+          <Ionicons name={profileIconLocal as any} size={30} color="#007AFF" />
+        </View>
+      );
+    }
+    return (
+      <View style={styles.defaultAvatar}>
+        <Ionicons name="person" size={30} color="#666" />
+      </View>
+    );
+  };
+
   return (
     <>
       <View style={[
@@ -222,21 +278,15 @@ export const Header: React.FC<HeaderProps> = ({
             : styles.containerOffline
       ]}>
         <View style={styles.leftSection}>
-          <Pressable onPress={handleImagePicker} style={styles.avatarContainer} disabled={imageLoading}>
-            {userImageLocal ? (
-              <Image source={{ uri: userImageLocal }} style={styles.avatar} />
-            ) : (
-              <View style={styles.defaultAvatar}>
-                <Ionicons name="person" size={30} color="#666" />
-              </View>
-            )}
+          <Pressable onPress={() => setAvatarActionsVisible(true)} style={styles.avatarContainer} disabled={imageLoading}>
+            {renderAvatar()}
             {imageLoading ? (
               <View style={styles.loadingOverlay}>
                 <ActivityIndicator size="small" color="#fff" />
               </View>
             ) : (
               <View style={styles.editIconContainer}>
-                <Ionicons name="camera" size={12} color="#fff" />
+                <Ionicons name="create" size={12} color="#fff" />
               </View>
             )}
           </Pressable>
@@ -507,6 +557,64 @@ export const Header: React.FC<HeaderProps> = ({
                 onPress={handleRoleChange}
               >
                 <Text style={styles.saveButtonText}>Salvar</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      {/* Modal Ações Avatar */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={avatarActionsVisible}
+        onRequestClose={() => setAvatarActionsVisible(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Foto de Perfil</Text>
+            <View style={{ flexDirection: 'row', marginBottom: 16 }}>
+              {renderAvatar()}
+            </View>
+            <View style={styles.modalButtonsColumn}>
+              <Pressable style={[styles.fullWidthButton, styles.secondaryBtn]} onPress={() => { setAvatarActionsVisible(false); handleImagePicker(); }}>
+                <Text style={styles.buttonText}>Alterar Foto</Text>
+              </Pressable>
+              <Pressable style={[styles.fullWidthButton, styles.secondaryBtn]} onPress={() => { setAvatarActionsVisible(false); setIconPickerVisible(true); }}>
+                <Text style={styles.buttonText}>Escolher Ícone</Text>
+              </Pressable>
+              {userImageLocal && (
+                <Pressable style={[styles.fullWidthButton, styles.dangerBtn]} onPress={() => { setAvatarActionsVisible(false); handleRemovePhoto(); }}>
+                  <Text style={styles.buttonText}>Remover Foto</Text>
+                </Pressable>
+              )}
+              <Pressable style={[styles.fullWidthButton, styles.cancelBtn]} onPress={() => setAvatarActionsVisible(false)}>
+                <Text style={styles.cancelButtonText}>Fechar</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal Picker de Ícones */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={iconPickerVisible}
+        onRequestClose={() => setIconPickerVisible(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Escolher Ícone</Text>
+            <View style={styles.iconGrid}>
+              {AVAILABLE_ICONS.map(icon => (
+                <Pressable key={icon} style={styles.iconOption} onPress={() => handleSelectIcon(icon)}>
+                  <Ionicons name={icon as any} size={28} color={profileIconLocal === icon ? '#007AFF' : '#555'} />
+                </Pressable>
+              ))}
+            </View>
+            <View style={styles.modalButtons}>
+              <Pressable style={[styles.modalButton, styles.cancelButton]} onPress={() => setIconPickerVisible(false)}>
+                <Text style={styles.buttonText}>Cancelar</Text>
               </Pressable>
             </View>
           </View>
@@ -871,6 +979,46 @@ const styles = StyleSheet.create({
     height: 24,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  iconAvatar: {
+    backgroundColor: '#f0f7ff',
+    borderColor: '#d3e6ff',
+  },
+  modalButtonsColumn: {
+    width: '100%',
+    gap: 10,
+  },
+  fullWidthButton: {
+    width: '100%',
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  secondaryBtn: {
+    backgroundColor: '#007AFF',
+  },
+  dangerBtn: {
+    backgroundColor: '#e74c3c',
+  },
+  cancelBtn: {
+    backgroundColor: '#999',
+  },
+  iconGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  iconOption: {
+    width: 56,
+    height: 56,
+    borderRadius: 12,
+    backgroundColor: '#f1f5f9',
+    justifyContent: 'center',
+    alignItems: 'center',
+    margin: 6,
+    borderWidth: 1,
+    borderColor: '#dce3ea'
   },
   familyActionButton: {
     flexDirection: 'row',
