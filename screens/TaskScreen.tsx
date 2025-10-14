@@ -4646,14 +4646,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         </View>
       </Modal>
       
-      {isRefreshing && (
-        <View style={styles.fullscreenLoadingOverlay} pointerEvents="auto">
-          <View style={styles.fullscreenLoadingContent}>
-            <ActivityIndicator size="large" color="#fff" />
-            <Text style={styles.fullscreenLoadingText}>Atualizando dados...</Text>
-          </View>
-        </View>
-      )}
+      {/* Removido overlay de atualização manual para UX mais discreta; o banner "Sincronizando..." abaixo do header já indica progresso */}
       {isGlobalLoading && (
         <View style={styles.fullscreenLoadingOverlay} pointerEvents="auto">
           <View style={styles.fullscreenLoadingContent}>
