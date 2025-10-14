@@ -306,6 +306,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   // Estado para atualização automática
   const [lastUpdate, setLastUpdate] = useState(new Date());
   const [isRefreshing, setIsRefreshing] = useState(false);
+  // Loading global para aguardar sincronizações específicas (ex.: exclusão remota)
+  const [isGlobalLoading, setGlobalLoading] = useState(false);
 
   // Estado para IDs de tarefas pendentes de sincronização
   const [pendingSyncIds, setPendingSyncIds] = useState<string[]>([]);
@@ -2932,23 +2934,16 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           text: 'Excluir',
           onPress: async () => {
             try {
+              // Mostrar loading enquanto aguardamos sincronização de exclusão (apenas se online)
+              if (!isOffline) setGlobalLoading(true);
               // Atualizar UI imediatamente
               setTasks(prev => prev.filter(t => t.id !== taskId));
               await NotificationService.cancelTaskReminder(taskId).catch(()=>{});
 
-              // Exclusão remota preferencial quando online
-              if (!isOffline) {
-                try {
-                  await FirestoreService.deleteTask(taskId);
-                  console.log(`🗑️ Firestore task deletada: ${taskId}`);
-                } catch (remoteErr) {
-                  console.warn('Falha ao deletar remoto, enfileirando:', remoteErr);
-                  await SyncService.addOfflineOperation('delete', 'tasks', { id: taskId });
-                }
-              } else {
-                // Offline: enfileirar para deletar depois
-                await SyncService.addOfflineOperation('delete', 'tasks', { id: taskId });
-              }
+              // Usar SyncService para executar remotamente quando online ou enfileirar quando offline
+              // Inclui familyId para respeitar lógica de famílias locais
+              const opData: any = { id: taskId, familyId: (task as any).familyId ?? null };
+              await SyncService.addOfflineOperation('delete', 'tasks', opData);
 
               // Remover do cache local sempre
               await LocalStorageService.removeFromCache('tasks', taskId);
@@ -2958,6 +2953,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             } catch (error) {
               console.error('Erro ao deletar tarefa:', error);
               Alert.alert('Erro', 'Não foi possível deletar a tarefa. Tente novamente.');
+            } finally {
+              setGlobalLoading(false);
             }
           },
           style: 'destructive'
@@ -4637,6 +4634,14 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           <View style={styles.fullscreenLoadingContent}>
             <ActivityIndicator size="large" color="#fff" />
             <Text style={styles.fullscreenLoadingText}>Atualizando dados...</Text>
+          </View>
+        </View>
+      )}
+      {isGlobalLoading && (
+        <View style={styles.fullscreenLoadingOverlay} pointerEvents="auto">
+          <View style={styles.fullscreenLoadingContent}>
+            <ActivityIndicator size="large" color="#fff" />
+            <Text style={styles.fullscreenLoadingText}>Sincronizando...</Text>
           </View>
         </View>
       )}
