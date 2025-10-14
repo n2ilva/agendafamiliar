@@ -308,6 +308,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   const [isRefreshing, setIsRefreshing] = useState(false);
   // Loading global para aguardar sincronizações específicas (ex.: exclusão remota)
   const [isGlobalLoading, setGlobalLoading] = useState(false);
+  // Controle de auto-sync para evitar chamadas excessivas
+  const lastAutoSyncAtRef = useRef(0);
 
   // Estado para IDs de tarefas pendentes de sincronização
   const [pendingSyncIds, setPendingSyncIds] = useState<string[]>([]);
@@ -1129,6 +1131,24 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       console.log('✅ Sincronização concluída com sucesso!');
     }, 1000);
   };
+
+  // Auto-disparar sincronização quando houver pendências ou status de sincronização ativo
+  useEffect(() => {
+    const now = Date.now();
+    const shouldAutoSync = !isOffline && (syncStatus.pendingOperations > 0 || syncStatus.isSyncing);
+    const elapsed = now - (lastAutoSyncAtRef.current || 0);
+    if (shouldAutoSync && elapsed > 5000) { // debouncing 5s
+      lastAutoSyncAtRef.current = now;
+      // Preferir forceFullSync para reconciliar cache e listeners
+      (async () => {
+        try {
+          await SyncService.forceFullSync();
+        } catch (e) {
+          console.warn('Auto-sync falhou:', e);
+        }
+      })();
+    }
+  }, [syncStatus.pendingOperations, syncStatus.isSyncing, isOffline]);
 
   const configurarNotificacoes = async () => {
     // Configurar handler de notificações
@@ -3349,11 +3369,11 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           }}
         />
         
-        {/* Indicador de Status de Conectividade */}
-        {(isOffline || syncStatus.pendingOperations > 0) && (
+        {/* Indicador de Status de Conectividade / Sincronização */}
+        {(isOffline || syncStatus.pendingOperations > 0 || syncStatus.isSyncing) && (
           <Pressable 
             style={styles.connectivityIndicator}
-            onPress={forceRefresh}
+            onPress={handleUpdateData}
             disabled={syncStatus.isSyncing}
           >
             <View style={styles.connectivityContent}>
@@ -3364,18 +3384,15 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
               />
               <Text style={[styles.connectivityText, { color: isOffline ? "#ff6b6b" : "#4CAF50" }]}>
                 {isOffline 
-                  ? `Modo Offline • ${syncStatus.pendingOperations} ${syncStatus.pendingOperations === 1 ? 'sincronização pendente' : 'sincronizações pendentes'}` 
-                  : syncStatus.isSyncing 
-                    ? "Sincronizando..." 
-                    : `${syncStatus.pendingOperations} ${syncStatus.pendingOperations === 1 ? 'sincronização pendente' : 'sincronizações pendentes'}`
-                }
+                  ? `Modo Offline` 
+                  : `Sincronizando...`}
               </Text>
               {syncStatus.isSyncing && (
                 <View style={styles.syncingIndicator}>
                   <Text style={styles.syncingDot}>•</Text>
                 </View>
               )}
-              {!syncStatus.isSyncing && (
+              {!syncStatus.isSyncing && !isOffline && (
                 <Ionicons 
                   name="refresh" 
                   size={14} 
