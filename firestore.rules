@@ -33,8 +33,7 @@ service cloud.firestore {
     function validTaskPayload(data) {
       return data.userId is string
         && data.title is string
-        && (data.familyId == null || data.familyId is string)
-        && data.userId == authId();
+        && (data.familyId == null || data.familyId is string);
     }
 
     // Verifica se o usuário (authId) possui determinada permissão (create/edit/delete)
@@ -174,7 +173,7 @@ service cloud.firestore {
         && validTaskPayload(request.resource.data)
         && (
           // Tarefa privada / pessoal (sem familyId): autor pode editar
-          (resource.data.familyId == null && resource.data.userId == authId())
+          (resource.data.familyId == null && (resource.data.userId == authId() || resource.data.createdBy == authId()))
           // Tarefa da família: admin OU membro com permissão edit
           || (resource.data.familyId != null && isMemberOf(resource.data.familyId) && (
             isFamilyAdmin(resource.data.familyId) || hasFamilyPermission(resource.data.familyId, 'edit')
