@@ -141,7 +141,8 @@ export const FirestoreService = {
 
     if (!isPrivate) {
       const canAdmin = await this.checkIsFamilyAdmin(data.familyId, currentUserId);
-      if (!canAdmin) {
+      const hasDeletePerm = await this.checkHasFamilyPermission(data.familyId, currentUserId, 'delete');
+      if (!canAdmin && !hasDeletePerm) {
         throw new Error('permission-denied');
       }
     } else if (data.userId !== currentUserId && data.createdBy !== currentUserId) {
@@ -149,6 +150,21 @@ export const FirestoreService = {
     }
 
     await deleteDoc(ref);
+  },
+
+  async checkHasFamilyPermission(familyId: string | null | undefined, userId?: string, permKey: 'create' | 'edit' | 'delete' = 'delete'): Promise<boolean> {
+    if (!familyId || !userId) return false;
+    try {
+      const memberRef = doc(firebaseFirestore() as any, 'families', familyId, 'members', userId);
+      const memberSnap = await getDoc(memberRef);
+      if (!memberSnap.exists()) return false;
+      const memberData = memberSnap.data() as any;
+      const perms = (memberData && memberData.permissions) || {};
+      return perms[permKey] === true;
+    } catch (e) {
+      console.warn('[FirestoreService] checkHasFamilyPermission falhou:', e);
+      return false;
+    }
   },
 
   async getTasksByUser(userId: string) {
