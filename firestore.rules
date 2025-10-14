@@ -52,6 +52,14 @@ service cloud.firestore {
         && data.userId == authId();
     }
 
+    // Aprovação de promoção a administrador
+    function validAdminRoleApprovalPayload(data) {
+      return data.type == 'admin_role_request'
+        && data.requesterId is string
+        && data.requesterId == authId()
+        && data.familyId is string;
+    }
+
     function validHistoryPayload(data) {
       return data.userId is string
         && data.action is string
@@ -187,16 +195,32 @@ service cloud.firestore {
 
     // Approvals
     match /approvals/{approvalId} {
-      allow create: if isAuthenticated() && validApprovalPayload(request.resource.data)
+      // Criação permitida para dois formatos:
+      //  - Aprovação de tarefa (validApprovalPayload)
+      //  - Solicitação de promoção a admin (validAdminRoleApprovalPayload)
+      allow create: if isAuthenticated()
+        && (
+          validApprovalPayload(request.resource.data)
+          || validAdminRoleApprovalPayload(request.resource.data)
+        )
         && (
           request.resource.data.familyId == null
           || isMemberOf(request.resource.data.familyId)
         );
+
       allow get: if isAuthenticated() && (
-        (resource.data.familyId == null && resource.data.userId == authId())
-        || isMemberOf(resource.data.familyId)
+        // Task approval: autor ou membros da família podem ler
+        (resource.data.userId != null && (resource.data.familyId == null && resource.data.userId == authId() || isMemberOf(resource.data.familyId)))
+        // Admin role request: solicitante ou membros da família podem ler
+        || (resource.data.type == 'admin_role_request' && (resource.data.requesterId == authId() || isMemberOf(resource.data.familyId)))
       );
-      allow update, delete: if isAuthenticated() && (resource.data.userId == authId() || isFamilyAdmin(resource.data.familyId));
+
+      // Atualização/remoção: admin da família, autor (task) ou solicitante (role)
+      allow update, delete: if isAuthenticated() && (
+        isFamilyAdmin(resource.data.familyId)
+        || resource.data.userId == authId()
+        || resource.data.requesterId == authId()
+      );
     }
 
     // History

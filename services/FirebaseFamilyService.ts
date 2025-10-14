@@ -89,6 +89,16 @@ class FirebaseFamilyService {
     return await localFamilyService.getApprovalsForFamily(familyId);
   }
 
+  async requestAdminRole(familyId: string, requester: FamilyUser): Promise<string> {
+    // @ts-ignore
+    return await (localFamilyService as any).requestAdminRole(familyId, requester);
+  }
+
+  async resolveAdminRoleRequest(familyId: string, approvalId: string, approve: boolean, adminId: string, adminComment?: string): Promise<void> {
+    // @ts-ignore
+    return await (localFamilyService as any).resolveAdminRoleRequest(familyId, approvalId, approve, adminId, adminComment);
+  }
+
   // Methods not implemented in local-only mode will throw or return defaults
   async deleteFamilyTask(taskId: string, familyId: string): Promise<void> {
     // best-effort: remove from local tasks store if present

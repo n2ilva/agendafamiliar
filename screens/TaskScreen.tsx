@@ -204,9 +204,12 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   
   // Estados para sistema de aprovação
   const [approvals, setApprovals] = useState<TaskApproval[]>([]);
+  // Solicitações de promoção a admin
+  const [adminRoleRequests, setAdminRoleRequests] = useState<any[]>([]);
   const [notifications, setNotifications] = useState<ApprovalNotification[]>([]);
   const [approvalModalVisible, setApprovalModalVisible] = useState(false);
   const [selectedApproval, setSelectedApproval] = useState<TaskApproval | null>(null);
+  const [resolvingAdminRequestId, setResolvingAdminRequestId] = useState<string | null>(null);
   
   // Estados para sistema de família
   const [currentFamily, setCurrentFamily] = useState<Family | null>(null);
@@ -1001,9 +1004,14 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     const unsubscribe = SyncService.addApprovalsListener((items) => {
       // Atualizar apenas se usuário for admin ou se o approval pertencer ao usuário (dependente)
       if (user.role === 'admin') {
-        setApprovals(items);
+  setApprovals(items);
+  // Separar solicitações de promoção a admin (type === 'admin_role_request')
+  const adminReqs = (items as any[]).filter(a => a && (a as any).type === 'admin_role_request');
+  setAdminRoleRequests(adminReqs);
       } else {
-        setApprovals(items.filter(a => a.dependenteId === user.id));
+  setApprovals(items.filter(a => a.dependenteId === user.id));
+  // Dependentes não veem solicitações a admin; limpar
+  setAdminRoleRequests([]);
       }
     });
     return () => unsubscribe();
@@ -2278,6 +2286,13 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     });
   }, [approvals, user.role, tasks]);
 
+  // Quando approvals mudar (ex: sync), manter lista de adminRoleRequests atualizada para admins
+  useEffect(() => {
+    if (user.role !== 'admin') return;
+    const adminReqs = (approvals as any[]).filter(a => (a as any).type === 'admin_role_request');
+    setAdminRoleRequests(adminReqs);
+  }, [approvals, user.role]);
+
   // Ao montar, recuperar estado de leitura do cache
   useEffect(() => {
     let mounted = true;
@@ -2469,6 +2484,32 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   const openApprovalModal = (approval: TaskApproval) => {
     setSelectedApproval(approval);
     setApprovalModalVisible(true);
+  };
+
+  // Aprovar/Rejeitar solicitação de promoção a admin
+  const resolveAdminRoleRequest = async (approvalId: string, approve: boolean) => {
+    if (!currentFamily || user.role !== 'admin') return;
+    try {
+      setResolvingAdminRequestId(approvalId);
+      await (familyService as any).resolveAdminRoleRequest(currentFamily.id, approvalId, approve, user.id, approve ? 'Aprovado para admin' : 'Rejeitado para admin');
+      // Atualizar listas locais: remover da lista de pendentes
+      setAdminRoleRequests(prev => prev.filter(r => r.id !== approvalId));
+      // Atualizar approvals genérica também (caso listada)
+      setApprovals(prev => prev.filter((a: any) => a.id !== approvalId));
+      // Se aprovado, atualizar lista de membros (promovido torna-se admin)
+      try {
+        const updated = await familyService.getFamilyById(currentFamily.id);
+        if (updated) {
+          setCurrentFamily(updated);
+          setFamilyMembers(updated.members);
+        }
+      } catch {}
+    } catch (e) {
+      console.error('Erro ao resolver solicitação de admin:', e);
+      Alert.alert('Erro', 'Não foi possível processar a solicitação.');
+    } finally {
+      setResolvingAdminRequestId(null);
+    }
   };
 
   // Função para copiar código da família
@@ -3052,7 +3093,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           onHistory={() => setHistoryModalVisible(true)}
           onInfo={() => setSettingsModalVisible(true)}
           onLogout={handleLogout}
-          notificationCount={user.role === 'admin' ? notifications.filter(n => !n.read).length : 0}
+          notificationCount={user.role === 'admin' ? (notifications.filter(n => !n.read).length + adminRoleRequests.length) : 0}
           onNotifications={user.role === 'admin' ? async () => {
             // marcar como lidas no estado e persistir
             setNotifications((prev: ApprovalNotification[]) => prev.map(n => ({ ...n, read: true })));
@@ -3081,6 +3122,26 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                   if (onUserRoleChange) await onUserRoleChange(myMember.role);
                 } catch (e) {
                   console.warn('Falha ao sincronizar role do usuário após entrar na família:', e);
+                }
+              }
+
+              // Se o usuário estava sem família e deseja ser segundo admin,
+              // enviamos uma solicitação de promoção (fica como dependente inicialmente).
+              // Heurística simples: se role local era 'admin' mas entrou como 'dependente', solicitar promoção.
+              const wasAdminLocally = user.role === 'admin';
+              const nowRole = myMember?.role || user.role;
+              const hadNoFamily = !user.familyId;
+              if (hadNoFamily && wasAdminLocally && nowRole !== 'admin') {
+                try {
+                  // Cria approval de admin para a família
+                  // Usando LocalFamilyService (já exportado como familyService)
+                  await familyService.requestAdminRole(newFamily.id, { ...user, familyId: newFamily.id } as any);
+                  Alert.alert(
+                    'Solicitação enviada',
+                    'Seu pedido para ser administrador foi enviado. Você entrou como dependente e será promovido após aprovação de um administrador.'
+                  );
+                } catch (e) {
+                  console.warn('Falha ao criar solicitação de admin:', e);
                 }
               }
               // histórico local
@@ -3867,6 +3928,50 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, styles.approvalModalContent]}>
             <Text style={styles.modalTitle}>Solicitações de Aprovação</Text>
+            {user.role === 'admin' && (
+              <>
+                {/* Seção: Solicitações para virar Admin */}
+                <View style={{ paddingHorizontal: 4, marginBottom: 12 }}>
+                  <Text style={{ fontSize: 16, fontWeight: '600', color: '#333', marginBottom: 8 }}>
+                    Pedidos de promoção a Admin {adminRoleRequests.length > 0 ? `(${adminRoleRequests.length})` : ''}
+                  </Text>
+                  {adminRoleRequests.length === 0 ? (
+                    <Text style={{ color: '#666' }}>Nenhum pedido de promoção pendente.</Text>
+                  ) : (
+                    <View style={{ gap: 10 }}>
+                      {adminRoleRequests.map((req: any) => (
+                        <View key={req.id} style={{ backgroundColor: '#fff', borderRadius: 10, padding: 12, borderWidth: 1, borderColor: '#eee' }}>
+                          <Text style={{ fontSize: 15, fontWeight: '600', color: '#333' }}>{req.requesterName}</Text>
+                          <Text style={{ fontSize: 13, color: '#666', marginTop: 2 }}>pediu para se tornar administrador</Text>
+                          <Text style={{ fontSize: 12, color: '#999', marginTop: 6 }}>
+                            {req.requestedAt ? new Date(req.requestedAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}
+                          </Text>
+                          <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+                            <Pressable
+                              disabled={!!resolvingAdminRequestId}
+                              onPress={() => resolveAdminRoleRequest(req.id, false)}
+                              style={[styles.approvalButton, styles.rejectButton, resolvingAdminRequestId === req.id && { opacity: 0.6 }]}
+                            >
+                              <Ionicons name="close-circle" size={20} color="#fff" />
+                              <Text style={styles.approvalButtonText}>{resolvingAdminRequestId === req.id ? 'Processando...' : 'Rejeitar'}</Text>
+                            </Pressable>
+                            <Pressable
+                              disabled={!!resolvingAdminRequestId}
+                              onPress={() => resolveAdminRoleRequest(req.id, true)}
+                              style={[styles.approvalButton, styles.approveButton, resolvingAdminRequestId === req.id && { opacity: 0.6 }]}
+                            >
+                              <Ionicons name="checkmark-circle" size={20} color="#fff" />
+                              <Text style={styles.approvalButtonText}>{resolvingAdminRequestId === req.id ? 'Processando...' : 'Aprovar'}</Text>
+                            </Pressable>
+                          </View>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+                <View style={{ height: 1, backgroundColor: '#eee', marginHorizontal: 4, marginBottom: 12 }} />
+              </>
+            )}
             
             {notifications.length === 0 ? (
               <Text style={styles.noNotificationsText}>Nenhuma solicitação pendente</Text>

@@ -20,6 +20,46 @@ class LocalFamilyService {
     return firebaseFirestore();
   }
 
+  async requestAdminRole(familyId: string, requester: FamilyUser): Promise<string> {
+    const db = this.getFirestore();
+    const approvalsRef = collection(db, 'approvals');
+    const docRef = doc(approvalsRef);
+    const approval = {
+      id: docRef.id,
+      type: 'admin_role_request',
+      familyId,
+      requesterId: requester.id,
+      requesterName: requester.name,
+      status: 'pendente',
+      requestedAt: Timestamp.now(),
+    } as any;
+    await setDoc(docRef, approval);
+    return docRef.id;
+  }
+
+  async resolveAdminRoleRequest(familyId: string, approvalId: string, approve: boolean, adminId: string, adminComment?: string): Promise<void> {
+    const db = this.getFirestore();
+    const approvalRef = doc(db, 'approvals', approvalId);
+    const approvalSnap = await getDoc(approvalRef);
+    if (!approvalSnap.exists()) throw new Error('Solicitação não encontrada');
+    const data = approvalSnap.data() as any;
+    if (data.type !== 'admin_role_request' || data.familyId !== familyId) throw new Error('Solicitação inválida');
+
+    const updates: any = {
+      status: approve ? 'aprovada' : 'rejeitada',
+      resolvedAt: Timestamp.now(),
+      adminId,
+      adminComment: adminComment || null,
+    };
+    await updateDoc(approvalRef, updates);
+
+    if (approve) {
+      // Promover requester a admin
+      const memberRef = doc(db, 'families', familyId, 'members', data.requesterId);
+      await updateDoc(memberRef, { role: 'admin' });
+    }
+  }
+
   private generateInviteCode(): string {
     const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // evitar ambiguidade
     let code = '';

@@ -60,6 +60,20 @@ export interface TaskApproval {
   familyId?: string;
 }
 
+// Solicitação para se tornar administrador
+export interface AdminRoleApproval {
+  id: string;
+  type: 'admin_role_request';
+  familyId: string;
+  requesterId: string;
+  requesterName: string;
+  status: 'pendente' | 'aprovada' | 'rejeitada';
+  requestedAt: Date | string;
+  resolvedAt?: Date | string;
+  adminId?: string;
+  adminComment?: string;
+}
+
 export interface ApprovalNotification {
   id: string;
   type: 'task_approval_request';
