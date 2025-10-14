@@ -172,8 +172,17 @@ export const FirestoreService = {
 
       const snapshots = await Promise.all(queries.map(q => getDocs(q)));
       const dedupMap = new Map<string, any>();
+      const iterateSnap = (snap: any, cb: (docSnap: any) => void) => {
+        if (snap && typeof snap.forEach === 'function') {
+          snap.forEach(cb);
+        } else if (snap && Array.isArray(snap.docs)) {
+          snap.docs.forEach(cb);
+        } else if (Array.isArray(snap)) {
+          snap.forEach(cb);
+        }
+      };
       snapshots.forEach(snap => {
-        snap.forEach(docSnap => {
+        iterateSnap(snap, (docSnap: any) => {
           dedupMap.set(docSnap.id, { id: docSnap.id, ...(docSnap.data() as any) });
         });
       });
@@ -222,8 +231,17 @@ export const FirestoreService = {
       }
 
       const dedupMap = new Map<string, any>();
+      const iterateSnap = (snap: any, cb: (docSnap: any) => void) => {
+        if (snap && typeof snap.forEach === 'function') {
+          snap.forEach(cb);
+        } else if (snap && Array.isArray(snap.docs)) {
+          snap.docs.forEach(cb);
+        } else if (Array.isArray(snap)) {
+          snap.forEach(cb);
+        }
+      };
       snapshots.forEach(snap => {
-        snap.forEach(docSnap => {
+        iterateSnap(snap, (docSnap: any) => {
           dedupMap.set(docSnap.id, { id: docSnap.id, ...(docSnap.data() as any) });
         });
       });
@@ -317,11 +335,13 @@ export const FirestoreService = {
   },
 
   async addHistoryItem(item: RemoteHistoryItem) {
-    const toSave = {
+    const sanitize = (obj: Record<string, any>) =>
+      Object.fromEntries(Object.entries(obj).filter(([_, v]) => v !== undefined));
+    const toSave = sanitize({
       ...item,
       familyId: ensureFamilyId(item.familyId),
       createdAt: serverTimestamp()
-    } as any;
+    }) as any;
     const ref = await addDoc(historyCol() as any, toSave);
     return { id: ref.id };
   },

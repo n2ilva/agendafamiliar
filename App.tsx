@@ -133,6 +133,28 @@ export default function App() {
       setUser(updatedUser);
       await saveUserToStorage(updatedUser);
       console.log('✅ Nome do usuário atualizado no App.tsx');
+      // Sincronizar com Firebase
+      try {
+        await LocalAuthService.updateUserName(newName);
+      } catch (e) {
+        console.warn('Falha ao sincronizar nome com Firebase:', e);
+      }
+      // Registrar no histórico da família (best-effort)
+      try {
+        if (updatedUser.familyId) {
+          await familyService.addFamilyHistoryItem(updatedUser.familyId, {
+            action: 'edited',
+            taskTitle: 'Perfil do usuário',
+            taskId: '',
+            userId: updatedUser.id,
+            userName: updatedUser.name,
+            userRole: updatedUser.role,
+            details: `Nome alterado para "${newName}"`
+          });
+        }
+      } catch (e) {
+        console.warn('Falha ao registrar histórico de alteração de nome:', e);
+      }
     }
   };
 
@@ -142,6 +164,31 @@ export default function App() {
       setUser(updatedUser);
       await saveUserToStorage(updatedUser);
       console.log('✅ Foto do usuário atualizada no App.tsx');
+      // Sincronizar com Firebase (se não foi feito pelo serviço de upload)
+      try {
+        if (/^https?:\/\//i.test(newImageUrl)) {
+          // Se já é uma URL remota, atualizar docs de perfil
+          await LocalAuthService.uploadProfileImage(newImageUrl);
+        }
+      } catch (e) {
+        console.warn('Falha ao sincronizar foto com Firebase:', e);
+      }
+      // Registrar no histórico da família (best-effort)
+      try {
+        if (updatedUser.familyId) {
+          await familyService.addFamilyHistoryItem(updatedUser.familyId, {
+            action: 'edited',
+            taskTitle: 'Perfil do usuário',
+            taskId: '',
+            userId: updatedUser.id,
+            userName: updatedUser.name,
+            userRole: updatedUser.role,
+            details: 'Foto de perfil atualizada'
+          });
+        }
+      } catch (e) {
+        console.warn('Falha ao registrar histórico de alteração de foto:', e);
+      }
     }
   };
 

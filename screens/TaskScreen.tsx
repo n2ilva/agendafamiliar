@@ -109,8 +109,8 @@ export const DEFAULT_CATEGORIES: CategoryConfig[] = [
     id: 'personal',
     name: 'Pessoal',
     icon: 'home',
-    color: '#e74c3c',
-    bgColor: '#ffebee',
+      color: '#8e44ad',
+      bgColor: '#f3e5f5',
     isDefault: true
   },
   {
@@ -141,7 +141,6 @@ export const AVAILABLE_ICONS = [
 
 export const AVAILABLE_COLORS = [
   { color: '#3498db', bgColor: '#e3f2fd' }, // Azul
-  { color: '#e74c3c', bgColor: '#ffebee' }, // Vermelho
   { color: '#27ae60', bgColor: '#e8f5e8' }, // Verde
   { color: '#f39c12', bgColor: '#fff3e0' }, // Laranja
   { color: '#9b59b6', bgColor: '#f3e5f5' }, // Roxo
@@ -249,6 +248,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   
   // Estado para modal de configurações
   const [settingsModalVisible, setSettingsModalVisible] = useState(false);
+  const [isSavingFamilyName, setIsSavingFamilyName] = useState(false);
   
   // Estado para atualização automática
   const [lastUpdate, setLastUpdate] = useState(new Date());
@@ -457,7 +457,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
 
   // Função para recarregar tarefas da família
   const reloadFamilyTasks = async () => {
-    if (currentFamily && !isOffline) {
+  if (currentFamily && !isOffline) {
       try {
         console.log('🔄 Recarregando tarefas da família...');
   const familyTasks = await familyService.getFamilyTasks(currentFamily.id, user.id);
@@ -1558,7 +1558,10 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         
         // Se falhou salvar no Firebase, adicionar à fila de sincronização
         try {
-          await SyncService.addOfflineOperation('create', 'history', historyItem);
+          const toQueue = { ...historyItem, familyId: currentFamily.id } as any;
+          // remover undefined defensivamente
+          Object.keys(toQueue).forEach(k => (toQueue as any)[k] === undefined && delete (toQueue as any)[k]);
+          await SyncService.addOfflineOperation('create', 'history', toQueue);
           console.log('📤 Item de histórico adicionado à fila de sincronização');
         } catch (syncError) {
           console.error('❌ Erro ao adicionar histórico à fila de sincronização:', syncError);
@@ -1567,7 +1570,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     } else if (!currentFamily) {
       // Se usuário não tem família, adicionar à fila para sincronização futura
       try {
-        await SyncService.addOfflineOperation('create', 'history', historyItem);
+        const toQueue = { ...historyItem, familyId: null } as any;
+        Object.keys(toQueue).forEach(k => (toQueue as any)[k] === undefined && delete (toQueue as any)[k]);
+        await SyncService.addOfflineOperation('create', 'history', toQueue);
         console.log('📤 Item de histórico adicionado à fila de sincronização (sem família)');
       } catch (syncError) {
         console.error('❌ Erro ao adicionar histórico à fila:', syncError);
@@ -1606,8 +1611,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     switch (action) {
       case 'created': return 'add-circle';
       case 'completed': return 'checkmark-circle';
-      case 'uncompleted': return 'refresh-circle';
-      case 'edited': return 'pencil-circle';
+      case 'uncompleted': return 'refresh'; // refresh-circle não existe em todas as versões
+      case 'edited': return 'pencil-outline'; // pencil-circle não existe
       case 'deleted': return 'trash';
       default: return 'ellipse';
     }
@@ -2505,6 +2510,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       return;
     }
 
+    setIsSavingFamilyName(true);
     try {
       // Atualizar localmente primeiro para responsividade
       const updatedFamily = { ...currentFamily, name: newFamilyName.trim() };
@@ -2522,6 +2528,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       // Reverter mudança local em caso de erro
       setCurrentFamily(currentFamily);
       setNewFamilyName(currentFamily.name);
+    } finally {
+      setIsSavingFamilyName(false);
     }
   };
 
@@ -2769,7 +2777,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         ]}
       >
         {/* Header da Categoria - Topo do Card */}
-        <View style={[styles.categoryHeader, { backgroundColor: categoryConfig.bgColor }]}>
+        <View style={[styles.categoryHeader, { backgroundColor: categoryConfig.bgColor }] }>
           <View style={styles.categoryHeaderContent}>
             <Ionicons 
               name={categoryConfig.icon as any} 
@@ -2788,14 +2796,14 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                 style={{ marginLeft: 4 }}
               />
             )}
-            {/* Indicador de tarefa privada: mostrar apenas para o criador */}
-            {((item as any).private === true) && item.createdBy === user.id && (
-              <View style={styles.privateIndicator}>
-                <Ionicons name="lock-closed" size={12} color="#666" />
-                <Text style={styles.privateIndicatorText}>PRIVADA</Text>
-              </View>
-            )}
           </View>
+          {/* Indicador de tarefa privada (direita) */}
+          {((item as any).private === true) && item.createdBy === user.id && (
+            <View style={styles.privateIndicatorRight}>
+              <Ionicons name="lock-closed" size={12} color="#666" />
+              <Text style={styles.privateIndicatorRightText}>Privado</Text>
+            </View>
+          )}
           {/* Indicador de tarefa vencida */}
           {isOverdue && (
             <View style={styles.overdueIndicator}>
@@ -3031,7 +3039,11 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           </Pressable>
         )}
         
-        <PanGestureHandler onGestureEvent={handleSwipeGesture}>
+        <PanGestureHandler
+          onGestureEvent={handleSwipeGesture}
+          activeOffsetX={[-30, 30]}
+          failOffsetY={[-10, 10]}
+        >
           <View style={styles.content}>
 
         {/* Indicador de Tabs Simplificado */}
@@ -3085,6 +3097,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           <ScrollView
             style={styles.taskList}
             showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            bounces={true}
             contentContainerStyle={styles.taskListContent}
           >
             {getCurrentTasks().map((task) => (
@@ -3143,9 +3157,10 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           <Pressable
             style={styles.dropdownOverlay}
             onPress={() => setFilterDropdownVisible(false)}
+            pointerEvents={filterDropdownVisible ? 'auto' : 'none'}
           />
           
-          <View style={styles.filterDropdownMenuFloating}>
+          <View style={styles.filterDropdownMenuFloating} pointerEvents="auto">
             <ScrollView 
               style={{ maxHeight: 280 }} 
               showsVerticalScrollIndicator={false}
@@ -3202,7 +3217,10 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         animationType="slide"
         transparent={true}
         visible={modalVisible}
-        onRequestClose={() => setModalVisible(false)}
+        onRequestClose={() => {
+          if (isAddingTask) return; // bloquear fechamento durante salvamento
+          setModalVisible(false);
+        }}
       >
         <KeyboardAvoidingView 
           style={styles.keyboardAvoidingView}
@@ -3212,7 +3230,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>{isEditing ? 'Editar Tarefa' : 'Nova Tarefa'}</Text>
-                <Pressable onPress={resetForm}>
+                <Pressable onPress={resetForm} disabled={isAddingTask}>
                   <Ionicons name="close" size={24} color="#666" />
                 </Pressable>
               </View>
@@ -3411,9 +3429,11 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                   style={({ pressed }) => [
                     styles.button,
                     styles.cancelButton,
-                    pressed && { opacity: 0.7 }
+                    (pressed && !isAddingTask) && { opacity: 0.7 },
+                    isAddingTask && styles.buttonDisabled
                   ]}
                   onPress={resetForm}
+                  disabled={isAddingTask}
                   android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
                 >
                   <Text style={styles.cancelButtonText}>Cancelar</Text>
@@ -3729,12 +3749,12 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                 )}
               </View>
               
-              {/* Botão de fechar no final do modal */}
+              {/* Botão de fechar fixo no rodapé do modal */}
               <Pressable 
-                style={styles.closeModalButton}
+                style={[styles.closeButton, styles.closeButtonFixed]}
                 onPress={() => setHistoryModalVisible(false)}
               >
-                <Text style={styles.closeModalButtonText}>Fechar</Text>
+                <Text style={styles.closeButtonText}>Fechar</Text>
               </Pressable>
             </SafeAreaView>
           </View>
@@ -3832,6 +3852,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         transparent={true}
         visible={familyModalVisible}
         onRequestClose={() => {
+          if (isCreatingFamily || isSavingFamilyName) return; // bloquear enquanto salvando/criando
           setFamilyModalVisible(false);
           setIsCreatingFamilyMode(false);
           setNewFamilyNameInput('');
@@ -3915,16 +3936,30 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                       />
                       <View style={styles.editFamilyNameActions}>
                         <Pressable
-                          style={[styles.editFamilyNameButton, styles.cancelButton]}
+                          style={[
+                            styles.editFamilyNameButton,
+                            styles.cancelButton,
+                            (isSavingFamilyName) && styles.buttonDisabled
+                          ]}
                           onPress={cancelEditingFamilyName}
+                          disabled={isSavingFamilyName}
                         >
                           <Text style={styles.cancelButtonText}>Cancelar</Text>
                         </Pressable>
                         <Pressable
-                          style={[styles.editFamilyNameButton, styles.saveButton]}
+                          style={[
+                            styles.editFamilyNameButton,
+                            styles.saveButton,
+                            (isSavingFamilyName) && styles.buttonDisabled
+                          ]}
                           onPress={saveFamilyName}
+                          disabled={isSavingFamilyName}
                         >
-                          <Text style={styles.saveButtonText}>Salvar</Text>
+                          {isSavingFamilyName ? (
+                            <ActivityIndicator size="small" color="#fff" />
+                          ) : (
+                            <Text style={styles.saveButtonText}>Salvar</Text>
+                          )}
                         </Pressable>
                       </View>
                     </View>
@@ -4065,9 +4100,11 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             <Pressable 
               style={({ pressed }) => [
                 styles.closeModalButton,
-                pressed && { opacity: 0.8, transform: [{ scale: 0.98 }] }
+                (pressed && !isCreatingFamily && !isSavingFamilyName) && { opacity: 0.8, transform: [{ scale: 0.98 }] },
+                (isCreatingFamily || isSavingFamilyName) && styles.buttonDisabled
               ]}
               onPress={() => {
+                if (isCreatingFamily || isSavingFamilyName) return;
                 setFamilyModalVisible(false);
                 setIsCreatingFamilyMode(false);
                 setNewFamilyNameInput('');
@@ -4369,9 +4406,8 @@ const styles = StyleSheet.create({
     minHeight: '100%',
   },
   taskListContent: {
-    paddingBottom: 100, // Espaço extra no final para o FAB
-    flexGrow: 1,
-    minHeight: '100%',
+    paddingBottom: 120, // Espaço extra no final para o FAB e gesto
+    flexGrow: 0,
   },
   taskItem: {
     backgroundColor: '#fff',
@@ -4409,6 +4445,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  privateIndicatorRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
+    backgroundColor: 'rgba(0,0,0,0.03)'
+  },
+  privateIndicatorRightText: {
+    marginLeft: 4,
+    fontSize: 10,
+    color: '#666',
+    fontWeight: '700'
   },
   privateIndicator: {
     flexDirection: 'row',
@@ -4955,12 +5005,14 @@ const styles = StyleSheet.create({
   },
   // History Styles
   historyModalWrapper: {
-    width: '90%',
+    width: '92%',
     maxWidth: 520,
-    maxHeight: '85%',
+    maxHeight: '88%',
+    minHeight: 320,
+    flex: 1,
     backgroundColor: '#fff',
     borderRadius: 16,
-    padding: 20,
+    padding: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
@@ -4969,24 +5021,27 @@ const styles = StyleSheet.create({
   },
   historyModalSafeArea: {
     flex: 1,
+    position: 'relative',
+    paddingBottom: 72, // espaço para o botão "Fechar" fixo
   },
   historySubtitle: {
     fontSize: 14,
     color: '#666',
     textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: 12,
     paddingHorizontal: 20,
   },
   historyListContainer: {
     flex: 1,
     width: '100%',
     marginBottom: 12,
+    minHeight: 200,
   },
   historyList: {
     flex: 1,
   },
   historyListContent: {
-    paddingBottom: 12,
+    paddingBottom: 84, // garantir que o conteúdo não fique sob o botão fixo
   },
   emptyHistoryContainer: {
     flex: 1,

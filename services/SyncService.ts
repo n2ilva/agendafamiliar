@@ -305,7 +305,9 @@ class SyncService {
           // For history we try to push to Firestore when online, then save locally
           if (ConnectivityService.isConnected()) {
             try {
-              const toSave = { ...data, familyId: data.familyId === undefined ? null : data.familyId } as any;
+              const sanitize = (obj: Record<string, any>) =>
+                Object.fromEntries(Object.entries(obj).filter(([_, v]) => v !== undefined));
+              const toSave = sanitize({ ...data, familyId: (data as any).familyId === undefined ? null : (data as any).familyId }) as any;
               await FirestoreService.addHistoryItem(toSave);
             } catch (e) {
               console.warn('Falha ao salvar history no Firestore:', e);
@@ -314,7 +316,8 @@ class SyncService {
           }
 
           try {
-            await LocalStorageService.saveHistoryItem(data as any);
+            const sanitizedLocal = Object.fromEntries(Object.entries(data as any).filter(([_, v]) => v !== undefined));
+            await LocalStorageService.saveHistoryItem(sanitizedLocal as any);
           } catch (e) {
             if (data.familyId) await familyService.addFamilyHistoryItem(data.familyId, data);
           }

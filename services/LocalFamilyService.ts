@@ -466,13 +466,21 @@ class LocalFamilyService {
       const db = this.getFirestore();
       const historyRef = collection(db, 'history');
       const docRef = doc(historyRef);
-      
-      const historyItem = {
+
+      // Remover chaves com valor undefined (Firestore não aceita undefined)
+      const sanitize = (obj: Record<string, any>) =>
+        Object.fromEntries(Object.entries(obj).filter(([_, v]) => v !== undefined));
+
+      const base = sanitize({
         id: docRef.id,
         familyId,
         ...item,
+      });
+
+      const historyItem = {
+        ...base,
         createdAt: item.createdAt ? Timestamp.fromDate(new Date(item.createdAt)) : Timestamp.now()
-      };
+      } as any;
 
       await setDoc(docRef, historyItem);
       console.log('✅ Item adicionado ao histórico');
