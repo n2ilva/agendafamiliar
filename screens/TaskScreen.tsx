@@ -2648,46 +2648,43 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       'Tem certeza que deseja excluir esta tarefa?',
       [
         { text: 'Cancelar', style: 'cancel' },
-        { 
-          text: 'Excluir', 
+        {
+          text: 'Excluir',
           onPress: async () => {
             try {
-              // Remover da lista local
-              setTasks(tasks.filter(t => t.id !== taskId));
-              // cancelar notificação agendada
-              await NotificationService.cancelTaskReminder(taskId);
-              
-              // Remover do cache local
-              await LocalStorageService.removeFromCache('tasks', taskId);
-              
-              // Adicionar à fila de sincronização (online ou offline)
-              await SyncService.addOfflineOperation('delete', 'tasks', { id: taskId });
-              
-              // Se o usuário pertence a uma família, deletar também da família
-              if (currentFamily && !isOffline) {
+              // Atualizar UI imediatamente
+              setTasks(prev => prev.filter(t => t.id !== taskId));
+              await NotificationService.cancelTaskReminder(taskId).catch(()=>{});
+
+              // Exclusão remota preferencial quando online
+              if (!isOffline) {
                 try {
-                  await familyService.deleteFamilyTask(taskId);
-                  console.log(`👨‍👩‍👧‍👦 Tarefa deletada da família: taskId=${taskId} familyId=${currentFamily?.id}`);
-                } catch (error) {
-                  console.error('❌ Erro ao deletar tarefa da família:', error);
+                  await FirestoreService.deleteTask(taskId);
+                  console.log(`🗑️ Firestore task deletada: ${taskId}`);
+                } catch (remoteErr) {
+                  console.warn('Falha ao deletar remoto, enfileirando:', remoteErr);
+                  await SyncService.addOfflineOperation('delete', 'tasks', { id: taskId });
                 }
+              } else {
+                // Offline: enfileirar para deletar depois
+                await SyncService.addOfflineOperation('delete', 'tasks', { id: taskId });
               }
-              
-              console.log(`📱 Tarefa deletada e enfileirada para sincronização: taskId=${taskId}` +
-                `${currentFamily ? ` familyId=${currentFamily.id}` : ''}`);
-              
-              // Adicionar ao histórico
+
+              // Remover do cache local sempre
+              await LocalStorageService.removeFromCache('tasks', taskId);
+
+              // Histórico
               await addToHistory('deleted', task.title, taskId);
             } catch (error) {
               console.error('Erro ao deletar tarefa:', error);
               Alert.alert('Erro', 'Não foi possível deletar a tarefa. Tente novamente.');
             }
           },
-          style: 'destructive' 
+          style: 'destructive'
         },
       ]
     );
-  }, [tasks, currentFamily, isOffline]);
+  }, [tasks, isOffline, user.role]);
 
   const removeFamilyMember = useCallback((memberId: string) => {
     // implementação existente usa Alert.confirm onPress handler — reutilizar função deleteMember parcialmente
