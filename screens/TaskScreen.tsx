@@ -245,6 +245,26 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   // Estados para histórico
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [historyModalVisible, setHistoryModalVisible] = useState(false);
+
+  // Sincronizar role do usuário ao montar a tela
+  useEffect(() => {
+    const syncRole = async () => {
+      try {
+        if (!user?.id) return;
+        // Buscar família do usuário pelo serviço singleton já importado
+        const family = await familyService.getUserFamily(user.id).catch(() => null);
+        if (family && Array.isArray(family.members)) {
+          const myMember = family.members.find((m: any) => m.id === user.id);
+          if (myMember?.role && myMember.role !== user.role && onUserRoleChange) {
+            await onUserRoleChange(myMember.role);
+          }
+        }
+      } catch (e) {
+        console.warn('⚠️ Falha ao sincronizar role no mount:', e);
+      }
+    };
+    syncRole();
+  }, [user?.id]);
   
   // Estado para modal de configurações
   const [settingsModalVisible, setSettingsModalVisible] = useState(false);
