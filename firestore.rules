@@ -183,8 +183,8 @@ service cloud.firestore {
 
       // Exclusão: somente admin em tarefas da família; em tarefas privadas, o autor pode excluir
       allow delete: if isAuthenticated() && (
-        // Tarefa pessoal/privada sem família: autor pode excluir
-        (resource.data.familyId == null && resource.data.userId == authId())
+        // Tarefa pessoal/privada sem família: autor pode excluir (userId OU createdBy)
+        (resource.data.familyId == null && (resource.data.userId == authId() || resource.data.createdBy == authId()))
         // Tarefa de família: admin OU membro com permissão delete
         || (resource.data.familyId != null && (
           isFamilyAdmin(resource.data.familyId) || hasFamilyPermission(resource.data.familyId, 'delete')

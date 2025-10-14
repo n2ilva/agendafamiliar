@@ -136,8 +136,8 @@ export const FirestoreService = {
       return;
     }
 
-    const data = snap.data() as any;
-    const isPrivate = data.familyId == null || data.private === true;
+  const data = snap.data() as any;
+  const isPrivate = (data.private === true) || (data.familyId === null || data.familyId === undefined);
 
     if (!isPrivate) {
       const canAdmin = await this.checkIsFamilyAdmin(data.familyId, currentUserId);

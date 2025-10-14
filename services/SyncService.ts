@@ -229,9 +229,20 @@ class SyncService {
           await LocalStorageService.saveFamily(data as Family);
         }
       } else if (collectionName === 'tasks') {
-        // Normalize familyId explicitly
-        const normalizedFamilyId = data.familyId === undefined ? null : data.familyId;
-        const isLocalFamily = normalizedFamilyId && typeof normalizedFamilyId === 'string' && normalizedFamilyId.startsWith('local_');
+        // Normalize familyId explicit e, se ausente, tentar inferir do cache local
+        let normalizedFamilyId = data.familyId === undefined ? null : data.familyId;
+        if (normalizedFamilyId === null) {
+          try {
+            const offlineData = await LocalStorageService.getOfflineData();
+            const localTaskRaw = offlineData.tasks && offlineData.tasks[data.id];
+            if (localTaskRaw && (localTaskRaw as any).familyId !== undefined) {
+              normalizedFamilyId = (localTaskRaw as any).familyId;
+            }
+          } catch (e) {
+            // ignore inference errors
+          }
+        }
+        const isLocalFamily = normalizedFamilyId && typeof normalizedFamilyId === 'string' && (normalizedFamilyId as string).startsWith('local_');
 
         if (type === 'delete') {
           // Se for família local, não tenta deletar no Firestore
