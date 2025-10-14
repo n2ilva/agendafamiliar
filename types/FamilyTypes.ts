@@ -102,6 +102,15 @@ export interface Task {
   repeatDays?: number[]; // dias da semana (0-6) quando repeatOption for 'semanal'
   userId: string;
   approvalId?: string;
+  // Subtarefas
+  subtasks?: Array<{
+    id: string;
+    title: string;
+    done: boolean;
+    completedById?: string;
+    completedByName?: string;
+    completedAt?: Date | string;
+  }>;
   // Campos de autoria
   createdBy: string;
   createdByName: string;

@@ -86,6 +86,15 @@ interface Task {
   editedBy?: string;
   editedByName?: string;
   editedAt?: Date;
+  // Subtarefas
+  subtasks?: Array<{
+    id: string;
+    title: string;
+    done: boolean;
+    completedById?: string;
+    completedByName?: string;
+    completedAt?: Date;
+  }>;
   // Flag de privacidade (apenas visível para o criador)
   private?: boolean;
 }
@@ -164,6 +173,14 @@ interface Task {
     type: RepeatType;
     days?: number[];
   };
+  subtasks?: Array<{
+    id: string;
+    title: string;
+    done: boolean;
+    completedById?: string;
+    completedByName?: string;
+    completedAt?: Date;
+  }>;
   private?: boolean;
 }
 
@@ -197,6 +214,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   const [newTaskDescription, setNewTaskDescription] = useState('');
   // Flag para indicar se a nova tarefa é privada
   const [newTaskPrivate, setNewTaskPrivate] = useState(false);
+  // Subtarefas (rascunho do modal)
+  const [subtasksDraft, setSubtasksDraft] = useState<Array<{ id: string; title: string; done: boolean; completedById?: string; completedByName?: string; completedAt?: Date }>>([]);
+  const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('work');
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -389,6 +409,18 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       createdByName: task.createdByName,
     };
 
+    // Subtarefas -> payload simples serializável
+    if (Array.isArray(task.subtasks)) {
+      remoteTask.subtasks = task.subtasks.map(st => ({
+        id: st.id,
+        title: st.title,
+        done: !!st.done,
+        completedById: st.completedById || null,
+        completedByName: st.completedByName || null,
+        completedAt: st.completedAt || null,
+      }));
+    }
+
     // Log para debug de tarefas privadas
     if ((task as any)?.private === true) {
       console.log('🔒 Tarefa PRIVADA detectada:', {
@@ -469,6 +501,14 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       createdAt: safeToDate(remoteTask.createdAt) || new Date(), // Garantir que createdAt seja sempre uma data válida
       updatedAt: safeToDate(remoteTask.updatedAt) || safeToDate(remoteTask.editedAt) || safeToDate(remoteTask.createdAt) || new Date(),
       completedAt: safeToDate((remoteTask as any).completedAt) || undefined,
+      subtasks: Array.isArray((remoteTask as any).subtasks) ? (remoteTask as any).subtasks.map((st: any) => ({
+        id: st.id,
+        title: st.title,
+        done: !!st.done,
+        completedById: st.completedById || undefined,
+        completedByName: st.completedByName || undefined,
+        completedAt: safeToDate(st.completedAt) || undefined,
+      })) : [],
       // Campos de autoria com fallback para dados antigos
       createdBy: remoteTask.createdBy || remoteTask.userId,
       createdByName: remoteTask.createdByName || 'Usuário',
@@ -1267,6 +1307,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                   type: repeatType,
                   days: repeatType === RepeatType.CUSTOM ? customDays : undefined
                 },
+                // Subtarefas do modal
+                subtasks: subtasksDraft.map(st => ({ ...st })),
                 // Campos de edição
                 editedBy: user.id,
                 editedByName: user.name,
@@ -1373,7 +1415,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           createdAt: new Date(),
           // Campos de autoria
           createdBy: user.id,
-          createdByName: user.name
+          createdByName: user.name,
+          // Subtarefas iniciais
+          subtasks: subtasksDraft.map(st => ({ ...st }))
           // private flag será adicionada durante a conversão remota via taskToRemoteTask
         };
 
@@ -1448,6 +1492,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     setSelectedTime(undefined);
     setRepeatType(RepeatType.NONE);
     setCustomDays([]);
+    setSubtasksDraft([]);
+    setNewSubtaskTitle('');
     setIsEditing(false);
     setEditingTaskId(null);
     setModalVisible(false);
@@ -1473,6 +1519,14 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     setSelectedTime(task.dueTime);
     setRepeatType(task.repeat.type);
     setCustomDays(task.repeat.days || []);
+    setSubtasksDraft((task as any).subtasks ? (task as any).subtasks.map((st: any) => ({
+      id: st.id,
+      title: st.title,
+      done: !!st.done,
+      completedById: st.completedById,
+      completedByName: st.completedByName,
+      completedAt: st.completedAt ? safeToDate(st.completedAt) || undefined : undefined,
+    })) : []);
     setIsEditing(true);
     setEditingTaskId(task.id);
     setModalVisible(true);
@@ -1483,8 +1537,21 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     if (modalVisible && isEditing && editingTaskId) {
       const t = tasks.find(x => x.id === editingTaskId);
       setNewTaskPrivate((t as any)?.private === true);
+      // Garantir rascunho das subtarefas quando abrir modal em edição
+      if (t && Array.isArray((t as any).subtasks)) {
+        setSubtasksDraft((t as any).subtasks.map((st: any) => ({
+          id: st.id,
+          title: st.title,
+          done: !!st.done,
+          completedById: st.completedById,
+          completedByName: st.completedByName,
+          completedAt: st.completedAt ? safeToDate(st.completedAt) || undefined : undefined,
+        })));
+      }
     } else if (modalVisible && !isEditing) {
       setNewTaskPrivate(false);
+      setSubtasksDraft([]);
+      setNewSubtaskTitle('');
     }
   }, [modalVisible, isEditing, editingTaskId]);
 
@@ -2184,6 +2251,77 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       task.id
     );
   };
+
+  // Alternar subtarefa (checkbox no card)
+  const toggleSubtask = useCallback(async (taskId: string, subtaskId: string) => {
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) return;
+
+    // Dependente pode marcar subtarefa, mas a conclusão da tarefa principal pode exigir aprovação
+    const now = new Date();
+    const updatedTasks = tasks.map(t => {
+      if (t.id !== taskId) return t;
+      const updatedSubtasks = (t as any).subtasks?.map((st: any) => {
+        if (st.id !== subtaskId) return st;
+        const newDone = !st.done;
+        return {
+          ...st,
+          done: newDone,
+          completedById: newDone ? user.id : undefined,
+          completedByName: newDone ? user.name : undefined,
+          completedAt: newDone ? now : undefined,
+        };
+      }) || [];
+      return {
+        ...t,
+        subtasks: updatedSubtasks,
+        editedBy: user.id,
+        editedByName: user.name,
+        editedAt: now,
+      } as any;
+    });
+
+    setTasks(updatedTasks);
+
+    const updatedTask = updatedTasks.find(t => t.id === taskId)!;
+    try {
+      const remoteTask = taskToRemoteTask(updatedTask as any);
+      await LocalStorageService.saveTask(remoteTask);
+      await SyncService.addOfflineOperation('update', 'tasks', remoteTask);
+      if (currentFamily) {
+        if (!isOffline) {
+          try {
+            const toSave = { ...remoteTask, familyId: currentFamily.id } as any;
+            const res = await FirestoreService.saveTask(toSave);
+            await LocalStorageService.saveTask({ ...toSave, id: toSave.id || (res && (res as any).id) } as any);
+          } catch (e) {
+            try { await FamilySyncHelper.saveTaskToFamily(remoteTask as any, currentFamily.id, 'update'); } catch (_) {}
+            await SyncService.addOfflineOperation('update', 'tasks', { ...remoteTask, familyId: currentFamily.id });
+          }
+        } else {
+          await SyncService.addOfflineOperation('update', 'tasks', { ...remoteTask, familyId: currentFamily.id });
+        }
+      }
+    } catch (e) {
+      console.error('Erro ao sincronizar subtarefa:', e);
+    }
+
+    // Se todas subtarefas concluídas, agir sobre a tarefa principal
+    try {
+      const allDone = Array.isArray((updatedTask as any).subtasks) && (updatedTask as any).subtasks.length > 0 && (updatedTask as any).subtasks.every((st: any) => st.done);
+      if (allDone && !updatedTask.completed) {
+        if (user.role === 'admin') {
+          // Admin pode concluir diretamente (reutiliza fluxo do handleTaskToggle)
+          await handleTaskToggle(updatedTask);
+        } else {
+          // Dependente: solicitar aprovação para concluir tarefa
+          await requestTaskApproval(updatedTask);
+        }
+      }
+    } catch (e) {
+      console.warn('Erro ao processar conclusão automática por subtarefas:', e);
+    }
+  }, [tasks, user, currentFamily, isOffline]);
 
   const requestTaskApproval = async (task: Task) => {
     const approval: TaskApproval = {
@@ -3036,6 +3174,30 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           )}
         </View>
 
+        {/* Subtarefas no card */}
+        {Array.isArray((item as any).subtasks) && (item as any).subtasks.length > 0 && (
+          <View style={{ paddingHorizontal: 12, paddingBottom: 8, gap: 6 }}>
+            {(item as any).subtasks.map((st: any) => (
+              <View key={st.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Pressable
+                  onPress={() => toggleSubtask(item.id, st.id)}
+                  style={[styles.checkbox, st.done && styles.checkboxCompleted]}
+                >
+                  {st.done && <Ionicons name="checkmark" size={16} color="#fff" />}
+                </Pressable>
+                <Text style={[styles.taskDescription, st.done && styles.taskDescriptionCompleted, { flex: 1 }]}>
+                  {st.title || 'Subtarefa'}
+                </Text>
+                {st.done && st.completedByName && (
+                  <Text style={[styles.authorshipText, { fontSize: 10 }]}>
+                    {`por ${st.completedByName}`}
+                  </Text>
+                )}
+              </View>
+            ))}
+          </View>
+        )}
+
         {/* Indicador de status de aprovação */}
         {item.status === 'pendente_aprovacao' && (
           <View style={styles.approvalStatus}>
@@ -3565,6 +3727,55 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                 </View>
               </View>
             )}
+
+            {/* Subtarefas */}
+            <Text style={[styles.categoryLabel, { marginTop: 12 }]}>Subtarefas:</Text>
+            {subtasksDraft.length > 0 && (
+              <View style={{ gap: 8, marginBottom: 8 }}>
+                {subtasksDraft.map((st, idx) => (
+                  <View key={st.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Pressable
+                      onPress={() => {
+                        setSubtasksDraft(prev => prev.map(s => s.id === st.id ? { ...s, done: !s.done } : s));
+                      }}
+                      style={[styles.checkbox, st.done && styles.checkboxCompleted]}
+                    >
+                      {st.done && <Ionicons name="checkmark" size={16} color="#fff" />}
+                    </Pressable>
+                    <TextInput
+                      style={[styles.input, { flex: 1 }]}
+                      placeholder={`Subtarefa ${idx + 1}`}
+                      value={st.title}
+                      onChangeText={(txt) => setSubtasksDraft(prev => prev.map(s => s.id === st.id ? { ...s, title: txt } : s))}
+                    />
+                    <Pressable onPress={() => setSubtasksDraft(prev => prev.filter(s => s.id !== st.id))}
+                      style={[styles.scheduleActionButton]}
+                    >
+                      <Ionicons name="trash-outline" size={16} color="#e74c3c" />
+                    </Pressable>
+                  </View>
+                ))}
+              </View>
+            )}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <TextInput
+                style={[styles.input, { flex: 1 }]}
+                placeholder="Adicionar subtarefa"
+                value={newSubtaskTitle}
+                onChangeText={setNewSubtaskTitle}
+              />
+              <Pressable
+                onPress={() => {
+                  const title = newSubtaskTitle.trim();
+                  if (!title) return;
+                  setSubtasksDraft(prev => [...prev, { id: uuidv4(), title, done: false }]);
+                  setNewSubtaskTitle('');
+                }}
+                style={[styles.scheduleActionButton]}
+              >
+                <Ionicons name="add" size={18} color="#007AFF" />
+              </Pressable>
+            </View>
             
             {/* Toggle Privado */}
             <View style={styles.privateToggleContainer}>
