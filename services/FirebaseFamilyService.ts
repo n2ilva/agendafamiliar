@@ -60,12 +60,25 @@ class FirebaseFamilyService {
     return await localFamilyService.addFamilyHistoryItem(familyId, item);
   }
 
-  async updateMemberRole(familyId: string, memberId: string, newRole: string): Promise<void> {
+  async updateMemberRole(familyId: string, memberId: string, newRole: string) {
     return await localFamilyService.updateMemberRole(familyId, memberId, newRole);
+  }
+
+  async updateMemberPermissions(
+    familyId: string,
+    memberId: string,
+    permissions: { create?: boolean; edit?: boolean; delete?: boolean }
+  ): Promise<void> {
+    return await localFamilyService.updateMemberPermissions(familyId, memberId, permissions);
   }
 
   async updateFamilyName(familyId: string, newName: string): Promise<void> {
     return await localFamilyService.updateFamilyName(familyId, newName);
+  }
+
+  async regenerateInviteCode(familyId: string) {
+    // @ts-ignore - método existe no local service
+    return await (localFamilyService as any).regenerateInviteCode(familyId);
   }
 
   async saveApproval(approval: any): Promise<any> {

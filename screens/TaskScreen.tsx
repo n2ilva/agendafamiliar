@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { ListRenderItemInfo } from 'react-native';
 import {
   View,
@@ -15,6 +15,8 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Image,
+  Animated,
+  
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -34,7 +36,7 @@ import SyncService, { SyncStatus } from '../services/SyncService';
 import FirestoreService from '../services/FirestoreService';
 import ConnectivityService, { ConnectivityState } from '../services/ConnectivityService';
 import Alert from '../utils/Alert';
-import familyService from '../services/LocalFamilyService';
+import familyService from '../services/FirebaseFamilyService';
 import FamilySyncHelper from '../services/FamilySyncHelper';
 import LocalAuthService from '../services/LocalAuthService';
 import { safeToDate, isToday, isUpcoming, isTaskOverdue, getNextRecurrenceDate, isRecurringTaskCompletable } from '../utils/DateUtils';
@@ -109,8 +111,8 @@ export const DEFAULT_CATEGORIES: CategoryConfig[] = [
     id: 'personal',
     name: 'Pessoal',
     icon: 'home',
-      color: '#8e44ad',
-      bgColor: '#f3e5f5',
+      color: '#8400b0ff',
+      bgColor: '#f4d4ffff',
     isDefault: true
   },
   {
@@ -125,8 +127,8 @@ export const DEFAULT_CATEGORIES: CategoryConfig[] = [
     id: 'study',
     name: 'Estudos',
     icon: 'book',
-    color: '#9b59b6',
-    bgColor: '#f3e5f5',
+    color: '#c3bc00ff',
+    bgColor: '#fffdd0ff',
     isDefault: true
   }
 ];
@@ -241,6 +243,21 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   
   // Estados para tabs
   const [activeTab, setActiveTab] = useState<'today' | 'upcoming'>('today');
+  // Parametrização da animação de fade
+  const FADE_BASE_OPACITY = 0.25; // ajuste para 0.5 se quiser menos contraste
+  const FADE_DURATION_IN = 160;   // 80 para mais rápido, 160 para mais suave
+  const tabFade = useRef(new Animated.Value(1)).current; // 1 = visível
+  const changeTab = useCallback((next: 'today' | 'upcoming', opts?: { mid?: number; duration?: number }) => {
+    if (next === activeTab) return;
+    const mid = Math.min(1, Math.max(0.85, opts?.mid ?? 0.9)); // nunca abaixo de 0.85 para não sumir conteúdo
+    const duration = opts?.duration ?? 120;
+    const half = Math.floor(duration / 2);
+    Animated.timing(tabFade, { toValue: mid, duration: half, useNativeDriver: true }).start(({ finished }) => {
+      if (!finished) return;
+      setActiveTab(next);
+      Animated.timing(tabFade, { toValue: 1, duration: half, useNativeDriver: true }).start();
+    });
+  }, [activeTab, tabFade]);
   
   // Estados para histórico
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -281,24 +298,60 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   // Estado para dropdown de filtros
   const [filterDropdownVisible, setFilterDropdownVisible] = useState(false);
 
-  // Função para lidar com gestos de swipe
+  // Refs para controlar estado do gesto e evitar múltiplas trocas
+  const hasSwitchedRef = useRef(false);
+  const gestureActiveRef = useRef(false);
+
+  // Handler contínuo (feedback mais suave): troca assim que passa do limiar
+  const onSwipeGestureEvent = useCallback((event: any) => {
+    const { translationX, velocityX, state } = event.nativeEvent;
+    const width = Dimensions.get('window').width;
+    const distanceThreshold = width * 0.12; // 12% da largura - mais sensível
+    const velocityThreshold = 400; // flick moderado
+
+    if (state === State.ACTIVE) {
+      gestureActiveRef.current = true;
+      // Swipe para esquerda -> ir para 'upcoming'
+      if (!hasSwitchedRef.current && translationX < -distanceThreshold && activeTab === 'today') {
+        hasSwitchedRef.current = true;
+        changeTab('upcoming');
+      }
+      // Swipe para direita -> voltar para 'today'
+      if (!hasSwitchedRef.current && translationX > distanceThreshold && activeTab === 'upcoming') {
+        hasSwitchedRef.current = true;
+        changeTab('today');
+      }
+      // Flick (alta velocidade) decide imediatamente
+      if (!hasSwitchedRef.current && velocityX < -velocityThreshold && activeTab === 'today') {
+        hasSwitchedRef.current = true;
+        changeTab('upcoming');
+      }
+      if (!hasSwitchedRef.current && velocityX > velocityThreshold && activeTab === 'upcoming') {
+        hasSwitchedRef.current = true;
+        changeTab('today');
+      }
+    }
+  }, [activeTab, changeTab]);
+
+  // Handler final para fallback caso não tenha trocado durante o gesto
   const handleSwipeGesture = useCallback((event: any) => {
-    const { translationX, state } = event.nativeEvent;
-    
-    if (state === State.END) {
-      const threshold = Dimensions.get('window').width * 0.3; // 30% da largura da tela
-      
-      if (translationX > threshold) {
-        // Swipe para direita - voltar para "Hoje"
-        if (activeTab === 'upcoming') {
-          setActiveTab('today');
-        }
-      } else if (translationX < -threshold) {
-        // Swipe para esquerda - ir para "Próximas"
-        if (activeTab === 'today') {
-          setActiveTab('upcoming');
+    const { translationX, velocityX, state } = event.nativeEvent;
+    if (state === State.END || state === State.CANCELLED || state === State.FAILED) {
+      // Se já trocou durante o movimento, apenas resetar refs
+      if (!hasSwitchedRef.current) {
+        const width = Dimensions.get('window').width;
+        const distanceThreshold = width * 0.15; // fallback um pouco maior para evitar trocas acidentais
+        const velocityThreshold = 500;
+
+        if ((translationX < -distanceThreshold || velocityX < -velocityThreshold) && activeTab === 'today') {
+          changeTab('upcoming');
+        } else if ((translationX > distanceThreshold || velocityX > velocityThreshold) && activeTab === 'upcoming') {
+          changeTab('today');
         }
       }
+      // Reset
+      hasSwitchedRef.current = false;
+      gestureActiveRef.current = false;
     }
   }, [activeTab]);
 
@@ -761,8 +814,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
 
     // Primeiro, carregar histórico do cache local
     console.log('📖 Carregando histórico do cache local...');
-    const localHistory = await LocalStorageService.getHistory(100);
-    setHistory(localHistory);
+  const localHistory = await LocalStorageService.getHistory(100);
+  setHistory(localHistory.sort((a,b)=> new Date(b.timestamp as any).getTime() - new Date(a.timestamp as any).getTime()));
 
     // Limpar histórico antigo (manter apenas 7 dias)
     await LocalStorageService.clearOldHistory(HISTORY_DAYS_TO_KEEP);
@@ -1175,6 +1228,18 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     }
     if (isAddingTask) return; // Prevenir cliques múltiplos
 
+    // Enforcement: dependente criando/atualizando tarefa de família pública precisa de permissões
+    const isFamilyContext = !!currentFamily && !newTaskPrivate; // tarefa pública de família
+    if (isFamilyContext && user.role === 'dependente') {
+      const selfMember = familyMembers.find(m => m.id === user.id);
+      const perms = (selfMember as any)?.permissions || {};
+      const needed = isEditing ? 'edit' : 'create';
+      if (!perms[needed]) {
+        Alert.alert('Sem permissão', `Você não tem permissão para ${needed === 'create' ? 'criar' : 'editar'} tarefas da família.`);
+        return;
+      }
+    }
+
     setIsAddingTask(true);
 
     try {
@@ -1381,9 +1446,17 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   }, []);
 
   const editTask = useCallback((task: Task) => {
+    // Enforcement: dependente só pode editar tarefa de família se possuir permission.edit
     if (user.role === 'dependente') {
-      Alert.alert('Sem permissão', 'Somente administradores podem editar tarefas.');
-      return;
+      const isFamilyTask = (task as any).familyId && (task as any).private !== true;
+      if (isFamilyTask) {
+        const selfMember = familyMembers.find(m => m.id === user.id);
+        const perms = (selfMember as any)?.permissions || {};
+        if (!perms.edit) {
+          Alert.alert('Sem permissão', 'Você não tem permissão para editar tarefas da família.');
+          return;
+        }
+      }
     }
     setNewTaskTitle(task.title);
     setNewTaskDescription(task.description);
@@ -1546,10 +1619,12 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       const cutoffDate = new Date();
       cutoffDate.setDate(cutoffDate.getDate() - HISTORY_DAYS_TO_KEEP);
 
-      return newHistory.filter(item => {
-        const itemDate = item.timestamp instanceof Date ? item.timestamp : safeToDate(item.timestamp);
-        return !!itemDate && itemDate >= cutoffDate;
-      });
+      return newHistory
+        .filter(item => {
+          const itemDate = item.timestamp instanceof Date ? item.timestamp : safeToDate(item.timestamp);
+          return !!itemDate && itemDate >= cutoffDate;
+        })
+        .sort((a,b)=> new Date(b.timestamp as any).getTime() - new Date(a.timestamp as any).getTime());
     });
 
     // Salvar no cache local (LocalStorage)
@@ -1604,10 +1679,13 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - HISTORY_DAYS_TO_KEEP);
 
-    setHistory(prev => prev.filter(item => {
-      const itemDate = item.timestamp instanceof Date ? item.timestamp : safeToDate(item.timestamp);
-      return !!itemDate && itemDate >= cutoffDate;
-    }));
+    setHistory(prev => prev
+      .filter(item => {
+        const itemDate = item.timestamp instanceof Date ? item.timestamp : safeToDate(item.timestamp);
+        return !!itemDate && itemDate >= cutoffDate;
+      })
+      .sort((a,b)=> new Date(b.timestamp as any).getTime() - new Date(a.timestamp as any).getTime())
+    );
   };
 
   // Executar limpeza do histórico a cada renderização (otimização)
@@ -2393,30 +2471,6 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     setApprovalModalVisible(true);
   };
 
-  // Funções de gerenciamento de família
-  // const generateInviteCode = () => {
-  //   const code = Math.random().toString(36).substring(2, 8).toUpperCase();
-  //   const newInvite: FamilyInvite = {
-  //     id: Date.now().toString(),
-  //     familyId: user.familyId || 'family_001',
-  //     familyName: currentFamily?.name || 'Minha Família',
-  //     code: code,
-  //     createdBy: user.id,
-  //     createdAt: new Date(),
-  //     expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 horas
-  //     isActive: true
-  //   };
-  //   
-  //   setFamilyInvites([newInvite, ...familyInvites.filter(inv => inv.isActive === false)]);
-  //   setInviteCode(code);
-  //   
-  //   Alert.alert(
-  //     'Código de Convite Gerado',
-  //     `Código: ${code}\n\nEste código é válido por 24 horas. Compartilhe com quem você deseja adicionar à família.`,
-  //     [{ text: 'OK' }]
-  //   );
-  // };
-
   // Função para copiar código da família
   const copyFamilyCode = async () => {
     try {
@@ -2488,8 +2542,17 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                 };
                 setCurrentFamily(updatedFamily);
                 
-                // Sincronizar com Firebase
-                await familyService.updateMemberRole(currentFamily.id, memberId, newRole);
+                // Sincronizar com Firebase e obter família atualizada
+                const refreshed = await familyService.updateMemberRole(currentFamily.id, memberId, newRole);
+                if (refreshed) {
+                  setCurrentFamily(refreshed as any);
+                  setFamilyMembers((refreshed as any).members || updatedMembers);
+                  // Se o usuário atual foi promovido/demitido, atualizar role no app
+                  const selfAfter = (refreshed as any).members?.find((m: any) => m.id === user.id);
+                  if (selfAfter && selfAfter.role && selfAfter.role !== user.role && onUserRoleChange) {
+                    try { await onUserRoleChange(selfAfter.role); } catch {}
+                  }
+                }
               }
               
               Alert.alert('Sucesso', `${member.name} agora é ${roleNames[newRole]}.`);
@@ -2636,12 +2699,17 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   };
 
   const deleteTask = useCallback((taskId: string) => {
-    if (user.role === 'dependente') {
-      Alert.alert('Sem permissão', 'Somente administradores podem excluir tarefas.');
-      return;
-    }
     const task = tasks.find(t => t.id === taskId);
     if (!task) return;
+    const isFamilyTask = (task as any).familyId && (task as any).private !== true;
+    if (user.role === 'dependente' && isFamilyTask) {
+      const selfMember = familyMembers.find(m => m.id === user.id);
+      const perms = (selfMember as any)?.permissions || {};
+      if (!perms.delete) {
+        Alert.alert('Sem permissão', 'Você não tem permissão para excluir tarefas da família.');
+        return;
+      }
+    }
     
     Alert.alert(
       'Excluir Tarefa',
@@ -2897,23 +2965,33 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             </View>
           )}
 
-          {/* Botões de ação no final da coluna de informações (apenas para administradores) */}
-          {user.role === 'admin' && (
-            <View style={styles.scheduleActions}>
-              <Pressable 
-                onPress={() => editTask(item)}
-                style={styles.scheduleActionButton}
-              >
-                <Ionicons name="pencil-outline" size={16} color="#007AFF" />
-              </Pressable>
-
-              <Pressable 
-                onPress={() => deleteTask(item.id)}
-                style={styles.scheduleActionButton}
-              >
-                <Ionicons name="trash-outline" size={16} color="#e74c3c" />
-              </Pressable>
-            </View>
+          {/* Botões de ação (admin sempre; dependente somente com permissões) */}
+          {(user.role === 'admin' || user.role === 'dependente') && (
+            (() => {
+              const isFamilyTask = (item as any).familyId && (item as any).private !== true;
+              const selfMember = familyMembers.find(m => m.id === user.id);
+              const perms = (selfMember as any)?.permissions || {};
+              const canEdit = user.role === 'admin' || (user.role === 'dependente' && isFamilyTask && perms.edit);
+              const canDelete = user.role === 'admin' || (user.role === 'dependente' && isFamilyTask && perms.delete);
+              return (
+                <View style={styles.scheduleActions}>
+                  <Pressable
+                    onPress={() => canEdit && editTask(item)}
+                    disabled={!canEdit}
+                    style={[styles.scheduleActionButton, !canEdit && { opacity: 0.35 }]}
+                  >
+                    <Ionicons name="pencil-outline" size={16} color={canEdit ? '#007AFF' : '#999'} />
+                  </Pressable>
+                  <Pressable
+                    onPress={() => canDelete && deleteTask(item.id)}
+                    disabled={!canDelete}
+                    style={[styles.scheduleActionButton, !canDelete && { opacity: 0.35 }]}
+                  >
+                    <Ionicons name="trash-outline" size={16} color={canDelete ? '#e74c3c' : '#bbb'} />
+                  </Pressable>
+                </View>
+              );
+            })()
           )}
         </View>
 
@@ -3057,17 +3135,18 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         )}
         
         <PanGestureHandler
-          onGestureEvent={handleSwipeGesture}
-          activeOffsetX={[-30, 30]}
+          onGestureEvent={onSwipeGestureEvent}
+            onHandlerStateChange={handleSwipeGesture}
+          activeOffsetX={[-10, 10]} // mais responsivo
           failOffsetY={[-10, 10]}
         >
-          <View style={styles.content}>
+          <Animated.View style={[styles.content, { opacity: tabFade }] }>
 
         {/* Indicador de Tabs Simplificado */}
         <View style={styles.simpleTabContainer}>
           <Pressable
             style={[styles.simpleTab, activeTab === 'today' && styles.activeSimpleTab]}
-            onPress={() => setActiveTab('today')}
+            onPress={() => changeTab('today')}
           >
             <Text style={[styles.simpleTabText, activeTab === 'today' && styles.activeSimpleTabText]}>
               Hoje ({getTodayTasks().length})
@@ -3076,7 +3155,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           
           <Pressable
             style={[styles.simpleTab, activeTab === 'upcoming' && styles.activeSimpleTab]}
-            onPress={() => setActiveTab('upcoming')}
+            onPress={() => changeTab('upcoming')}
           >
             <Text style={[styles.simpleTabText, activeTab === 'upcoming' && styles.activeSimpleTabText]}>
               Próximas ({getUpcomingTasks().length})
@@ -3125,7 +3204,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             ))}
           </ScrollView>
         )}
-          </View>
+          </Animated.View>
         </PanGestureHandler>
 
       {/* Container dos botões flutuantes */}
@@ -3885,7 +3964,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
 
             {isCreatingFamilyMode ? (
               /* Interface de Criação de Família */
-              <ScrollView style={styles.familyContent}>
+              <ScrollView style={styles.familyContent} contentContainerStyle={styles.familyContentContainer}>
                 <View style={styles.familySection}>
                   <Ionicons name="people" size={60} color="#007AFF" style={styles.createFamilyIcon} />
                   <Text style={styles.createFamilyTitle}>Criar Nova Família</Text>
@@ -3936,9 +4015,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
               </ScrollView>
             ) : (
               /* Interface de Gerenciamento de Família */
-              <ScrollView style={styles.familyContent}>
+              <ScrollView style={styles.familyContent} contentContainerStyle={styles.familyContentContainer}>
                 {/* Seção do Nome da Família */}
-                <View style={styles.familySection}>
+                <View style={[styles.familySection, styles.familyCard]}>
                   <Text style={styles.familySectionTitle}>Nome da Família</Text>
                   
                   {editingFamilyName ? (
@@ -3998,7 +4077,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                 </View>
 
                 {/* Seção do Código da Família */}
-                <View style={styles.familySection}>
+                <View style={[styles.familySection, styles.familyCard]}>
                   <Text style={styles.familySectionTitle}>Código da Família</Text>
                   <Text style={styles.familySectionSubtitle}>
                     Use este código para convidar novos membros
@@ -4047,11 +4126,11 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                 </View>
 
                 {/* Seção de Membros */}
-                <View style={styles.familySection}>
+                <View style={[styles.familySection, styles.familyCard]}>
                   <Text style={styles.familySectionTitle}>Membros da Família</Text>
                   
                   {familyMembers.map(member => (
-                    <View key={member.id} style={styles.familyMember}>
+                    <View key={member.id} style={styles.familyMemberCard}>
                       <View style={styles.memberAvatarColumn}>
                         <View style={styles.memberAvatar}>
                           {member.picture ? (
@@ -4106,6 +4185,60 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                             </Pressable>
                           </View>
                         )}
+                        {user.role === 'admin' && member.id !== user.id && (
+                          <View style={styles.permissionsContainer}>
+                            <Text style={styles.permissionsTitle}>Permissões</Text>
+                            <View style={styles.permissionsRow}>
+                              {['create','edit','delete'].map(key => {
+                                const labelMap: any = { create: 'Criar', edit: 'Editar', delete: 'Excluir' };
+                                const has = !!(member as any).permissions?.[key];
+                                return (
+                                  <Pressable
+                                    key={key}
+                                    style={[styles.permissionChip, has && styles.permissionChipActive]}
+                                    onPress={async () => {
+                                      try {
+                                        const newValue = !has;
+                                        // Montar novo objeto de permissões local
+                                        const updatedPerms = { ...(member as any).permissions };
+                                        if (newValue) {
+                                          updatedPerms[key] = true;
+                                        } else {
+                                          delete updatedPerms[key];
+                                        }
+                                        // Persistir (somente true é salvo, ausência = false)
+                                        await familyService.updateMemberPermissions(currentFamily!.id, member.id, updatedPerms);
+                                        // Atualizar estado local de membros
+                                        setFamilyMembers(prev => prev.map(m => m.id === member.id ? { ...m, permissions: { ...updatedPerms } } : m));
+                                        // Se o membro atualizado é o usuário atual, refetch das tarefas para refletir nova visibilidade/permissões
+                                        if (member.id === user.id && currentFamily) {
+                                          try {
+                                            const refreshed = await familyService.getFamilyTasks(currentFamily.id, user.id);
+                                            // Mantém tasks privadas locais + atualiza públicas
+                                            setTasks(prev => {
+                                              const privateTasks = prev.filter(t => (t as any).private === true || !(t as any).familyId) as any as Task[];
+                                              const merged = [...privateTasks, ...(refreshed as any as Task[])];
+                                              return merged as Task[];
+                                            });
+                                          } catch (err) {
+                                            console.warn('Falha ao refazer fetch das tasks após permissão:', err);
+                                          }
+                                        }
+                                      } catch (e) {
+                                        Alert.alert('Erro', 'Não foi possível atualizar permissões.');
+                                      }
+                                    }}
+                                  >
+                                    <Text style={[styles.permissionChipText, has && styles.permissionChipTextActive]}>
+                                      {labelMap[key]}
+                                    </Text>
+                                  </Pressable>
+                                );
+                              })}
+                            </View>
+                            <Text style={styles.permissionsHint}>Ausência de seleção = sem acesso a tarefas públicas.</Text>
+                          </View>
+                        )}
                       </View>
                     </View>
                   ))}
@@ -4134,12 +4267,44 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         </View>
       </Modal>
       
+      {isRefreshing && (
+        <View style={styles.fullscreenLoadingOverlay} pointerEvents="auto">
+          <View style={styles.fullscreenLoadingContent}>
+            <ActivityIndicator size="large" color="#fff" />
+            <Text style={styles.fullscreenLoadingText}>Atualizando dados...</Text>
+          </View>
+        </View>
+      )}
       </SafeAreaView>
     </GestureHandlerRootView>
   );
 };
 
 const styles = StyleSheet.create({
+  familyContentContainer: {
+    padding: 16,
+    paddingBottom: 40,
+  },
+  familyCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+    marginBottom: 16,
+  },
+  familyMemberCard: {
+    flexDirection: 'row',
+    backgroundColor: '#fdfdfd',
+    borderRadius: 10,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#ececec',
+    marginBottom: 12,
+  },
   container: {
     flex: 1,
     backgroundColor: '#f8f9fa',
@@ -4677,6 +4842,30 @@ const styles = StyleSheet.create({
   approvalModalContent: {
     position: 'relative',
     paddingBottom: 72, // espaço para o botão "Fechar" fixo
+  },
+  fullscreenLoadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 999,
+  },
+  fullscreenLoadingContent: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderRadius: 16,
+  },
+  fullscreenLoadingText: {
+    marginTop: 12,
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600'
   },
   modalHeader: {
     flexDirection: 'row',
@@ -5901,6 +6090,51 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
     lineHeight: 20,
+  },
+  // ===== Permissões de Membros =====
+  permissionsContainer: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#eee'
+  },
+  permissionsTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 6
+  },
+  permissionsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8
+  },
+  permissionChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#bbb',
+    backgroundColor: '#fff',
+    marginRight: 8,
+    marginBottom: 8
+  },
+  permissionChipActive: {
+    backgroundColor: '#007AFF',
+    borderColor: '#007AFF'
+  },
+  permissionChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#555'
+  },
+  permissionChipTextActive: {
+    color: '#fff'
+  },
+  permissionsHint: {
+    fontSize: 10,
+    color: '#666',
+    marginTop: 2
   },
 });
 

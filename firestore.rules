@@ -5,14 +5,29 @@ service cloud.firestore {
 
     // Helper functions
     function isAuthenticated() { return request.auth != null; }
-    function authId() { return request.auth.token.sub; }
+    // Usar uid padrão do Firebase Auth; fallback para token.sub se necessário
+    function authId() { 
+      return request.auth != null 
+        ? (request.auth.uid != null ? request.auth.uid : request.auth.token.sub) 
+        : null; 
+    }
 
     function isMemberOf(familyId) {
       return familyId != null && familyId != '' && exists(/databases/$(database)/documents/families/$(familyId)/members/$(authId()));
     }
 
+    // Suporte a múltiplos administradores:
+    // Considera admin se (a) authId é adminId legacy OU (b) documento do membro tem role == 'admin'
     function isFamilyAdmin(familyId) {
-      return familyId != null && familyId != '' && exists(/databases/$(database)/documents/families/$(familyId)) && get(/databases/$(database)/documents/families/$(familyId)).data.adminId == authId();
+      return familyId != null && familyId != ''
+        && exists(/databases/$(database)/documents/families/$(familyId))
+        && (
+          get(/databases/$(database)/documents/families/$(familyId)).data.adminId == authId()
+          || (
+            exists(/databases/$(database)/documents/families/$(familyId)/members/$(authId()))
+            && get(/databases/$(database)/documents/families/$(familyId)/members/$(authId())).data.role == 'admin'
+          )
+        );
     }
 
     function validTaskPayload(data) {
@@ -20,6 +35,14 @@ service cloud.firestore {
         && data.title is string
         && (data.familyId == null || data.familyId is string)
         && data.userId == authId();
+    }
+
+    // Verifica se o usuário (authId) possui determinada permissão (create/edit/delete)
+    // Armazenada em families/{familyId}/members/{userId}.permissions.{perm} == true
+    function hasFamilyPermission(familyId, perm) {
+      return familyId != null
+        && exists(/databases/$(database)/documents/families/$(familyId)/members/$(authId()))
+        && get(/databases/$(database)/documents/families/$(familyId)/members/$(authId())).data.permissions[perm] == true;
     }
 
     function validApprovalPayload(data) {
@@ -79,6 +102,18 @@ service cloud.firestore {
             && get(/databases/$(database)/documents/families/$(familyId)).data.inviteCodeExpiry >= request.time
           )
         );
+        
+        // Atualização de membros:
+        //  - Admin pode atualizar qualquer membro (inclusive role/permissions)
+        //  - Próprio membro pode atualizar apenas se NÃO tocar em role ou permissions
+        allow update: if isAuthenticated() && (
+          isFamilyAdmin(familyId)
+          || (
+            memberId == authId() &&
+            !request.resource.data.keys().hasAny(['role','permissions']) &&
+            !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role','permissions'])
+          )
+        );
         allow delete: if isAuthenticated() && (memberId == authId() || isFamilyAdmin(familyId));
       }
     }
@@ -88,10 +123,18 @@ service cloud.firestore {
       allow create: if isAuthenticated()
         && validTaskPayload(request.resource.data)
         && (
+          // Tarefa pessoal/privada (sem família) – autor pode criar
           request.resource.data.familyId == null
-          || isMemberOf(request.resource.data.familyId)
+          // Tarefa da família pública: requer ser membro E ter permissão create OU ser admin
+          || (
+            request.resource.data.familyId != null
+            && isMemberOf(request.resource.data.familyId)
+            && (
+              isFamilyAdmin(request.resource.data.familyId)
+              || hasFamilyPermission(request.resource.data.familyId, 'create')
+            )
+          )
         )
-        // Se a tarefa for privada, familyId DEVE ser null
         && (request.resource.data.private != true || request.resource.data.familyId == null);
 
       // Permite ler (get) ou listar (list) tarefas sob condições específicas
@@ -122,18 +165,23 @@ service cloud.firestore {
       allow update: if isAuthenticated()
         && validTaskPayload(request.resource.data)
         && (
-          // Tarefa privada (sem familyId): autor pode atualizar
+          // Tarefa privada / pessoal (sem familyId): autor pode editar
           (resource.data.familyId == null && resource.data.userId == authId())
-          // Tarefa da família: apenas admin pode atualizar
-          || (resource.data.familyId != null && isFamilyAdmin(resource.data.familyId))
+          // Tarefa da família: admin OU membro com permissão edit
+          || (resource.data.familyId != null && isMemberOf(resource.data.familyId) && (
+            isFamilyAdmin(resource.data.familyId) || hasFamilyPermission(resource.data.familyId, 'edit')
+          ))
         )
-        // Ao atualizar, se marcar como privada, familyId deve ser null
         && (request.resource.data.private != true || request.resource.data.familyId == null);
 
       // Exclusão: somente admin em tarefas da família; em tarefas privadas, o autor pode excluir
       allow delete: if isAuthenticated() && (
+        // Tarefa pessoal/privada sem família: autor pode excluir
         (resource.data.familyId == null && resource.data.userId == authId())
-        || isFamilyAdmin(resource.data.familyId)
+        // Tarefa de família: admin OU membro com permissão delete
+        || (resource.data.familyId != null && (
+          isFamilyAdmin(resource.data.familyId) || hasFamilyPermission(resource.data.familyId, 'delete')
+        ))
       );
     }
 

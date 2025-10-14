@@ -90,6 +90,33 @@ class LocalAuthService {
               joinedAt: new Date()
             };
           }
+
+          // Carregar picture do Auth ou Firestore
+          try {
+            const authPhoto = (firebaseUser as any).photoURL;
+            let firestorePhoto: string | undefined;
+            try {
+              const db = firebaseFirestore() as any;
+              const userRef = doc(db, 'users', firebaseUser.uid);
+              const snap = await getDoc(userRef);
+              if (snap.exists()) {
+                const data = snap.data();
+                firestorePhoto = data?.picture;
+                if (data?.name && !raw) {
+                  // se primeiro login e Firestore tem nome mais atual
+                  familyUser.name = data.name;
+                }
+              }
+            } catch (e) {
+              console.warn('[LocalAuthService.onAuthStateChange] Falha ao obter user doc Firestore:', e);
+            }
+            const finalPhoto = firestorePhoto || authPhoto;
+            if (finalPhoto) {
+              (familyUser as any).picture = finalPhoto;
+            }
+          } catch (e) {
+            console.warn('[LocalAuthService.onAuthStateChange] Falha ao resolver foto de perfil:', e);
+          }
           
           await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(familyUser));
           console.log('✅ FamilyUser salvo no AsyncStorage:', familyUser.name);

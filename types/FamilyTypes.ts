@@ -11,6 +11,8 @@ export interface FamilyUser {
   isGuest: boolean;
   familyId?: string;
   joinedAt: Date | string;
+  // Permissões específicas atribuídas pelo admin (ausente = sem permissão)
+  permissions?: MemberPermissions;
 }
 
 export interface Family {
@@ -21,6 +23,12 @@ export interface Family {
   createdAt: Date | string;
   inviteCode?: string;
   inviteCodeExpiry?: Date | string;
+}
+
+export interface MemberPermissions {
+  create?: boolean; // criar tarefas públicas (da família)
+  edit?: boolean;   // editar tarefas públicas da família
+  delete?: boolean; // deletar tarefas públicas da família
 }
 
 export interface FamilyInvite {

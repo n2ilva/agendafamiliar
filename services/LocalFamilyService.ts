@@ -495,16 +495,85 @@ class LocalFamilyService {
     }
   }
 
-  async updateMemberRole(familyId: string, memberId: string, newRole: string): Promise<void> {
+  async updateMemberRole(familyId: string, memberId: string, newRole: string): Promise<Family> {
     try {
       console.log('🔄 Atualizando role do membro:', memberId);
       const db = this.getFirestore();
       const memberRef = doc(db, 'families', familyId, 'members', memberId);
       await updateDoc(memberRef, { role: newRole });
+      // Para múltiplos administradores: não sobrescrever adminId existente (mantém como owner original)
+      if (newRole === 'admin') {
+        try {
+          const familyRef = doc(db, 'families', familyId);
+          const famSnap = await getDoc(familyRef);
+            if (famSnap.exists()) {
+              const currentAdminId = (famSnap.data() as any).adminId;
+              if (!currentAdminId) {
+                await updateDoc(familyRef, { adminId: memberId });
+                console.log('👑 adminId principal definido para:', memberId);
+              } else {
+                console.log('ℹ️ Mantendo adminId principal existente:', currentAdminId);
+              }
+            }
+        } catch (e) {
+          console.warn('⚠️ Falha ao verificar/definir adminId principal (ignorado):', e);
+        }
+      }
       console.log('✅ Role atualizada com sucesso');
+      const updated = await this.getFamilyById(familyId);
+      if (!updated) throw new Error('Família não encontrada após atualizar role');
+      return updated;
     } catch (error) {
       console.error('❌ Erro ao atualizar role:', error);
       throw new Error('Não foi possível atualizar o papel do membro.');
+    }
+  }
+
+  async updateMemberPermissions(familyId: string, memberId: string, permissions: { create?: boolean; edit?: boolean; delete?: boolean; }): Promise<void> {
+    try {
+      console.log('🔄 Atualizando permissões do membro:', memberId, permissions);
+      const db = this.getFirestore();
+      const memberRef = doc(db, 'families', familyId, 'members', memberId);
+      // Apenas chaves definidas; remover undefined para não sobrescrever com undefined
+      const payload: any = { permissions: {} };
+      ['create','edit','delete'].forEach(k => {
+        const val = (permissions as any)[k];
+        if (val === true) payload.permissions[k] = true; // só persistimos true; ausência significa false
+      });
+      // Se nenhum true, salvar objeto vazio (limpa permissões)
+      if (Object.keys(payload.permissions).length === 0) {
+        payload.permissions = {}; // representará sem permissões
+      }
+      await updateDoc(memberRef, payload);
+      console.log('✅ Permissões atualizadas');
+    } catch (error) {
+      console.error('❌ Erro ao atualizar permissões:', error);
+      throw new Error('Não foi possível atualizar as permissões do membro.');
+    }
+  }
+
+  /**
+   * Atualiza dados básicos de perfil de um membro (nome e/ou picture).
+   * Regras Firestore permitem que somente admin atualize qualquer membro;
+   * o próprio membro pode atualizar o próprio nome/picture (já que não toca em role/permissions).
+   */
+  async updateMemberProfile(familyId: string, memberId: string, data: { name?: string; picture?: string }): Promise<void> {
+    try {
+      console.log('🔄 Atualizando perfil do membro:', memberId, data);
+      const db = this.getFirestore();
+      const memberRef = doc(db, 'families', familyId, 'members', memberId);
+      const payload: any = {};
+      if (data.name !== undefined) payload.name = data.name;
+      if (data.picture !== undefined) payload.picture = data.picture;
+      if (Object.keys(payload).length === 0) {
+        console.log('ℹ️ Nada para atualizar no perfil do membro.');
+        return;
+      }
+      await updateDoc(memberRef, payload);
+      console.log('✅ Perfil do membro atualizado com sucesso');
+    } catch (error) {
+      console.error('❌ Erro ao atualizar perfil do membro:', error);
+      throw new Error('Não foi possível atualizar o perfil do membro.');
     }
   }
 
