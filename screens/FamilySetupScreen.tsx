@@ -10,6 +10,7 @@ import {
   Pressable,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { THEME } from '../utils/colors';
 import { familyService } from '../services/LocalFamilyService';
 import { UserRole } from '../types/FamilyTypes';
 import Alert from '../utils/Alert';
@@ -130,7 +131,7 @@ export default function FamilySetupScreen({ onFamilySetup, onLogout, userEmail, 
   const renderChoose = () => (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Ionicons name="people" size={60} color="#007AFF" />
+  <Ionicons name="people" size={60} color={THEME.primary} />
         <Text style={styles.title}>Bem-vindo!</Text>
         <Text style={styles.subtitle}>Escolha uma opção para começar:</Text>
       </View>
@@ -175,7 +176,7 @@ export default function FamilySetupScreen({ onFamilySetup, onLogout, userEmail, 
         ]}
         onPress={onLogout}
       >
-        <Ionicons name="log-out-outline" size={20} color="#666" />
+  <Ionicons name="log-out-outline" size={20} color={THEME.textSecondary} />
         <Text style={styles.logoutButtonText}>Entrar com outro email</Text>
       </Pressable>
     </View>
@@ -188,9 +189,9 @@ export default function FamilySetupScreen({ onFamilySetup, onLogout, userEmail, 
           style={styles.backButton}
           onPress={() => setCurrentStep('choose')}
         >
-          <Ionicons name="arrow-back" size={24} color="#007AFF" />
+          <Ionicons name="arrow-back" size={24} color={THEME.primary} />
         </Pressable>
-        <Ionicons name="home" size={60} color="#007AFF" />
+  <Ionicons name="home" size={60} color={THEME.primary} />
         <Text style={styles.title}>Criar Família</Text>
         <Text style={styles.subtitle}>Insira o nome da sua família:</Text>
       </View>
@@ -232,9 +233,9 @@ export default function FamilySetupScreen({ onFamilySetup, onLogout, userEmail, 
           style={styles.backButton}
           onPress={() => setCurrentStep('choose')}
         >
-          <Ionicons name="arrow-back" size={24} color="#007AFF" />
+          <Ionicons name="arrow-back" size={24} color={THEME.primary} />
         </Pressable>
-        <Ionicons name="enter" size={60} color="#FF9500" />
+  <Ionicons name="enter" size={60} color={THEME.warning} />
         <Text style={styles.title}>Entrar na Família</Text>
         <Text style={styles.subtitle}>Insira o código da família:</Text>
       </View>
@@ -294,7 +295,7 @@ export default function FamilySetupScreen({ onFamilySetup, onLogout, userEmail, 
 const styles = StyleSheet.create({
   keyboardContainer: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: THEME.background,
   },
   scrollContainer: {
     flexGrow: 1,
@@ -322,13 +323,13 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#333',
+    color: THEME.textPrimary,
     marginTop: 20,
     marginBottom: 10,
   },
   subtitle: {
     fontSize: 16,
-    color: '#666',
+    color: THEME.textSecondary,
     textAlign: 'center',
     paddingHorizontal: 20,
   },
@@ -337,7 +338,7 @@ const styles = StyleSheet.create({
     gap: 20,
   },
   roleOption: {
-    backgroundColor: 'white',
+    backgroundColor: THEME.surface,
     padding: 30,
     borderRadius: 15,
     alignItems: 'center',
@@ -353,13 +354,13 @@ const styles = StyleSheet.create({
   roleTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#333',
+    color: THEME.textPrimary,
     marginTop: 15,
     marginBottom: 8,
   },
   roleDescription: {
     fontSize: 14,
-    color: '#666',
+    color: THEME.textSecondary,
     textAlign: 'center',
     lineHeight: 20,
   },
@@ -368,15 +369,15 @@ const styles = StyleSheet.create({
     gap: 20,
   },
   input: {
-    backgroundColor: 'white',
+    backgroundColor: THEME.surface,
     padding: 15,
     borderRadius: 10,
     fontSize: 16,
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: THEME.border,
   },
   primaryButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: THEME.primary,
     padding: 18,
     borderRadius: 10,
     alignItems: 'center',
@@ -395,13 +396,13 @@ const styles = StyleSheet.create({
   },
   inviteCodeLabelInline: {
     fontSize: 14,
-    color: '#666',
+    color: THEME.textSecondary,
   },
   inviteCodeTextInline: {
     marginTop: 6,
     fontSize: 18,
     fontWeight: '700',
-    color: '#007AFF',
+    color: THEME.primary,
   },
   logoutButton: {
     flexDirection: 'row',
@@ -411,13 +412,13 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 20,
     borderRadius: 8,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: THEME.background,
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: THEME.border,
   },
   logoutButtonText: {
     fontSize: 14,
-    color: '#666',
+    color: THEME.textSecondary,
     marginLeft: 8,
     fontWeight: '500',
   },

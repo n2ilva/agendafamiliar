@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Image, TextInput, ActivityIndicator, Platform, ScrollView, Modal, KeyboardAvoidingView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { THEME } from '../utils/colors';
 import LocalAuthService from '../services/LocalAuthService';
 import FirebaseAuthService from '../services/FirebaseAuthService';
 import ConnectivityService from '../services/ConnectivityService';
@@ -246,7 +247,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
             {!isLogin && (
               <>
                 <View style={styles.inputContainer}>
-                  <Ionicons name="person-outline" size={20} color="#666" style={styles.inputIcon} />
+                  <Ionicons name="person-outline" size={20} color={THEME.textSecondary} style={styles.inputIcon} />
                   <TextInput
                     style={styles.input}
                     placeholder="Nome completo"
@@ -260,7 +261,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
             )}
 
             <View style={styles.inputContainer}>
-              <Ionicons name="mail-outline" size={20} color="#666" style={styles.inputIcon} />
+              <Ionicons name="mail-outline" size={20} color={THEME.textSecondary} style={styles.inputIcon} />
               <TextInput
                 style={styles.input}
                 placeholder="Email"
@@ -273,7 +274,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
             </View>
 
             <View style={styles.inputContainer}>
-              <Ionicons name="lock-closed-outline" size={20} color="#666" style={styles.inputIcon} />
+              <Ionicons name="lock-closed-outline" size={20} color={THEME.textSecondary} style={styles.inputIcon} />
               <TextInput
                 style={styles.input}
                 placeholder="Senha"
@@ -294,7 +295,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
                 <Ionicons 
                   name={showPassword ? "eye-off-outline" : "eye-outline"} 
                   size={20} 
-                  color="#666" 
+                  color={THEME.textSecondary} 
                 />
               </Pressable>
             </View>
@@ -345,7 +346,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
         
         {/* Nota sobre configurações */}
         <View style={styles.infoNote}>
-          <Ionicons name="information-circle-outline" size={16} color="#666" />
+          <Ionicons name="information-circle-outline" size={16} color={THEME.textSecondary} />
           <Text style={styles.infoText}>
             Você pode alterar seu perfil e configurações após fazer login
           </Text>
@@ -429,7 +430,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: THEME.background,
   },
   scrollContainer: {
     flex: 1,
@@ -453,12 +454,12 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 22,
-    color: '#666',
+    color: THEME.textSecondary,
   },
   appName: {
     fontSize: 32,
     fontWeight: 'bold',
-    color: '#333',
+    color: THEME.textPrimary,
   },
   buttonContainer: {
     width: '100%',
@@ -510,7 +511,7 @@ const styles = StyleSheet.create({
   },
   infoText: {
     fontSize: 12,
-    color: '#666',
+    color: THEME.textSecondary,
     textAlign: 'center',
     flex: 1,
   },
@@ -530,12 +531,12 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   toggleButtonActive: {
-    backgroundColor: '#007AFF',
+    backgroundColor: THEME.primary,
   },
   toggleText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#666',
+    color: THEME.textSecondary,
   },
   toggleTextActive: {
     color: '#fff',
@@ -548,10 +549,10 @@ const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: THEME.surface,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: THEME.border,
     paddingHorizontal: 15,
     paddingVertical: 12,
     marginBottom: 15,
@@ -574,10 +575,10 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     fontSize: 16,
-    color: '#333',
+    color: THEME.textPrimary,
   },
   primaryButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: THEME.primary,
   },
   buttonDisabled: {
     backgroundColor: '#ccc',
@@ -590,7 +591,7 @@ const styles = StyleSheet.create({
   },
   forgotPasswordText: {
     fontSize: 14,
-    color: '#007AFF',
+    color: THEME.primary,
     textDecorationLine: 'underline',
   },
   modalContainer: {
@@ -600,7 +601,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
   },
   modalContent: {
-    backgroundColor: '#fff',
+    backgroundColor: THEME.surface,
     borderRadius: 20,
     padding: 25,
     margin: 20,
@@ -617,13 +618,13 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#333',
+    color: THEME.textPrimary,
     marginBottom: 10,
     textAlign: 'center',
   },
   modalSubtitle: {
     fontSize: 14,
-    color: '#666',
+    color: THEME.textSecondary,
     textAlign: 'center',
     marginBottom: 20,
     lineHeight: 20,
@@ -647,7 +648,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#6c757d',
   },
   sendButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: THEME.primary,
   },
   cancelButtonText: {
     color: '#fff',

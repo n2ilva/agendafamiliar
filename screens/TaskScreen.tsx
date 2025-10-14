@@ -41,6 +41,7 @@ import FamilySyncHelper from '../services/FamilySyncHelper';
 import LocalAuthService from '../services/LocalAuthService';
 import { safeToDate, isToday, isUpcoming, isTaskOverdue, getNextRecurrenceDate, isRecurringTaskCompletable } from '../utils/DateUtils';
 import { v4 as uuidv4 } from 'uuid';
+import { AVAILABLE_COLORS as PALETTE_COLORS, DEFAULT_CATEGORY_COLOR_MAP } from '../utils/colors';
 
 export enum RepeatType {
   NONE = 'none',
@@ -112,32 +113,32 @@ export const DEFAULT_CATEGORIES: CategoryConfig[] = [
     id: 'work',
     name: 'Trabalho',
     icon: 'briefcase',
-    color: '#3498db',
-    bgColor: '#e3f2fd',
+    color: DEFAULT_CATEGORY_COLOR_MAP.work.color,
+    bgColor: DEFAULT_CATEGORY_COLOR_MAP.work.bgColor,
     isDefault: true
   },
   {
-    id: 'personal',
-    name: 'Pessoal',
+    id: 'home',
+    name: 'Casa',
     icon: 'home',
-      color: '#8400b0ff',
-      bgColor: '#f4d4ffff',
+      color: DEFAULT_CATEGORY_COLOR_MAP.home.color,
+      bgColor: DEFAULT_CATEGORY_COLOR_MAP.home.bgColor,
     isDefault: true
   },
   {
     id: 'health',
     name: 'Saúde',
     icon: 'fitness',
-    color: '#27ae60',
-    bgColor: '#e8f5e8',
+    color: DEFAULT_CATEGORY_COLOR_MAP.health.color,
+    bgColor: DEFAULT_CATEGORY_COLOR_MAP.health.bgColor,
     isDefault: true
   },
   {
     id: 'study',
     name: 'Estudos',
     icon: 'book',
-    color: '#c3bc00ff',
-    bgColor: '#fffdd0ff',
+    color: DEFAULT_CATEGORY_COLOR_MAP.study.color,
+    bgColor: DEFAULT_CATEGORY_COLOR_MAP.study.bgColor,
     isDefault: true
   }
 ];
@@ -150,15 +151,7 @@ export const AVAILABLE_ICONS = [
   'heart', 'star', 'gift', 'trophy', 'school', 'desktop'
 ];
 
-export const AVAILABLE_COLORS = [
-  { color: '#3498db', bgColor: '#e3f2fd' }, // Azul
-  { color: '#27ae60', bgColor: '#e8f5e8' }, // Verde
-  { color: '#f39c12', bgColor: '#fff3e0' }, // Laranja
-  { color: '#9b59b6', bgColor: '#f3e5f5' }, // Roxo
-  { color: '#e91e63', bgColor: '#fce4ec' }, // Rosa
-  { color: '#00bcd4', bgColor: '#e0f2f1' }, // Ciano
-  { color: '#795548', bgColor: '#efebe9' }, // Marrom
-];
+export const AVAILABLE_COLORS = PALETTE_COLORS;
 
 interface Task {
   id: string;
@@ -2252,6 +2245,46 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     );
   };
 
+  // Persistir alterações de subtarefas feitas no modal durante edição (salvar imediatamente)
+  const persistSubtasksDraftIfEditing = useCallback(async (nextDraft: Array<{ id: string; title: string; done: boolean; completedById?: string; completedByName?: string; completedAt?: Date }>) => {
+    if (!isEditing || !editingTaskId) return;
+    const baseTask = tasks.find(t => t.id === editingTaskId);
+    if (!baseTask) return;
+    const now = new Date();
+    const updatedTask: Task = {
+      ...baseTask,
+      subtasks: nextDraft as any,
+      editedBy: user.id,
+      editedByName: user.name,
+      editedAt: now,
+    } as any;
+
+    // Atualizar estado local imediato
+    setTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t));
+
+    try {
+      const remoteTask = taskToRemoteTask(updatedTask as any);
+      await LocalStorageService.saveTask(remoteTask);
+      await SyncService.addOfflineOperation('update', 'tasks', remoteTask);
+      if (currentFamily) {
+        if (!isOffline) {
+          try {
+            const toSave = { ...remoteTask, familyId: currentFamily.id } as any;
+            const res = await FirestoreService.saveTask(toSave);
+            await LocalStorageService.saveTask({ ...toSave, id: toSave.id || (res && (res as any).id) } as any);
+          } catch (e) {
+            try { await FamilySyncHelper.saveTaskToFamily(remoteTask as any, currentFamily.id, 'update'); } catch (_) {}
+            await SyncService.addOfflineOperation('update', 'tasks', { ...remoteTask, familyId: currentFamily.id });
+          }
+        } else {
+          await SyncService.addOfflineOperation('update', 'tasks', { ...remoteTask, familyId: currentFamily.id });
+        }
+      }
+    } catch (e) {
+      console.error('Erro ao persistir subtarefas do modal:', e);
+    }
+  }, [isEditing, editingTaskId, tasks, user, currentFamily, isOffline]);
+
   // Alternar subtarefa (checkbox no card)
   const toggleSubtask = useCallback(async (taskId: string, subtaskId: string) => {
     const task = tasks.find(t => t.id === taskId);
@@ -3736,7 +3769,11 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                   <View key={st.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                     <Pressable
                       onPress={() => {
-                        setSubtasksDraft(prev => prev.map(s => s.id === st.id ? { ...s, done: !s.done } : s));
+                        setSubtasksDraft(prev => {
+                          const next = prev.map(s => s.id === st.id ? { ...s, done: !s.done } : s);
+                          persistSubtasksDraftIfEditing(next);
+                          return next;
+                        });
                       }}
                       style={[styles.checkbox, st.done && styles.checkboxCompleted]}
                     >
@@ -3746,9 +3783,17 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                       style={[styles.input, { flex: 1 }]}
                       placeholder={`Subtarefa ${idx + 1}`}
                       value={st.title}
-                      onChangeText={(txt) => setSubtasksDraft(prev => prev.map(s => s.id === st.id ? { ...s, title: txt } : s))}
+                      onChangeText={(txt) => setSubtasksDraft(prev => {
+                        const next = prev.map(s => s.id === st.id ? { ...s, title: txt } : s);
+                        // Não persistimos a cada digitação para evitar flood; persistiremos ao sair/salvar.
+                        return next;
+                      })}
                     />
-                    <Pressable onPress={() => setSubtasksDraft(prev => prev.filter(s => s.id !== st.id))}
+                    <Pressable onPress={() => setSubtasksDraft(prev => {
+                        const next = prev.filter(s => s.id !== st.id);
+                        persistSubtasksDraftIfEditing(next);
+                        return next;
+                      })}
                       style={[styles.scheduleActionButton]}
                     >
                       <Ionicons name="trash-outline" size={16} color="#e74c3c" />
@@ -3768,7 +3813,11 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                 onPress={() => {
                   const title = newSubtaskTitle.trim();
                   if (!title) return;
-                  setSubtasksDraft(prev => [...prev, { id: uuidv4(), title, done: false }]);
+                  setSubtasksDraft(prev => {
+                    const next = [...prev, { id: uuidv4(), title, done: false }];
+                    persistSubtasksDraftIfEditing(next);
+                    return next;
+                  });
                   setNewSubtaskTitle('');
                 }}
                 style={[styles.scheduleActionButton]}

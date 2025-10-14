@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { THEME } from '../utils/colors';
 import * as ImagePicker from 'expo-image-picker';
 import { UserRole } from '../types/FamilyTypes';
 import LocalAuthService from '../services/LocalAuthService';
@@ -256,13 +257,13 @@ export const Header: React.FC<HeaderProps> = ({
     if (profileIconLocal) {
       return (
         <View style={[styles.defaultAvatar, styles.iconAvatar]}> 
-          <Ionicons name={profileIconLocal as any} size={30} color="#007AFF" />
+          <Ionicons name={profileIconLocal as any} size={30} color={THEME.primary} />
         </View>
       );
     }
     return (
       <View style={styles.defaultAvatar}>
-        <Ionicons name="person" size={30} color="#666" />
+  <Ionicons name="person" size={30} color={THEME.textSecondary} />
       </View>
     );
   };
@@ -312,7 +313,7 @@ export const Header: React.FC<HeaderProps> = ({
                 <Ionicons
                   name="notifications-outline"
                   size={24}
-                  color={notificationCount > 0 ? '#f1c40f' : '#333'}
+                  color={notificationCount > 0 ? THEME.highlight : THEME.textPrimary}
                 />
                 {notificationCount > 0 && (
                   <View style={styles.notificationDot}>
@@ -325,7 +326,7 @@ export const Header: React.FC<HeaderProps> = ({
 
           <View style={styles.menuContainer}>
             <Pressable onPress={() => setMenuVisible(true)} style={styles.iconButton}>
-              <Ionicons name="settings-outline" size={24} color="#333" />
+              <Ionicons name="settings-outline" size={24} color={THEME.textPrimary} />
             </Pressable>
           </View>
 
@@ -345,7 +346,7 @@ export const Header: React.FC<HeaderProps> = ({
                 {userRole === 'admin' && onManageFamily && (
                   <>
                     <Pressable onPress={() => { setMenuVisible(false); onManageFamily(); }} style={styles.menuItem}>
-                      <Ionicons name="people-outline" size={18} color="#333" />
+                      <Ionicons name="people-outline" size={18} color={THEME.textPrimary} />
                       <Text style={styles.menuText}>Gerenciar Família</Text>
                     </Pressable>
                     <View style={styles.menuSeparator} />
@@ -354,26 +355,26 @@ export const Header: React.FC<HeaderProps> = ({
                 {onJoinFamilyByCode && (
                   <>
                     <Pressable onPress={openJoinFamily} style={styles.menuItem}>
-                      <Ionicons name="key-outline" size={18} color="#333" />
+                      <Ionicons name="key-outline" size={18} color={THEME.textPrimary} />
                       <Text style={styles.menuText}>Entrar em outra família</Text>
                     </Pressable>
                     <View style={styles.menuSeparator} />
                   </>
                 )}
                 <Pressable onPress={() => { setMenuVisible(false); onHistory(); }} style={styles.menuItem}>
-                  <Ionicons name="time-outline" size={18} color="#333" />
+                  <Ionicons name="time-outline" size={18} color={THEME.textPrimary} />
                   <Text style={styles.menuText}>Histórico</Text>
                 </Pressable>
                 <View style={styles.menuSeparator} />
                 <Pressable onPress={() => { setMenuVisible(false); onInfo(); }} style={styles.menuItem}>
-                  <Ionicons name="information-circle-outline" size={18} color="#333" />
+                  <Ionicons name="information-circle-outline" size={18} color={THEME.textPrimary} />
                   <Text style={styles.menuText}>Manual e Informações</Text>
                 </Pressable>
                 <View style={styles.menuSeparator} />
                 {/* Logout no final do menu */}
                 <Pressable onPress={() => { setMenuVisible(false); handleLogout(); }} style={styles.menuItem}>
-                  <Ionicons name="log-out-outline" size={18} color="#e74c3c" />
-                  <Text style={[styles.menuText, { color: '#e74c3c' }]}>Sair</Text>
+                  <Ionicons name="log-out-outline" size={18} color={THEME.danger} />
+                  <Text style={[styles.menuText, { color: THEME.danger }]}>Sair</Text>
                 </Pressable>
               </View>
             </View>
@@ -448,7 +449,7 @@ export const Header: React.FC<HeaderProps> = ({
               autoCorrect={false}
               maxLength={6}
             />
-            {codeError ? <Text style={{ color: '#e74c3c', alignSelf: 'flex-start', marginTop: -12, marginBottom: 8 }}>{codeError}</Text> : null}
+            {codeError ? <Text style={{ color: THEME.danger, alignSelf: 'flex-start', marginTop: -12, marginBottom: 8 }}>{codeError}</Text> : null}
             <View style={styles.modalButtons}>
               <Pressable 
                 style={[styles.modalButton, styles.cancelButton]} 
@@ -501,7 +502,7 @@ export const Header: React.FC<HeaderProps> = ({
                 <Ionicons 
                   name="shield-checkmark" 
                   size={24} 
-                  color={selectedRole === 'admin' ? '#fff' : '#007AFF'} 
+                  color={selectedRole === 'admin' ? '#fff' : THEME.primary} 
                 />
                 <Text style={[
                   styles.roleOptionText, 
@@ -527,7 +528,7 @@ export const Header: React.FC<HeaderProps> = ({
                 <Ionicons 
                   name="person" 
                   size={24} 
-                  color={selectedRole === 'dependente' ? '#fff' : '#007AFF'} 
+                  color={selectedRole === 'dependente' ? '#fff' : THEME.primary} 
                 />
                 <Text style={[
                   styles.roleOptionText, 
@@ -608,7 +609,7 @@ export const Header: React.FC<HeaderProps> = ({
             <View style={styles.iconGrid}>
               {AVAILABLE_ICONS.map(icon => (
                 <Pressable key={icon} style={styles.iconOption} onPress={() => handleSelectIcon(icon)}>
-                  <Ionicons name={icon as any} size={28} color={profileIconLocal === icon ? '#007AFF' : '#555'} />
+                  <Ionicons name={icon as any} size={28} color={profileIconLocal === icon ? THEME.primary : '#555'} />
                 </Pressable>
               ))}
             </View>
@@ -631,9 +632,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingVertical: 15,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+  backgroundColor: THEME.surface,
+  borderBottomWidth: 1,
+  borderBottomColor: THEME.border,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -645,27 +646,27 @@ const styles = StyleSheet.create({
     zIndex: 1000,
   },
   containerOnline: {
-    shadowColor: '#27ae60', // Verde para online/sincronizado
+    shadowColor: THEME.success, // Verde para online/sincronizado
     shadowOpacity: 0.3,
     shadowRadius: 6,
     elevation: 8,
-    borderBottomColor: '#27ae60',
+  borderBottomColor: THEME.success,
     borderBottomWidth: 2,
   },
   containerError: {
-    shadowColor: '#e74c3c', // Vermelho para erro
+    shadowColor: THEME.danger, // Vermelho para erro
     shadowOpacity: 0.3,
     shadowRadius: 6,
     elevation: 8,
-    borderBottomColor: '#e74c3c',
+  borderBottomColor: THEME.danger,
     borderBottomWidth: 2,
   },
   containerOffline: {
-    shadowColor: '#f39c12', // Laranja para offline
+    shadowColor: THEME.warning, // Laranja para offline
     shadowOpacity: 0.3,
     shadowRadius: 6,
     elevation: 8,
-    borderBottomColor: '#f39c12',
+  borderBottomColor: THEME.warning,
     borderBottomWidth: 2,
   },
   leftSection: {
@@ -686,24 +687,24 @@ const styles = StyleSheet.create({
     width: 50,
     height: 50,
     borderRadius: 25,
-    backgroundColor: '#f0f0f0',
+  backgroundColor: THEME.background,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
-    borderColor: '#e0e0e0',
+  borderColor: THEME.border,
   },
   editIconContainer: {
     position: 'absolute',
     bottom: -2,
     right: -2,
-    backgroundColor: '#007AFF',
+  backgroundColor: THEME.primary,
     borderRadius: 10,
     width: 20,
     height: 20,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
-    borderColor: '#fff',
+  borderColor: THEME.surface,
   },
   userInfo: {
     flex: 1,
@@ -711,12 +712,12 @@ const styles = StyleSheet.create({
   userName: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#333',
+  color: THEME.textPrimary,
     marginBottom: 2,
   },
   subtitle: {
     fontSize: 14,
-    color: '#666',
+  color: THEME.textSecondary,
   },
   rightSection: {
     flexDirection: 'row',
@@ -775,7 +776,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 60,
     right: 20,
-    backgroundColor: '#fff',
+  backgroundColor: THEME.surface,
     borderRadius: 8,
     paddingVertical: 8,
     minWidth: 180,
@@ -785,7 +786,7 @@ const styles = StyleSheet.create({
     shadowRadius: 3.84,
     elevation: 10,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+  borderColor: THEME.border,
   },
   menuItem: {
     flexDirection: 'row',
@@ -796,11 +797,11 @@ const styles = StyleSheet.create({
   menuText: {
     marginLeft: 12,
     fontSize: 16,
-    color: '#333',
+  color: THEME.textPrimary,
   },
   menuSeparator: {
     height: 1,
-    backgroundColor: '#e0e0e0',
+  backgroundColor: THEME.border,
     marginHorizontal: 16,
   },
   nameContainer: {
@@ -815,11 +816,11 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  backgroundColor: 'rgba(0, 0, 0, 0.5)',
   },
   modalContent: {
     width: '80%',
-    backgroundColor: '#fff',
+    backgroundColor: THEME.surface,
     borderRadius: 10,
     padding: 20,
     alignItems: 'center',
@@ -840,7 +841,7 @@ const styles = StyleSheet.create({
   nameInput: {
     width: '100%',
     borderWidth: 1,
-    borderColor: '#ddd',
+  borderColor: THEME.border,
     borderRadius: 5,
     padding: 10,
     marginBottom: 20,
@@ -862,14 +863,14 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   saveButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: THEME.primary,
   },
   buttonText: {
     color: '#fff',
     fontWeight: 'bold',
   },
   notificationBadge: {
-    backgroundColor: '#e74c3c',
+    backgroundColor: THEME.danger,
     borderRadius: 10,
     minWidth: 20,
     height: 20,
@@ -891,7 +892,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: -4,
     right: -2,
-    backgroundColor: '#e74c3c',
+  backgroundColor: THEME.danger,
     borderRadius: 8,
     minWidth: 16,
     height: 16,
@@ -899,7 +900,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#fff',
+  borderColor: THEME.surface,
   },
   notificationDotText: {
     color: '#fff',
@@ -910,7 +911,7 @@ const styles = StyleSheet.create({
   roleSelectionTitle: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#333',
+  color: THEME.textPrimary,
     marginBottom: 15,
     textAlign: 'center',
   },
@@ -919,9 +920,9 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   roleOption: {
-    backgroundColor: '#fff',
+    backgroundColor: THEME.surface,
     borderWidth: 2,
-    borderColor: '#007AFF',
+    borderColor: THEME.primary,
     borderRadius: 10,
     padding: 15,
     alignItems: 'center',
@@ -936,13 +937,13 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   roleOptionSelected: {
-    backgroundColor: '#007AFF',
-    borderColor: '#007AFF',
+    backgroundColor: THEME.primary,
+    borderColor: THEME.primary,
   },
   roleOptionText: {
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#007AFF',
+  color: THEME.primary,
     marginTop: 8,
     textAlign: 'center',
   },
@@ -951,7 +952,7 @@ const styles = StyleSheet.create({
   },
   roleDescription: {
     fontSize: 11,
-    color: '#666',
+  color: THEME.textSecondary,
     textAlign: 'center',
     marginTop: 4,
   },
@@ -973,7 +974,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 2,
     right: 2,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+  backgroundColor: 'rgba(0, 0, 0, 0.7)',
     borderRadius: 12,
     width: 24,
     height: 24,
@@ -981,7 +982,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   iconAvatar: {
-    backgroundColor: '#f0f7ff',
+    backgroundColor: THEME.primaryBg,
     borderColor: '#d3e6ff',
   },
   modalButtonsColumn: {
@@ -995,10 +996,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   secondaryBtn: {
-    backgroundColor: '#007AFF',
+    backgroundColor: THEME.primary,
   },
   dangerBtn: {
-    backgroundColor: '#e74c3c',
+    backgroundColor: THEME.danger,
   },
   cancelBtn: {
     backgroundColor: '#999',
@@ -1013,27 +1014,27 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 12,
-    backgroundColor: '#f1f5f9',
+  backgroundColor: '#f1f5f9',
     justifyContent: 'center',
     alignItems: 'center',
     margin: 6,
     borderWidth: 1,
-    borderColor: '#dce3ea'
+  borderColor: '#dce3ea'
   },
   familyActionButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f0f8ff',
+  backgroundColor: THEME.primaryBg,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#007AFF',
+  borderColor: THEME.primary,
     marginTop: 2,
   },
   familyActionText: {
     fontSize: 12,
-    color: '#007AFF',
+  color: THEME.primary,
     fontWeight: '600',
     marginLeft: 4,
   },
