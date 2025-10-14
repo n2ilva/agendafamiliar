@@ -292,9 +292,23 @@ class SyncService {
           }
         }
       } else if (collectionName === 'approvals') {
+        // Suporte remoto para approvals
         if (type === 'delete') {
-          await LocalStorageService.removeFromCache('approvals', data.id);
+          // Tentar deletar remoto primeiro se online
+            if (ConnectivityService.isConnected()) {
+              try { await FirestoreService.deleteApproval(data.id); } catch (e) { console.warn('Falha ao deletar approval remoto (continuando local):', e); }
+            }
+            await LocalStorageService.removeFromCache('approvals', data.id);
         } else {
+          // create/update
+          if (ConnectivityService.isConnected()) {
+            try {
+              const res = await FirestoreService.saveApproval(data);
+              if (!data.id && res?.id) data.id = res.id;
+            } catch (e) {
+              console.warn('Falha ao salvar approval remoto, mantendo apenas local:', e);
+            }
+          }
           await LocalStorageService.saveApproval(data as TaskApproval);
         }
       } else if (collectionName === 'history') {
@@ -456,10 +470,21 @@ class SyncService {
 
       console.log(`📋 ${familyTasks.length} tarefas da família (incluindo privadas do usuário) baixadas e salvas no cache`);
 
-      // Baixar aprovações a partir do armazenamento local (não há servidor)
-      const offlineData = await LocalStorageService.getOfflineData();
-      const approvalsMap = offlineData.approvals || {};
-      const approvals: TaskApproval[] = Object.values(approvalsMap).filter(a => a && a.familyId === familyId) as TaskApproval[];
+      // Baixar aprovações da família (remoto se online, senão cache existente)
+      let approvals: TaskApproval[] = [];
+      if (ConnectivityService.isConnected()) {
+        try {
+          const remoteApprovals = await FirestoreService.getApprovalsByFamily(familyId);
+          approvals = remoteApprovals as TaskApproval[];
+        } catch (e) {
+          console.warn('Falha ao baixar approvals remotas, fallback cache local:', e);
+        }
+      }
+      if (approvals.length === 0) {
+        const offlineData = await LocalStorageService.getOfflineData();
+        const approvalsMap = offlineData.approvals || {};
+        approvals = Object.values(approvalsMap).filter(a => a && (a as any).familyId === familyId) as TaskApproval[];
+      }
       for (const approval of approvals) {
         await LocalStorageService.saveApproval(approval);
       }
@@ -630,6 +655,27 @@ class SyncService {
 
         this.remoteListeners.push(unsubUser);
         console.log('✅ Listeners remotos configurados para tarefas do usuário/família');
+
+        // Listener de approvals da família (apenas se houver família)
+        if (familyId) {
+          try {
+            const unsubApprovals = FirestoreService.subscribeToFamilyApprovals(familyId, async (items) => {
+              try {
+                // Salvar cada approval no cache e notificar
+                for (const it of items) {
+                  await LocalStorageService.saveApproval(it as any);
+                }
+                this.notifyApprovalsListeners(items as TaskApproval[]);
+              } catch (e) {
+                console.warn('Erro ao processar approvals em tempo real:', e);
+              }
+            });
+            this.remoteListeners.push(unsubApprovals);
+            console.log('✅ Listener remoto configurado para approvals da família');
+          } catch (e) {
+            console.warn('Falha ao configurar listener de approvals:', e);
+          }
+        }
       } catch (e) {
         console.warn('Erro ao configurar listeners remotos:', e);
       }

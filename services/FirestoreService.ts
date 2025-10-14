@@ -36,6 +36,7 @@ export type RemoteHistoryItem = {
 
 const tasksCol = () => collection(firebaseFirestore() as any, 'tasks');
 const historyCol = () => collection(firebaseFirestore() as any, 'history');
+const approvalsCol = () => collection(firebaseFirestore() as any, 'approvals');
 
 function ensureFamilyId(val: string | null | undefined) {
   return val === undefined ? null : val;
@@ -356,6 +357,69 @@ export const FirestoreService = {
     const q = query(historyCol() as any, where('familyId', '==', ensureFamilyId(familyId)), orderBy('createdAt', 'desc'));
     const snap = await getDocs(q);
     return mapSnapshot(snap);
+  },
+
+  // ===================== APPROVALS =====================
+  async saveApproval(approval: any) {
+    // Normalizar timestamps: requestedAt serverTimestamp() se novo; resolvedAt somente se existir
+    const toSave: any = {
+      ...approval,
+      familyId: ensureFamilyId(approval.familyId ?? null),
+    };
+
+    // Se não houver id, cria novo doc
+    if (!toSave.id) {
+      toSave.requestedAt = toSave.requestedAt || serverTimestamp();
+      const ref = await addDoc(approvalsCol() as any, toSave);
+      return { id: ref.id };
+    }
+
+    // Atualização/merge
+    if (!toSave.requestedAt) {
+      toSave.requestedAt = serverTimestamp();
+    }
+    await setDoc(doc(firebaseFirestore() as any, 'approvals', toSave.id), toSave, { merge: true });
+    return { id: toSave.id };
+  },
+
+  async deleteApproval(approvalId: string) {
+    try {
+      await deleteDoc(doc(firebaseFirestore() as any, 'approvals', approvalId));
+    } catch (e) {
+      console.error('[FirestoreService] deleteApproval erro:', e);
+      throw e;
+    }
+  },
+
+  async getApprovalsByFamily(familyId: string | null) {
+    if (!familyId) return [];
+    try {
+      const q = query(approvalsCol() as any, where('familyId', '==', ensureFamilyId(familyId)));
+      const snap = await getDocs(q);
+      return mapSnapshot(snap).map((a: any) => ({
+        ...a,
+        requestedAt: (a as any).requestedAt,
+        resolvedAt: (a as any).resolvedAt
+      }));
+    } catch (e) {
+      console.warn('[FirestoreService] getApprovalsByFamily falhou:', e);
+      return [];
+    }
+  },
+
+  subscribeToFamilyApprovals(familyId: string, callback: (items: any[]) => void) {
+    try {
+      const q = query(approvalsCol() as any, where('familyId', '==', ensureFamilyId(familyId)));
+      const unsub = onSnapshot(q, snap => {
+        const list: any[] = [];
+        snap.forEach(docSnap => list.push({ id: docSnap.id, ...(docSnap.data() as any) }));
+        callback(list);
+      });
+      return unsub;
+    } catch (e) {
+      console.warn('[FirestoreService] subscribeToFamilyApprovals falhou:', e);
+      return () => {};
+    }
   }
 };
 
