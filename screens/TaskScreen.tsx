@@ -6719,7 +6719,7 @@ const styles = StyleSheet.create({
   editMemberModalContent: {
     maxHeight: '90%',
     minHeight: '60%',
-    paddingBottom: 0,
+    paddingBottom: 20,
   },
   editMemberScroll: {
     flex: 1,
