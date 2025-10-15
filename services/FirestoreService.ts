@@ -81,7 +81,21 @@ export const FirestoreService = {
       }
 
       const familyData = familySnap.data() as any;
-      return familyData.adminId === userId;
+      if (familyData.adminId === userId) return true;
+
+      // Também considerar administradores definidos via members/{userId}.role === 'admin'
+      try {
+        const memberRef = doc(firebaseFirestore() as any, 'families', familyId, 'members', userId);
+        const memberSnap = await getDoc(memberRef);
+        if (memberSnap.exists()) {
+          const memberData = memberSnap.data() as any;
+          if (memberData && memberData.role === 'admin') return true;
+        }
+      } catch (e) {
+        // ignore nested check errors, fallback to false
+      }
+
+      return false;
     } catch (error) {
       console.warn('[FirestoreService] checkIsFamilyAdmin falhou:', error);
       return false;
@@ -139,9 +153,15 @@ export const FirestoreService = {
   const data = snap.data() as any;
   const isPrivate = (data.private === true) || (data.familyId === null || data.familyId === undefined);
 
+    // Debug detalhado para diagnósticos em produção
+    try {
+      console.log('[deleteTask] user=', currentUserId, 'taskId=', taskId, 'familyId=', data.familyId, 'private=', data.private, 'userId=', data.userId, 'createdBy=', data.createdBy);
+    } catch {}
+
     if (!isPrivate) {
       const canAdmin = await this.checkIsFamilyAdmin(data.familyId, currentUserId);
       const hasDeletePerm = await this.checkHasFamilyPermission(data.familyId, currentUserId, 'delete');
+      try { console.log('[deleteTask] family delete checks -> canAdmin=', canAdmin, 'hasDeletePerm=', hasDeletePerm); } catch {}
       if (!canAdmin && !hasDeletePerm) {
         throw new Error('permission-denied');
       }

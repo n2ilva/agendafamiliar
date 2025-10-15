@@ -41,6 +41,8 @@ service cloud.firestore {
     function hasFamilyPermission(familyId, perm) {
       return familyId != null
         && exists(/databases/$(database)/documents/families/$(familyId)/members/$(authId()))
+        && get(/databases/$(database)/documents/families/$(familyId)/members/$(authId())).data.permissions != null
+        && get(/databases/$(database)/documents/families/$(familyId)/members/$(authId())).data.permissions.keys().hasAny([perm])
         && get(/databases/$(database)/documents/families/$(familyId)/members/$(authId())).data.permissions[perm] == true;
     }
 
@@ -117,8 +119,15 @@ service cloud.firestore {
           isFamilyAdmin(familyId)
           || (
             memberId == authId() &&
-            !request.resource.data.keys().hasAny(['role','permissions']) &&
-            !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role','permissions'])
+            // Autoatualização (não-admin): role e permissions devem permanecer idênticos
+            request.resource.data.role == resource.data.role && (
+              (
+                resource.data.permissions == null && request.resource.data.permissions == null
+              ) || (
+                resource.data.permissions != null && request.resource.data.permissions != null &&
+                request.resource.data.permissions == resource.data.permissions
+              )
+            )
           )
         );
         allow delete: if isAuthenticated() && (memberId == authId() || isFamilyAdmin(familyId));

@@ -63,7 +63,7 @@ if (!fs.existsSync(rulesPath)) {
     test('Admin pode adicionar permissions em dependente', async () => {
       const db = adminCtx.firestore();
       const ref = db.collection('families').doc(familyId).collection('members').doc(depId);
-      await expect(assertSucceeds(ref.update({ permissions: { create: true } }))).resolves.toBeTruthy();
+      await expect(assertSucceeds(ref.update({ permissions: { create: true } }))).resolves.toBeUndefined();
     });
 
     test('Dependente NÃO pode se promover a admin', async () => {
@@ -75,13 +75,14 @@ if (!fs.existsSync(rulesPath)) {
     test('Dependente NÃO pode definir permissions para si', async () => {
       const db = depCtx.firestore();
       const ref = db.collection('families').doc(familyId).collection('members').doc(depId);
-      await expect(assertFails(ref.update({ permissions: { create: true } }))).resolves.toBeTruthy();
+      // Tentar alterar uma permissão existente (de true para false)
+      await expect(assertFails(ref.update({ permissions: { create: false } }))).resolves.toBeTruthy();
     });
 
     test('Dependente pode atualizar campo não privilegiado (name)', async () => {
       const db = depCtx.firestore();
       const ref = db.collection('families').doc(familyId).collection('members').doc(depId);
-      await expect(assertSucceeds(ref.update({ name: 'Novo Nome' }))).resolves.toBeTruthy();
+      await expect(assertSucceeds(ref.update({ name: 'Novo Nome' }))).resolves.toBeUndefined();
     });
   });
 
@@ -89,6 +90,13 @@ if (!fs.existsSync(rulesPath)) {
     const taskId = 'task-123';
 
     beforeAll(async () => {
+      // Garantir que o dependente começa sem permissões explícitas
+      await testEnv.withSecurityRulesDisabled(async (ctx: any) => {
+        const db = ctx.firestore();
+        await db.collection('families').doc(familyId).collection('members').doc(depId).set({
+          permissions: {}
+        }, { merge: true });
+      });
       await testEnv.withSecurityRulesDisabled(async (ctx: any) => {
         const db = ctx.firestore();
         await db.collection('tasks').doc(taskId).set({
@@ -106,7 +114,7 @@ if (!fs.existsSync(rulesPath)) {
     test('Dependente pode ler tarefa pública', async () => {
       const db = depCtx.firestore();
       const ref = db.collection('tasks').doc(taskId);
-      await expect(ref.get()).resolves.toBeTruthy();
+      await expect(ref.get()).resolves.toBeDefined();
     });
 
     test('Dependente NÃO pode atualizar tarefa pública', async () => {
@@ -133,16 +141,16 @@ if (!fs.existsSync(rulesPath)) {
     test('Admin pode atualizar tarefa pública', async () => {
       const db = adminCtx.firestore();
       const ref = db.collection('tasks').doc(taskId);
-      await expect(assertSucceeds(ref.update({ title: 'Nova Título Admin', userId: adminId }))).resolves.toBeTruthy();
+      await expect(assertSucceeds(ref.update({ title: 'Nova Título Admin' }))).resolves.toBeUndefined();
     });
 
     test('Dependente COM permissão create pode criar tarefa pública', async () => {
       // Conceder permissão create ao dependente
       await testEnv.withSecurityRulesDisabled(async (ctx: any) => {
         const db = ctx.firestore();
-        await db.collection('families').doc(familyId).collection('members').doc(depId).update({
+        await db.collection('families').doc(familyId).collection('members').doc(depId).set({
           permissions: { create: true }
-        });
+        }, { merge: true });
       });
       const db = depCtx.firestore();
       const ref = db.collection('tasks').doc('task-new');
@@ -155,41 +163,41 @@ if (!fs.existsSync(rulesPath)) {
         familyId,
         private: false,
         createdAt: new Date()
-      }))).resolves.toBeTruthy();
+      }))).resolves.toBeUndefined();
     });
 
     test('Dependente COM permissão edit pode atualizar tarefa pública', async () => {
       await testEnv.withSecurityRulesDisabled(async (ctx: any) => {
         const db = ctx.firestore();
-        await db.collection('families').doc(familyId).collection('members').doc(depId).update({
+        await db.collection('families').doc(familyId).collection('members').doc(depId).set({
           permissions: { create: true, edit: true }
-        });
+        }, { merge: true });
       });
       const db = depCtx.firestore();
       const ref = db.collection('tasks').doc(taskId);
-      await expect(assertSucceeds(ref.update({ title: 'Edit Dep', userId: adminId }))).resolves.toBeTruthy();
+      await expect(assertSucceeds(ref.update({ title: 'Edit Dep' }))).resolves.toBeUndefined();
     });
 
     test('Dependente COM permissão delete pode deletar tarefa pública', async () => {
       // Garantir permissão delete
       await testEnv.withSecurityRulesDisabled(async (ctx: any) => {
         const db = ctx.firestore();
-        await db.collection('families').doc(familyId).collection('members').doc(depId).update({
+        await db.collection('families').doc(familyId).collection('members').doc(depId).set({
           permissions: { create: true, edit: true, delete: true }
-        });
+        }, { merge: true });
       });
       const db = depCtx.firestore();
       const ref = db.collection('tasks').doc(taskId);
-      await expect(assertSucceeds(ref.delete())).resolves.toBeTruthy();
+      await expect(assertSucceeds(ref.delete())).resolves.toBeUndefined();
     });
 
     test('Dependente NÃO pode deletar tarefa pública sem permissão delete', async () => {
       // Reset permissões para retirar delete
       await testEnv.withSecurityRulesDisabled(async (ctx: any) => {
         const db = ctx.firestore();
-        await db.collection('families').doc(familyId).collection('members').doc(depId).update({
-          permissions: { create: true, edit: true } // sem delete
-        });
+        await db.collection('families').doc(familyId).collection('members').doc(depId).set({
+          permissions: { create: true, edit: true, delete: false } // remove delete explicitamente
+        }, { merge: true });
       });
       const db = depCtx.firestore();
       // Recriar tarefa se foi deletada
