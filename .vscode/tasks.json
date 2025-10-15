@@ -8,6 +8,14 @@
 			"isBackground": true,
 			"problemMatcher": [],
 			"group": "build"
+		},
+		{
+			"label": "Test rules quickly",
+			"type": "shell",
+			"command": "npm run -s test:rules",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
 		}
 	]
 }

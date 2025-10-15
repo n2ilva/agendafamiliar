@@ -199,112 +199,6 @@ interface TaskScreenProps {
 }
 
 export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNameChange, onUserImageChange, onUserRoleChange }) => {
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [categories, setCategories] = useState<CategoryConfig[]>(DEFAULT_CATEGORIES);
-  const [modalVisible, setModalVisible] = useState(false);
-  const [categoryModalVisible, setCategoryModalVisible] = useState(false);
-  const [newTaskTitle, setNewTaskTitle] = useState('');
-  const [newTaskDescription, setNewTaskDescription] = useState('');
-  // Flag para indicar se a nova tarefa é privada
-  const [newTaskPrivate, setNewTaskPrivate] = useState(false);
-  // Subtarefas (rascunho do modal)
-  const [subtasksDraft, setSubtasksDraft] = useState<Array<{ id: string; title: string; done: boolean; completedById?: string; completedByName?: string; completedAt?: Date }>>([]);
-  const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string>('work');
-  const [filterCategory, setFilterCategory] = useState<string>('all');
-  const [newCategoryName, setNewCategoryName] = useState('');
-  const [selectedIcon, setSelectedIcon] = useState('star');
-  
-  // Estados para sistema de aprovação
-  const [approvals, setApprovals] = useState<TaskApproval[]>([]);
-  // Solicitações de promoção a admin
-  const [adminRoleRequests, setAdminRoleRequests] = useState<any[]>([]);
-  const [notifications, setNotifications] = useState<ApprovalNotification[]>([]);
-  const [approvalModalVisible, setApprovalModalVisible] = useState(false);
-  const [selectedApproval, setSelectedApproval] = useState<TaskApproval | null>(null);
-  const [resolvingAdminRequestId, setResolvingAdminRequestId] = useState<string | null>(null);
-  
-  // Estados para sistema de família
-  const [currentFamily, setCurrentFamily] = useState<Family | null>(null);
-  const [familyMembers, setFamilyMembers] = useState<FamilyUser[]>([]);
-  // const [familyInvites, setFamilyInvites] = useState<FamilyInvite[]>([]);
-  const [familyModalVisible, setFamilyModalVisible] = useState(false);
-  const [editingFamilyName, setEditingFamilyName] = useState(false);
-  const [newFamilyName, setNewFamilyName] = useState('');
-  // const [inviteCode, setInviteCode] = useState<string>('');
-  const [isCreatingFamilyMode, setIsCreatingFamilyMode] = useState(false);
-  const [newFamilyNameInput, setNewFamilyNameInput] = useState('');
-  const [isCreatingFamily, setIsCreatingFamily] = useState(false);
-  // Estado para contagem regressiva do código
-  const [codeCountdown, setCodeCountdown] = useState<string>('');
-
-  const [selectedColorIndex, setSelectedColorIndex] = useState(0);
-
-  // Estados para sistema offline
-  const [isOffline, setIsOffline] = useState(false);
-  const [syncStatus, setSyncStatus] = useState<SyncStatus>({
-    isOnline: true,
-    isSyncing: false,
-    lastSync: 0,
-    pendingOperations: 0,
-    hasError: false
-  });
-  const [connectivityState, setConnectivityState] = useState<ConnectivityState>({
-    isConnected: true,
-    isInternetReachable: true,
-    type: 'wifi'
-  });  // Estados para edição
-  const [isEditing, setIsEditing] = useState(false);
-  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
-  
-  // Estados para tabs
-  const [activeTab, setActiveTab] = useState<'today' | 'upcoming'>('today');
-  // Parametrização da animação de fade
-  const FADE_BASE_OPACITY = 0.25; // ajuste para 0.5 se quiser menos contraste
-  const FADE_DURATION_IN = 160;   // 80 para mais rápido, 160 para mais suave
-  const tabFade = useRef(new Animated.Value(1)).current; // 1 = visível
-  const changeTab = useCallback((next: 'today' | 'upcoming', opts?: { mid?: number; duration?: number }) => {
-    if (next === activeTab) return;
-    const mid = Math.min(1, Math.max(0.85, opts?.mid ?? 0.9)); // nunca abaixo de 0.85 para não sumir conteúdo
-    const duration = opts?.duration ?? 120;
-    const half = Math.floor(duration / 2);
-    Animated.timing(tabFade, { toValue: mid, duration: half, useNativeDriver: true }).start(({ finished }) => {
-      if (!finished) return;
-      setActiveTab(next);
-      Animated.timing(tabFade, { toValue: 1, duration: half, useNativeDriver: true }).start();
-    });
-  }, [activeTab, tabFade]);
-  
-  // Estados para histórico
-  const [history, setHistory] = useState<HistoryItem[]>([]);
-  const [historyModalVisible, setHistoryModalVisible] = useState(false);
-
-  // Sincronizar role do usuário ao montar a tela
-  useEffect(() => {
-    const syncRole = async () => {
-      try {
-        if (!user?.id) return;
-        // Buscar família do usuário pelo serviço singleton já importado
-        const family = await familyService.getUserFamily(user.id).catch(() => null);
-        if (family && Array.isArray(family.members)) {
-          const myMember = family.members.find((m: any) => m.id === user.id);
-          if (myMember?.role && myMember.role !== user.role && onUserRoleChange) {
-            await onUserRoleChange(myMember.role);
-          }
-        }
-      } catch (e) {
-        console.warn('⚠️ Falha ao sincronizar role no mount:', e);
-      }
-    };
-    syncRole();
-  }, [user?.id]);
-  
-  // Estado para modal de configurações
-  const [settingsModalVisible, setSettingsModalVisible] = useState(false);
-  const [isSavingFamilyName, setIsSavingFamilyName] = useState(false);
-  
-  // Estado para atualização automática
-  const [lastUpdate, setLastUpdate] = useState(new Date());
   const [isRefreshing, setIsRefreshing] = useState(false);
   // Loading global para aguardar sincronizações específicas (ex.: exclusão remota)
   const [isGlobalLoading, setGlobalLoading] = useState(false);
@@ -317,6 +211,91 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   
   // Estado para dropdown de filtros
   const [filterDropdownVisible, setFilterDropdownVisible] = useState(false);
+
+  // Estados principais
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [categories, setCategories] = useState<CategoryConfig[]>(DEFAULT_CATEGORIES);
+  const [selectedCategory, setSelectedCategory] = useState('work');
+  const [filterCategory, setFilterCategory] = useState('all');
+  const [modalVisible, setModalVisible] = useState(false);
+  const [categoryModalVisible, setCategoryModalVisible] = useState(false);
+  const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [newTaskDescription, setNewTaskDescription] = useState('');
+  const [newTaskPrivate, setNewTaskPrivate] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [lastUpdate, setLastUpdate] = useState(new Date());
+  const [activeTab, setActiveTab] = useState<'today' | 'upcoming'>('today');
+  
+  // Estados de família
+  const [currentFamily, setCurrentFamily] = useState<Family | null>(null);
+  const [familyMembers, setFamilyMembers] = useState<FamilyUser[]>([]);
+  const [familyModalVisible, setFamilyModalVisible] = useState(false);
+  const [familyName, setFamilyName] = useState('');
+  const [inviteCode, setInviteCode] = useState('');
+  const [codeCountdown, setCodeCountdown] = useState('');
+
+  const isWeb = Platform.OS === 'web';
+  
+  // Estados de aprovação
+  const [approvals, setApprovals] = useState<TaskApproval[]>([]);
+  const [adminRoleRequests, setAdminRoleRequests] = useState<any[]>([]);
+  
+  // Estados de histórico
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [historyModalVisible, setHistoryModalVisible] = useState(false);
+  
+  // Estados de notificação
+  const [notifications, setNotifications] = useState<ApprovalNotification[]>([]);
+  const [notificationModalVisible, setNotificationModalVisible] = useState(false);
+  
+  // Estados de categoria customizada
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [selectedIcon, setSelectedIcon] = useState('star');
+  const [selectedColorIndex, setSelectedColorIndex] = useState(0);
+  
+  // Estados de subtarefas
+  const [subtasksDraft, setSubtasksDraft] = useState<Array<{ id: string; title: string; done: boolean; completedById?: string; completedByName?: string; completedAt?: Date; }>>([]);
+  const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
+  
+  // Estados de conectividade e sincronização
+  const [isOffline, setIsOffline] = useState(false);
+  const [connectivityState, setConnectivityState] = useState<ConnectivityState>({
+    isConnected: true,
+    isInternetReachable: true,
+    type: 'wifi'
+  });
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>({
+    isSyncing: false,
+    lastSync: 0,
+    pendingOperations: 0,
+    isOnline: true,
+    hasError: false
+  });
+  
+  // Estados de modais adicionais
+  const [settingsModalVisible, setSettingsModalVisible] = useState(false);
+  const [approvalModalVisible, setApprovalModalVisible] = useState(false);
+  const [selectedApproval, setSelectedApproval] = useState<TaskApproval | null>(null);
+  
+  // Estados de criação/edição de família
+  const [isCreatingFamily, setIsCreatingFamily] = useState(false);
+  const [isCreatingFamilyMode, setIsCreatingFamilyMode] = useState(false);
+  const [newFamilyNameInput, setNewFamilyNameInput] = useState('');
+  const [isSavingFamilyName, setIsSavingFamilyName] = useState(false);
+  const [editingFamilyName, setEditingFamilyName] = useState(false);
+  const [newFamilyName, setNewFamilyName] = useState('');
+  
+  // Estados de resolução de pedidos admin
+  const [resolvingAdminRequestId, setResolvingAdminRequestId] = useState<string | null>(null);
+  
+  // Animated value para transições de tab
+  const tabFade = useRef(new Animated.Value(1)).current;
+
+  // Função para trocar tabs
+  const changeTab = useCallback((tab: 'today' | 'upcoming') => {
+    setActiveTab(tab);
+  }, []);
 
   // Refs para controlar estado do gesto e evitar múltiplas trocas
   const hasSwitchedRef = useRef(false);
@@ -1249,6 +1228,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   // Refs para web fallback (inputs nativos do navegador)
   const webDateInputRef = React.useRef<any>(null);
   const webTimeInputRef = React.useRef<any>(null);
+  // Refs para manter valor base estável ao abrir os pickers (evita fallback para "agora" a cada render)
+  const datePickerBaseRef = useRef<Date | null>(null);
+  const timePickerBaseRef = useRef<Date | null>(null);
   
   // Estados para repetição
   const [repeatType, setRepeatType] = useState<RepeatType>(RepeatType.NONE);
@@ -1976,19 +1958,52 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
 
   const onDateChange = (event: any, date?: Date) => {
     console.log('📅 onDateChange chamado:', { event, date });
-    setShowDatePicker(Platform.OS === 'ios');
-    if (date) {
-      setSelectedDate(date);
-      console.log('📅 selectedDate atualizado para:', date);
+    if (Platform.OS === 'android') {
+      // Em Android, o onChange dispara com { type: 'set' | 'dismissed' }
+      if (event?.type === 'dismissed') {
+        setShowDatePicker(false);
+        return;
+      }
+      if (event?.type === 'set') {
+        setShowDatePicker(false);
+        if (date) {
+          setSelectedDate(date);
+          console.log('📅 selectedDate atualizado para:', date);
+        }
+        return;
+      }
+    } else {
+      // iOS mantém o spinner visível
+      setShowDatePicker(true);
+      if (date) {
+        setSelectedDate(date);
+        console.log('📅 selectedDate atualizado para (iOS):', date);
+      }
     }
   };
 
   const onTimeChange = (event: any, time?: Date) => {
     console.log('🕐 onTimeChange chamado:', { event, time });
-    setShowTimePicker(Platform.OS === 'ios');
-    if (time) {
-      setSelectedTime(time);
-      console.log('🕐 selectedTime atualizado para:', time);
+    if (Platform.OS === 'android') {
+      if (event?.type === 'dismissed') {
+        setShowTimePicker(false);
+        return;
+      }
+      if (event?.type === 'set') {
+        setShowTimePicker(false);
+        if (time) {
+          setSelectedTime(time);
+          console.log('🕐 selectedTime atualizado para (Android):', time);
+        }
+        return;
+      }
+    } else {
+      // iOS mantém o spinner visível
+      setShowTimePicker(true);
+      if (time) {
+        setSelectedTime(time);
+        console.log('🕐 selectedTime atualizado para (iOS):', time);
+      }
     }
   };
 
@@ -3369,48 +3384,50 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           }}
         />
         
-        {/* Indicador de Status de Conectividade / Sincronização */}
-        {(isOffline || syncStatus.pendingOperations > 0 || syncStatus.isSyncing) && (
-          <Pressable 
-            style={styles.connectivityIndicator}
-            onPress={handleUpdateData}
-            disabled={syncStatus.isSyncing}
-          >
-            <View style={styles.connectivityContent}>
-              <Ionicons 
-                name={isOffline ? "cloud-offline" : "sync"} 
-                size={16} 
-                color={isOffline ? "#ff6b6b" : "#4CAF50"} 
-              />
-              <Text style={[styles.connectivityText, { color: isOffline ? "#ff6b6b" : "#4CAF50" }]}>
-                {isOffline 
-                  ? `Modo Offline` 
-                  : `Sincronizando...`}
-              </Text>
-              {syncStatus.isSyncing && (
-                <View style={styles.syncingIndicator}>
-                  <Text style={styles.syncingDot}>•</Text>
-                </View>
-              )}
-              {!syncStatus.isSyncing && !isOffline && (
+        {/* Wrapper centralizado (apenas Web aplica largura 70%) */}
+        <View style={[styles.pageContainer, Platform.OS === 'web' && styles.pageContainerWeb]}>
+          {/* Indicador de Status de Conectividade / Sincronização */}
+          {(isOffline || syncStatus.pendingOperations > 0 || syncStatus.isSyncing) && (
+            <Pressable 
+              style={styles.connectivityIndicator}
+              onPress={handleUpdateData}
+              disabled={syncStatus.isSyncing}
+            >
+              <View style={styles.connectivityContent}>
                 <Ionicons 
-                  name="refresh" 
-                  size={14} 
+                  name={isOffline ? "cloud-offline" : "sync"} 
+                  size={16} 
                   color={isOffline ? "#ff6b6b" : "#4CAF50"} 
-                  style={{ marginLeft: 8 }}
                 />
-              )}
-            </View>
-          </Pressable>
-        )}
-        
-        <PanGestureHandler
+                <Text style={[styles.connectivityText, { color: isOffline ? "#ff6b6b" : "#4CAF50" }]}>
+                  {isOffline 
+                    ? `Modo Offline` 
+                    : `Sincronizando...`}
+                </Text>
+                {syncStatus.isSyncing && (
+                  <View style={styles.syncingIndicator}>
+                    <Text style={styles.syncingDot}>•</Text>
+                  </View>
+                )}
+                {!syncStatus.isSyncing && !isOffline && (
+                  <Ionicons 
+                    name="refresh" 
+                    size={14} 
+                    color={isOffline ? "#ff6b6b" : "#4CAF50"} 
+                    style={{ marginLeft: 8 }}
+                  />
+                )}
+              </View>
+            </Pressable>
+          )}
+
+          <PanGestureHandler
           onGestureEvent={onSwipeGestureEvent}
             onHandlerStateChange={handleSwipeGesture}
           activeOffsetX={[-10, 10]} // mais responsivo
           failOffsetY={[-10, 10]}
         >
-          <Animated.View style={[styles.content, { opacity: tabFade }] }>
+          <Animated.View style={[styles.content, Platform.OS === 'web' && styles.contentWeb, { opacity: tabFade }] }>
 
         {/* Indicador de Tabs Simplificado */}
         <View style={styles.simpleTabContainer}>
@@ -3468,7 +3485,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             contentContainerStyle={styles.taskListContent}
           >
             {getCurrentTasks().map((task) => (
-              <View key={task.id}>
+              <View key={task.id} style={{ width: '100%', alignSelf: 'stretch' }}>
                 {renderTask({ item: task })}
               </View>
             ))}
@@ -3477,8 +3494,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           </Animated.View>
         </PanGestureHandler>
 
-      {/* Container dos botões flutuantes */}
-      <View style={styles.fabContainer}>
+        {/* Container dos botões flutuantes (relativo ao contêiner centralizado) */}
+        <View style={styles.fabContainer}>
         {/* Botão Atualizar Dados (novo) */}
         <Pressable 
           style={({ pressed }) => [
@@ -3490,8 +3507,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           android_ripple={{ color: 'rgba(255, 255, 255, 0.3)', borderless: true }}
         >
           <Ionicons name="refresh" size={24} color="#fff" />
-        </Pressable>
-        {/* Botão de Filtro */}
+  </Pressable>
+  {/* Botão de Filtro */}
         <Pressable 
           style={({ pressed }) => [
             styles.filterFab,
@@ -3514,7 +3531,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         >
           <Ionicons name="add" size={30} color="#fff" />
         </Pressable>
-      </View>
+        </View>
+        </View>
 
       {/* Dropdown de Filtros - posicionado para abrir à esquerda */}
       {filterDropdownVisible && (
@@ -3683,6 +3701,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                       else if (typeof el.click === 'function') el.click();
                     }
                   } else {
+                    // Capturar uma base estável para o picker
+                    datePickerBaseRef.current = selectedDate || new Date();
                     setShowDatePicker(true);
                   }
                 }}
@@ -3706,6 +3726,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                       else if (typeof el.click === 'function') el.click();
                     }
                   } else {
+                    // Capturar uma base estável para o picker
+                    timePickerBaseRef.current = selectedTime || new Date();
                     setShowTimePicker(true);
                   }
                 }}
@@ -4003,7 +4025,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         <>
           {showDatePicker && (
             <DateTimePicker
-              value={selectedDate || new Date()}
+              value={selectedDate || datePickerBaseRef.current || new Date()}
               mode="date"
               display={Platform.OS === 'ios' ? 'spinner' : 'default'}
               onChange={onDateChange}
@@ -4012,7 +4034,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           )}
           {showTimePicker && (
             <DateTimePicker
-              value={selectedTime || new Date()}
+              value={selectedTime || timePickerBaseRef.current || new Date()}
               mode="time"
               display={Platform.OS === 'ios' ? 'spinner' : 'default'}
               onChange={onTimeChange}
@@ -4333,8 +4355,14 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           setNewFamilyNameInput('');
         }}
       >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, styles.familyModalContent]}>
+        <View style={[styles.modalOverlay, !isWeb && styles.modalOverlayMobile]}>
+          <View
+            style={[
+              styles.modalContent,
+              styles.familyModalContent,
+              isWeb ? styles.modalContentWeb : styles.familyModalContentMobile
+            ]}
+          >
             <View style={styles.familyModalHeader}>
               <Text style={styles.modalTitle}>
                 {isCreatingFamilyMode ? 'Criar Família' : 'Gerenciar Família'}
@@ -4343,8 +4371,11 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
 
             {isCreatingFamilyMode ? (
               /* Interface de Criação de Família */
-              <ScrollView style={styles.familyContent} contentContainerStyle={styles.familyContentContainer}>
-                <View style={styles.familySection}>
+              <ScrollView
+                style={styles.familyContent}
+                contentContainerStyle={[styles.familyContentContainer, Platform.OS === 'web' && styles.familyContentContainerWeb]}
+              >
+                <View style={[styles.familyCard, isWeb ? styles.familyCardWeb : styles.familyCardMobile]}>
                   <Ionicons name="people" size={60} color="#007AFF" style={styles.createFamilyIcon} />
                   <Text style={styles.createFamilyTitle}>Criar Nova Família</Text>
                   <Text style={styles.createFamilySubtitle}>
@@ -4384,7 +4415,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                     )}
                   </Pressable>
 
-                  <View style={styles.createFamilyNote}>
+                  <View style={[styles.createFamilyNote, Platform.OS === 'web' && styles.createFamilyNoteWeb]}>
                     <Ionicons name="information-circle" size={20} color="#666" />
                     <Text style={styles.createFamilyNoteText}>
                       Após criar a família, você receberá um código para compartilhar com outros membros.
@@ -4394,231 +4425,387 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
               </ScrollView>
             ) : (
               /* Interface de Gerenciamento de Família */
-              <ScrollView style={styles.familyContent} contentContainerStyle={styles.familyContentContainer}>
+              <ScrollView
+                style={styles.familyContent}
+                contentContainerStyle={[styles.familyContentContainer, Platform.OS === 'web' && styles.familyContentContainerWeb]}
+              >
                 {/* Seção do Nome da Família */}
-                <View style={[styles.familySection, styles.familyCard]}>
-                  <Text style={styles.familySectionTitle}>Nome da Família</Text>
-                  
-                  {editingFamilyName ? (
-                    <View style={styles.editFamilyNameContainer}>
-                      <TextInput
-                        style={styles.editFamilyNameInput}
-                        value={newFamilyName}
-                        onChangeText={setNewFamilyName}
-                        placeholder="Digite o nome da família"
-                        maxLength={50}
-                        autoFocus
-                      />
-                      <View style={styles.editFamilyNameActions}>
-                        <Pressable
-                          style={[
-                            styles.editFamilyNameButton,
-                            styles.cancelButton,
-                            (isSavingFamilyName) && styles.buttonDisabled
-                          ]}
-                          onPress={cancelEditingFamilyName}
-                          disabled={isSavingFamilyName}
-                        >
-                          <Text style={styles.cancelButtonText}>Cancelar</Text>
-                        </Pressable>
-                        <Pressable
-                          style={[
-                            styles.editFamilyNameButton,
-                            styles.saveButton,
-                            (isSavingFamilyName) && styles.buttonDisabled
-                          ]}
-                          onPress={saveFamilyName}
-                          disabled={isSavingFamilyName}
-                        >
-                          {isSavingFamilyName ? (
-                            <ActivityIndicator size="small" color="#fff" />
-                          ) : (
-                            <Text style={styles.saveButtonText}>Salvar</Text>
+                <View style={[styles.familyCard, isWeb ? styles.familyCardWeb : styles.familyCardMobile]}>
+                  {isWeb ? (
+                    <>
+                      <Text style={styles.familySectionTitle}>Nome da Família</Text>
+
+                      {editingFamilyName ? (
+                        <View style={styles.editFamilyNameContainer}>
+                          <TextInput
+                            style={styles.editFamilyNameInput}
+                            value={newFamilyName}
+                            onChangeText={setNewFamilyName}
+                            placeholder="Digite o nome da família"
+                            maxLength={50}
+                            autoFocus
+                          />
+                          <View style={styles.editFamilyNameActions}>
+                            <Pressable
+                              style={[
+                                styles.editFamilyNameButton,
+                                styles.cancelButton,
+                                (isSavingFamilyName) && styles.buttonDisabled
+                              ]}
+                              onPress={cancelEditingFamilyName}
+                              disabled={isSavingFamilyName}
+                            >
+                              <Text style={styles.cancelButtonText}>Cancelar</Text>
+                            </Pressable>
+                            <Pressable
+                              style={[
+                                styles.editFamilyNameButton,
+                                styles.saveButton,
+                                (isSavingFamilyName) && styles.buttonDisabled
+                              ]}
+                              onPress={saveFamilyName}
+                              disabled={isSavingFamilyName}
+                            >
+                              {isSavingFamilyName ? (
+                                <ActivityIndicator size="small" color="#fff" />
+                              ) : (
+                                <Text style={styles.saveButtonText}>Salvar</Text>
+                              )}
+                            </Pressable>
+                          </View>
+                        </View>
+                      ) : (
+                        <View style={styles.familyNameContainer}>
+                          <Text style={styles.currentFamilyName}>
+                            {currentFamily?.name || 'Nome não definido'}
+                          </Text>
+                          {user.role === 'admin' && (
+                            <Pressable
+                              style={styles.editFamilyNameIconButton}
+                              onPress={startEditingFamilyName}
+                            >
+                              <Ionicons name="pencil" size={16} color="#007AFF" />
+                            </Pressable>
                           )}
-                        </Pressable>
-                      </View>
-                    </View>
-                  ) : (
-                    <View style={styles.familyNameContainer}>
-                      <Text style={styles.currentFamilyName}>
-                        {currentFamily?.name || 'Nome não definido'}
-                      </Text>
-                      {user.role === 'admin' && (
-                        <Pressable
-                          style={styles.editFamilyNameIconButton}
-                          onPress={startEditingFamilyName}
-                        >
-                          <Ionicons name="pencil" size={16} color="#007AFF" />
-                        </Pressable>
+                        </View>
                       )}
-                    </View>
+                    </>
+                  ) : (
+                    <>
+                      <View style={styles.familyCardRow}>
+                        <Text style={styles.familySectionTitle}>Nome da Família</Text>
+                        {user.role === 'admin' && !editingFamilyName && (
+                          <Pressable
+                            style={styles.familyCardActionButton}
+                            onPress={startEditingFamilyName}
+                          >
+                            <Ionicons name="pencil" size={18} color="#007AFF" />
+                            <Text style={styles.familyCardActionText}>Editar</Text>
+                          </Pressable>
+                        )}
+                      </View>
+
+                      {editingFamilyName ? (
+                        <View style={styles.editFamilyNameContainer}>
+                          <TextInput
+                            style={styles.editFamilyNameInput}
+                            value={newFamilyName}
+                            onChangeText={setNewFamilyName}
+                            placeholder="Digite o nome da família"
+                            maxLength={50}
+                            autoFocus
+                          />
+                          <View style={styles.editFamilyNameActions}>
+                            <Pressable
+                              style={[
+                                styles.editFamilyNameButton,
+                                styles.cancelButton,
+                                (isSavingFamilyName) && styles.buttonDisabled
+                              ]}
+                              onPress={cancelEditingFamilyName}
+                              disabled={isSavingFamilyName}
+                            >
+                              <Text style={styles.cancelButtonText}>Cancelar</Text>
+                            </Pressable>
+                            <Pressable
+                              style={[
+                                styles.editFamilyNameButton,
+                                styles.saveButton,
+                                (isSavingFamilyName) && styles.buttonDisabled
+                              ]}
+                              onPress={saveFamilyName}
+                              disabled={isSavingFamilyName}
+                            >
+                              {isSavingFamilyName ? (
+                                <ActivityIndicator size="small" color="#fff" />
+                              ) : (
+                                <Text style={styles.saveButtonText}>Salvar</Text>
+                              )}
+                            </Pressable>
+                          </View>
+                        </View>
+                      ) : (
+                        <View style={styles.familyCardValueRow}>
+                          <Text style={styles.currentFamilyName}>
+                            {currentFamily?.name || 'Nome não definido'}
+                          </Text>
+                        </View>
+                      )}
+                    </>
                   )}
                 </View>
 
                 {/* Seção do Código da Família */}
-                <View style={[styles.familySection, styles.familyCard]}>
-                  <Text style={styles.familySectionTitle}>Código da Família</Text>
-                  <Text style={styles.familySectionSubtitle}>
-                    Use este código para convidar novos membros
-                  </Text>
-                  
-                  <View style={styles.inviteCodeContainer}>
-                    <Text style={styles.inviteCodeLabel}>Código:</Text>
-                    <View style={styles.inviteCodeBox}>
-                      <Text style={styles.inviteCodeText}>
-                        {currentFamily?.inviteCode || 'Código não disponível'}
+                <View style={[styles.familyCard, isWeb ? styles.familyCardWeb : styles.familyCardMobile]}>
+                  {isWeb ? (
+                    <>
+                      <Text style={styles.familySectionTitle}>Código da Família</Text>
+                      <Text style={styles.familySectionSubtitle}>
+                        Use este código para convidar novos membros
                       </Text>
-                      <Pressable
-                        onPress={copyFamilyCode}
-                        style={styles.copyButton}
-                      >
-                        <Ionicons name="copy" size={18} color="#fff" />
-                      </Pressable>
-                    </View>
-                    {/* Indicador de validade e ação de regerar */}
-                    {currentFamily?.inviteCodeExpiry && (
-                      <View style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <Text style={styles.inviteCodeExpiry}>
-                          Validade: {new Date(currentFamily.inviteCodeExpiry as any).toLocaleString('pt-BR')} {codeCountdown ? `• ${codeCountdown}` : ''}
-                        </Text>
-                        {user.role === 'admin' && (
-                          <Pressable
-                            style={styles.regenCodeButton}
-                            onPress={async () => {
-                              if (!currentFamily?.id) return;
-                              try {
-                                const updated = await familyService.regenerateInviteCode(currentFamily.id);
-                                setCurrentFamily(updated);
-                                Alert.alert('Novo código gerado', `Código: ${updated.inviteCode}`);
-                              } catch (e) {
-                                Alert.alert('Erro', 'Não foi possível regerar o código.');
-                              }
-                            }}
-                          >
-                            <Ionicons name="refresh" size={16} color="#fff" />
-                            <Text style={styles.regenCodeButtonText}>Regerar código</Text>
-                          </Pressable>
+
+                      <View style={styles.inviteCodeContainer}>
+                        <Text style={styles.inviteCodeLabel}>Código:</Text>
+                        <View style={[styles.inviteCodeBox, styles.inviteCodeBoxWeb]}>
+                          <Text style={styles.inviteCodeText}>
+                            {currentFamily?.inviteCode || 'Código não disponível'}
+                          </Text>
+                          {isWeb && (
+                            <Pressable
+                              onPress={copyFamilyCode}
+                              style={styles.copyButton}
+                            >
+                              <Ionicons name="copy" size={18} color="#fff" />
+                            </Pressable>
+                          )}
+                        </View>
+                        {/* Indicador de validade e ação de regerar */}
+                        {currentFamily?.inviteCodeExpiry && (
+                          <View style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <Text style={styles.inviteCodeExpiry}>
+                              Validade: {new Date(currentFamily.inviteCodeExpiry as any).toLocaleString('pt-BR')} {codeCountdown ? `• ${codeCountdown}` : ''}
+                            </Text>
+                            {user.role === 'admin' && (
+                              <Pressable
+                                style={styles.regenCodeButton}
+                                onPress={async () => {
+                                  if (!currentFamily?.id) return;
+                                  try {
+                                    const updated = await familyService.regenerateInviteCode(currentFamily.id);
+                                    setCurrentFamily(updated);
+                                    Alert.alert('Novo código gerado', `Código: ${updated.inviteCode}`);
+                                  } catch (e) {
+                                    Alert.alert('Erro', 'Não foi possível regerar o código.');
+                                  }
+                                }}
+                              >
+                                <Ionicons name="refresh" size={16} color="#fff" />
+                                <Text style={styles.regenCodeButtonText}>Regerar código</Text>
+                              </Pressable>
+                            )}
+                          </View>
                         )}
                       </View>
-                    )}
-                  </View>
+                    </>
+                  ) : (
+                    <>
+                      <View style={styles.familyCardRow}>
+                        <View style={styles.familyCardHeaderText}>
+                          <Text style={styles.familySectionTitle}>Código da Família</Text>
+                          <Text style={styles.familySectionSubtitle}>
+                            Use este código para convidar novos membros
+                          </Text>
+                        </View>
+                      </View>
+
+                        <View style={[styles.inviteCodeBox, styles.inviteCodeBoxMobile]}>
+                        <Text style={styles.inviteCodeText}>
+                          {currentFamily?.inviteCode || 'Código não disponível'}
+                        </Text>
+                          <Pressable
+                            onPress={copyFamilyCode}
+                            style={[styles.copyButton, styles.copyButtonMobile]}
+                          >
+                            <Ionicons name="copy" size={18} color="#fff" />
+                          </Pressable>
+                      </View>
+
+                      {currentFamily?.inviteCodeExpiry && (
+                          <View style={[styles.inviteCodeMetaRow, styles.inviteCodeMetaMobile]}>
+                            <Text style={[styles.inviteCodeExpiry, styles.inviteCodeExpiryMobile]}>
+                            Validade: {new Date(currentFamily.inviteCodeExpiry as any).toLocaleString('pt-BR')} {codeCountdown ? `• ${codeCountdown}` : ''}
+                          </Text>
+                          {user.role === 'admin' && (
+                            <Pressable
+                                style={[styles.regenCodeButton, styles.regenCodeButtonMobile]}
+                              onPress={async () => {
+                                if (!currentFamily?.id) return;
+                                try {
+                                  const updated = await familyService.regenerateInviteCode(currentFamily.id);
+                                  setCurrentFamily(updated);
+                                  Alert.alert('Novo código gerado', `Código: ${updated.inviteCode}`);
+                                } catch (e) {
+                                  Alert.alert('Erro', 'Não foi possível regerar o código.');
+                                }
+                              }}
+                            >
+                              <Ionicons name="refresh" size={16} color="#fff" />
+                              <Text style={styles.regenCodeButtonText}>Regerar código</Text>
+                            </Pressable>
+                          )}
+                        </View>
+                      )}
+                    </>
+                  )}
                 </View>
 
                 {/* Seção de Membros */}
-                <View style={[styles.familySection, styles.familyCard]}>
-                  <Text style={styles.familySectionTitle}>Membros da Família</Text>
-                  
+                <View style={[styles.familyCard, isWeb ? styles.familyCardWeb : styles.familyCardMobile]}>
+                  {isWeb ? (
+                    <Text style={styles.familySectionTitle}>Membros da Família</Text>
+                  ) : (
+                    <View style={styles.familyCardRow}>
+                      <Text style={styles.familySectionTitle}>Membros da Família</Text>
+                      <Text style={styles.familyCardBadge}>
+                        {familyMembers.length} {familyMembers.length === 1 ? 'membro' : 'membros'}
+                      </Text>
+                    </View>
+                  )}
+
                   {familyMembers.map(member => (
-                    <View key={member.id} style={styles.familyMemberCard}>
-                      <View style={styles.memberAvatarColumn}>
-                        <View style={styles.memberAvatar}>
-                          {member.picture ? (
-                            <Image source={{ uri: member.picture }} style={styles.memberAvatarImage} />
-                          ) : (
-                            <Ionicons name="person" size={20} color="#666" />
+                    <View
+                      key={member.id}
+                      style={[
+                        styles.familyMemberCard,
+                        isWeb ? styles.familyMemberCardWeb : styles.familyMemberCardMobile
+                      ]}
+                    >
+                      <View style={[styles.memberLeftContainer, !isWeb && styles.memberLeftContainerMobile]}>
+                        <View style={styles.memberAvatarColumn}>
+                          <View style={styles.memberAvatar}>
+                            {member.picture ? (
+                              <Image source={{ uri: member.picture }} style={styles.memberAvatarImage} />
+                            ) : (
+                              <Ionicons name="person" size={20} color="#666" />
+                            )}
+                          </View>
+                        </View>
+                        <View style={styles.memberDetailsColumn}>
+                          <Text style={styles.memberName}>{member.name}</Text>
+                          <View style={styles.memberRole}>
+                            <Ionicons 
+                              name={member.role === 'admin' ? 'shield-checkmark' : 'person'} 
+                              size={14} 
+                              color={member.role === 'admin' ? '#007AFF' : '#666'} 
+                            />
+                            <Text style={[
+                              styles.memberRoleText,
+                              member.role === 'admin' && styles.memberRoleAdmin
+                            ]}>
+                              {member.role === 'admin' ? 'Administrador' : 'Dependente'}
+                            </Text>
+                          </View>
+                          <Text style={styles.memberJoinDate}>
+                            Entrou em: {member.joinedAt ? new Date(member.joinedAt).toLocaleDateString('pt-BR') : 'Data não disponível'}
+                          </Text>
+                          {user.role === 'admin' && member.id !== user.id && (
+                            <View style={styles.permissionsContainer}>
+                              <Text style={styles.permissionsTitle}>Permissões</Text>
+                              <View style={styles.permissionsRow}>
+                                {['create','edit','delete'].map(key => {
+                                  const labelMap: any = { create: 'Criar', edit: 'Editar', delete: 'Excluir' };
+                                  const has = !!(member as any).permissions?.[key];
+                                  return (
+                                    <Pressable
+                                      key={key}
+                                      style={[styles.permissionChip, has && styles.permissionChipActive]}
+                                      onPress={async () => {
+                                        try {
+                                          const newValue = !has;
+                                          const updatedPerms = { ...(member as any).permissions };
+                                          if (newValue) {
+                                            updatedPerms[key] = true;
+                                          } else {
+                                            delete updatedPerms[key];
+                                          }
+                                          await familyService.updateMemberPermissions(currentFamily!.id, member.id, updatedPerms);
+                                          setFamilyMembers(prev => prev.map(m => m.id === member.id ? { ...m, permissions: { ...updatedPerms } } : m));
+                                          if (member.id === user.id && currentFamily) {
+                                            try {
+                                              const refreshed = await familyService.getFamilyTasks(currentFamily.id, user.id);
+                                              setTasks(prev => {
+                                                const privateTasks = prev.filter(t => (t as any).private === true || !(t as any).familyId) as any as Task[];
+                                                const merged = [...privateTasks, ...(refreshed as any as Task[])];
+                                                return merged as Task[];
+                                              });
+                                            } catch (err) {
+                                              console.warn('Falha ao refazer fetch das tasks após permissão:', err);
+                                            }
+                                          }
+                                        } catch (e) {
+                                          Alert.alert('Erro', 'Não foi possível atualizar permissões.');
+                                        }
+                                      }}
+                                    >
+                                      <Text style={[styles.permissionChipText, has && styles.permissionChipTextActive]}>
+                                        {labelMap[key]}
+                                      </Text>
+                                    </Pressable>
+                                  );
+                                })}
+                              </View>
+                              <Text style={styles.permissionsHint}>Ausência de seleção = sem acesso a tarefas públicas.</Text>
+                            </View>
                           )}
                         </View>
                       </View>
-                      <View style={styles.memberDetailsColumn}>
-                        <Text style={styles.memberName}>{member.name}</Text>
-                        <View style={styles.memberRole}>
-                          <Ionicons 
-                            name={member.role === 'admin' ? 'shield-checkmark' : 'person'} 
-                            size={14} 
-                            color={member.role === 'admin' ? '#007AFF' : '#666'} 
-                          />
-                          <Text style={[
-                            styles.memberRoleText,
-                            member.role === 'admin' && styles.memberRoleAdmin
-                          ]}>
-                            {member.role === 'admin' ? 'Administrador' : 'Dependente'}
-                          </Text>
-                        </View>
-                        {member.email && (
-                          <Text style={styles.memberEmail}>{member.email}</Text>
-                        )}
-                        <Text style={styles.memberJoinDate}>
-                          Entrou em: {member.joinedAt ? new Date(member.joinedAt).toLocaleDateString('pt-BR') : 'Data não disponível'}
-                        </Text>
-                        {member.id !== user.id && user.role === 'admin' && (
-                          <View style={styles.memberActions}>
+                      {member.id !== user.id && user.role === 'admin' && (
+                        isWeb ? (
+                          <View style={styles.memberRightColumn}>
+                            <View style={styles.memberActions}>
+                              <Pressable
+                                onPress={() => changeMemberRole(member.id)}
+                                style={styles.changeMemberRoleButton}
+                              >
+                                <Ionicons 
+                                  name="swap-horizontal" 
+                                  size={16} 
+                                  color="#007AFF" 
+                                />
+                                <Text style={styles.changeMemberRoleButtonText}>
+                                  {member.role === 'admin' ? 'Tornar Dependente' : 'Tornar Admin'}
+                                </Text>
+                              </Pressable>
+                              
+                              <Pressable
+                                onPress={() => removeFamilyMember(member.id)}
+                                style={styles.removeMemberButton}
+                              >
+                                <Ionicons name="trash-outline" size={18} color="#e74c3c" />
+                              </Pressable>
+                            </View>
+                          </View>
+                        ) : (
+                          <View style={styles.memberActionsMobile}>
                             <Pressable
                               onPress={() => changeMemberRole(member.id)}
-                              style={styles.changeMemberRoleButton}
+                              style={[styles.changeMemberRoleButton, styles.changeMemberRoleButtonMobile]}
                             >
-                              <Ionicons 
-                                name="swap-horizontal" 
-                                size={16} 
-                                color="#007AFF" 
-                              />
+                              <Ionicons name="swap-horizontal" size={18} color="#007AFF" />
                               <Text style={styles.changeMemberRoleButtonText}>
                                 {member.role === 'admin' ? 'Tornar Dependente' : 'Tornar Admin'}
                               </Text>
                             </Pressable>
-                            
+
                             <Pressable
                               onPress={() => removeFamilyMember(member.id)}
-                              style={styles.removeMemberButton}
+                              style={[styles.removeMemberButton, styles.removeMemberButtonMobile]}
                             >
                               <Ionicons name="trash-outline" size={18} color="#e74c3c" />
                             </Pressable>
                           </View>
-                        )}
-                        {user.role === 'admin' && member.id !== user.id && (
-                          <View style={styles.permissionsContainer}>
-                            <Text style={styles.permissionsTitle}>Permissões</Text>
-                            <View style={styles.permissionsRow}>
-                              {['create','edit','delete'].map(key => {
-                                const labelMap: any = { create: 'Criar', edit: 'Editar', delete: 'Excluir' };
-                                const has = !!(member as any).permissions?.[key];
-                                return (
-                                  <Pressable
-                                    key={key}
-                                    style={[styles.permissionChip, has && styles.permissionChipActive]}
-                                    onPress={async () => {
-                                      try {
-                                        const newValue = !has;
-                                        // Montar novo objeto de permissões local
-                                        const updatedPerms = { ...(member as any).permissions };
-                                        if (newValue) {
-                                          updatedPerms[key] = true;
-                                        } else {
-                                          delete updatedPerms[key];
-                                        }
-                                        // Persistir (somente true é salvo, ausência = false)
-                                        await familyService.updateMemberPermissions(currentFamily!.id, member.id, updatedPerms);
-                                        // Atualizar estado local de membros
-                                        setFamilyMembers(prev => prev.map(m => m.id === member.id ? { ...m, permissions: { ...updatedPerms } } : m));
-                                        // Se o membro atualizado é o usuário atual, refetch das tarefas para refletir nova visibilidade/permissões
-                                        if (member.id === user.id && currentFamily) {
-                                          try {
-                                            const refreshed = await familyService.getFamilyTasks(currentFamily.id, user.id);
-                                            // Mantém tasks privadas locais + atualiza públicas
-                                            setTasks(prev => {
-                                              const privateTasks = prev.filter(t => (t as any).private === true || !(t as any).familyId) as any as Task[];
-                                              const merged = [...privateTasks, ...(refreshed as any as Task[])];
-                                              return merged as Task[];
-                                            });
-                                          } catch (err) {
-                                            console.warn('Falha ao refazer fetch das tasks após permissão:', err);
-                                          }
-                                        }
-                                      } catch (e) {
-                                        Alert.alert('Erro', 'Não foi possível atualizar permissões.');
-                                      }
-                                    }}
-                                  >
-                                    <Text style={[styles.permissionChipText, has && styles.permissionChipTextActive]}>
-                                      {labelMap[key]}
-                                    </Text>
-                                  </Pressable>
-                                );
-                              })}
-                            </View>
-                            <Text style={styles.permissionsHint}>Ausência de seleção = sem acesso a tarefas públicas.</Text>
-                          </View>
-                        )}
-                      </View>
+                        )
+                      )}
                     </View>
                   ))}
                 </View>
@@ -4626,9 +4813,10 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             )}
             
             {/* Botão de fechar no final do modal */}
-            <Pressable 
+            <Pressable
               style={({ pressed }) => [
                 styles.closeModalButton,
+                Platform.OS === 'web' && styles.closeModalButtonWeb,
                 (pressed && !isCreatingFamily && !isSavingFamilyName) && { opacity: 0.8, transform: [{ scale: 0.98 }] },
                 (isCreatingFamily || isSavingFamilyName) && styles.buttonDisabled
               ]}
@@ -4661,29 +4849,223 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
 };
 
 const styles = StyleSheet.create({
+  // Wrapper de página: mantém o layout atual no mobile; na web centraliza e limita largura
+  pageContainer: {
+    flex: 1,
+    alignSelf: 'stretch',
+  },
+  pageContainerWeb: {
+    width: '70%',
+    maxWidth: 1100,
+    minWidth: 320,
+    alignSelf: 'center',
+  },
   familyContentContainer: {
-    padding: 16,
+    paddingHorizontal: 0,
+    paddingTop: 16,
     paddingBottom: 40,
+    width: '100%',
+  },
+  familyContentContainerWeb: {
+    paddingHorizontal: 20,
   },
   familyCard: {
     backgroundColor: '#ffffff',
+    borderRadius: 0,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderLeftWidth: 0,
+    borderRightWidth: 0,
+    borderColor: '#e0e0e0',
+    padding: 20,
+    marginBottom: 12,
+    width: '100%',
+  },
+  familyCardMobile: {
+    paddingHorizontal: 20,
+    paddingVertical: 18,
+    marginBottom: 20,
+  },
+  familyCardWeb: {
     borderRadius: 12,
-    padding: 16,
+    borderWidth: 1,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    marginHorizontal: 0,
+    marginBottom: 16,
     shadowColor: '#000',
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.06,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
-    marginBottom: 16,
+    elevation: 3,
+  },
+  familyCardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  familyCardHeaderText: {
+    flex: 1,
+    gap: 4,
+  },
+  familyCardActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0, 122, 255, 0.12)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    gap: 6,
+  },
+  familyCardActionText: {
+    color: '#007AFF',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  familyCardValueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    marginTop: 12,
+    backgroundColor: '#f4f7fb',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#d6e2f2',
+  },
+  familyCardBadge: {
+    backgroundColor: 'rgba(0, 122, 255, 0.12)',
+    color: '#007AFF',
+    fontWeight: '600',
+    fontSize: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
   },
   familyMemberCard: {
     flexDirection: 'row',
-    backgroundColor: '#fdfdfd',
+    justifyContent: 'space-between',
+    backgroundColor: '#f5f7fa',
     borderRadius: 10,
-    padding: 12,
+    padding: 16,
     borderWidth: 1,
-    borderColor: '#ececec',
+    borderColor: '#e0e0e0',
     marginBottom: 12,
+    width: '100%',
+  },
+  familyMemberCardMobile: {
+    flexDirection: 'column',
+    gap: 16,
+    padding: 18,
+  },
+  // Container para centralizar a lista de membros
+  familyMemberCardWeb: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    marginHorizontal: 0,
+    marginBottom: 12,
+    alignSelf: 'stretch',
+  },
+  inviteCodeBoxWeb: {
+    borderRadius: 10,
+    borderWidth: 2,
+    borderTopWidth: 2,
+    borderBottomWidth: 2,
+    borderLeftWidth: 2,
+    borderRightWidth: 2,
+    marginHorizontal: 0,
+    marginVertical: 12,
+    shadowColor: '#007AFF',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  inviteCodeBoxMobile: {
+    paddingVertical: 20,
+    paddingHorizontal: 24,
+    marginVertical: 12,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#2196F3',
+    marginHorizontal: 4,
+  },
+  copyButtonMobile: {
+    marginLeft: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  inviteCodeMetaRow: {
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    flexWrap: 'wrap',
+  },
+  inviteCodeMetaMobile: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    gap: 10,
+  },
+  inviteCodeExpiryMobile: {
+    textAlign: 'center',
+    width: '100%',
+  },
+  regenCodeButtonMobile: {
+    alignSelf: 'center',
+    marginLeft: 0,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+  },
+  createFamilyNoteWeb: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    marginHorizontal: 0,
+  },
+  closeModalButtonWeb: {
+    borderRadius: 8,
+    marginTop: 16,
+    marginHorizontal: 16,
+  },
+  // Bloco esquerdo: avatar + detalhes (ocupa o espaço disponível)
+  memberLeftContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    flex: 1,
+    paddingRight: 12,
+  },
+  memberLeftContainerMobile: {
+    paddingRight: 0,
+    width: '100%',
+  },
+  // Coluna direita: ações (mantém à direita)
+  memberRightColumn: {
+    justifyContent: 'center',
+    alignItems: 'flex-end',
+  },
+  // Alinhamento à direita para o grupo de ações
+  memberActionsRight: {
+    justifyContent: 'flex-end',
   },
   container: {
     flex: 1,
@@ -4691,7 +5073,7 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    paddingHorizontal: 16, // Reduzir padding horizontal para telas menores
+    paddingHorizontal: 8, // padding menor no mobile
     paddingTop: 12, // Reduzir padding superior
     paddingBottom: 100, // Aumentar padding inferior para os botões flutuantes
   },
@@ -4862,6 +5244,10 @@ const styles = StyleSheet.create({
     marginLeft: 6,
     flex: 1,
   },
+  // Web: manter um pouco mais de respiro lateral
+  contentWeb: {
+    paddingHorizontal: 16,
+  },
   // Estilos específicos para Web para centralizar os botões de Data/Hora
   dateTimeContainerWeb: {
     justifyContent: 'center',
@@ -4970,11 +5356,12 @@ const styles = StyleSheet.create({
   taskListContent: {
     paddingBottom: 120, // Espaço extra no final para o FAB e gesto
     flexGrow: 0,
+    alignItems: 'stretch',
   },
   taskItem: {
     backgroundColor: '#fff',
     borderRadius: 12, // Reduzir border radius
-    marginHorizontal: 12, // Reduzir margem horizontal
+    marginHorizontal: 0, // ocupar 100% do container
     marginBottom: 12, // Reduzir margem inferior
     padding: 0,
     shadowColor: '#000',
@@ -4988,6 +5375,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#f0f0f0',
     overflow: 'hidden',
+    alignSelf: 'stretch',
+    width: '100%',
   },
   taskCompleted: {
     opacity: 0.6,
@@ -5204,6 +5593,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 15, // Reduzir padding para telas menores
   },
+  modalOverlayMobile: {
+    padding: 0,
+    justifyContent: 'flex-start',
+    alignItems: 'stretch',
+  },
   modalContent: {
     backgroundColor: '#fff',
     borderRadius: 16,
@@ -5212,6 +5606,12 @@ const styles = StyleSheet.create({
     maxWidth: 400,
     flex: 1,
     maxHeight: '92%', // Aumentar altura máxima
+  },
+  // No web, expandir o modal de Gerenciar Família para 70% centralizado
+  modalContentWeb: {
+    width: '70%',
+    maxWidth: 1100,
+    alignSelf: 'center',
   },
   // Conteúdo do modal de configurações com espaço para o botão fixo
   settingsModalContent: {
@@ -5254,7 +5654,7 @@ const styles = StyleSheet.create({
     marginBottom: 16, // Reduzir margem
   },
   modalTitle: {
-    fontSize: 18, // Reduzir tamanho da fonte
+    fontSize: 22,
     fontWeight: 'bold',
     color: '#333',
   },
@@ -5275,6 +5675,7 @@ const styles = StyleSheet.create({
     width: '99%', // Garantir largura total
     alignSelf: 'stretch', // Garantir que se estenda corretamente
   },
+  
   categoryLabel: {
     fontSize: 15, // Reduzir tamanho da fonte
     fontWeight: '600',
@@ -5870,107 +6271,107 @@ const styles = StyleSheet.create({
     maxHeight: '85%',
     minHeight: '70%',
   },
+  familyModalContentMobile: {
+    flex: 1,
+    width: '100%',
+    maxWidth: '100%',
+    minHeight: '100%',
+    maxHeight: '100%',
+    borderRadius: 0,
+    padding: 0,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+  },
   familyModalHeader: {
     alignItems: 'center',
     paddingVertical: 20,
     paddingHorizontal: 20,
-    borderBottomWidth: 1,
+    borderBottomWidth: 2,
     borderBottomColor: '#e0e0e0',
-    marginBottom: 0,
+    backgroundColor: '#f8f9fa',
   },
   closeModalButton: {
     padding: 5,
     backgroundColor: '#007AFF',
-    paddingVertical: 12,
+    paddingVertical: 16,
     paddingHorizontal: 24,
-    borderRadius: 8,
-    marginTop: 16,
-    marginHorizontal: 20,
+    borderRadius: 0,
+    marginTop: 0,
+    marginHorizontal: 0,
     alignItems: 'center',
   },
   closeModalButtonText: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '600',
   },
   familyContent: {
     flex: 1,
   },
-  familySection: {
-    marginBottom: 25,
-    paddingBottom: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-  },
+
   familySectionTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: 'bold',
     color: '#333',
-    marginBottom: 5,
+    marginBottom: 12,
   },
   familySectionSubtitle: {
-    fontSize: 14,
+    fontSize: 15,
     color: '#666',
-    marginBottom: 15,
+    marginBottom: 16,
+    lineHeight: 22,
   },
   generateCodeButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#007AFF',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 8,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 10,
     gap: 8,
   },
   generateCodeButtonText: {
     color: '#fff',
     fontWeight: 'bold',
-    fontSize: 16,
+    fontSize: 17,
   },
   inviteCodeContainer: {
     marginTop: 15,
-    padding: 15,
-    backgroundColor: '#f8f9fa',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
+    marginHorizontal: 0,
+    padding: 0,
+    backgroundColor: 'transparent',
+    borderRadius: 0,
+    borderWidth: 0,
   },
   inviteCodeLabel: {
-    fontSize: 16,
-    fontWeight: 'bold',
+    fontSize: 15,
+    fontWeight: '600',
     color: '#333',
     marginBottom: 8,
-    textAlign: 'center',
   },
   inviteCodeBox: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#f8f9ff',
-    padding: 16,
-    borderRadius: 12,
+    backgroundColor: '#e3f2fd',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderRadius: 10,
     borderWidth: 2,
-    borderColor: '#007AFF',
-    shadowColor: '#007AFF',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    borderColor: '#2196F3',
+    width: '100%',
   },
   inviteCodeText: {
-    fontSize: 24,
+    fontSize: 30,
     fontWeight: 'bold',
-    color: '#007AFF',
-    letterSpacing: 3,
+    color: '#1976D2',
+    letterSpacing: 4,
     fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
   },
   copyButton: {
-    backgroundColor: '#007AFF',
-    padding: 10,
+    backgroundColor: '#1976D2',
+    padding: 12,
     borderRadius: 8,
     marginLeft: 12,
   },
@@ -6078,11 +6479,11 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   memberName: {
-    fontSize: 17,
+    fontSize: 18,
     fontWeight: 'bold',
     color: '#333',
     marginBottom: 6,
-    lineHeight: 22,
+    lineHeight: 24,
   },
   memberRole: {
     flexDirection: 'row',
@@ -6091,9 +6492,9 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   memberRoleText: {
-    fontSize: 13,
+    fontSize: 15,
     color: '#666',
-    lineHeight: 18,
+    lineHeight: 20,
   },
   memberRoleAdmin: {
     color: '#007AFF',
@@ -6111,11 +6512,17 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   removeMemberButton: {
-    paddingVertical: 10,
-    paddingHorizontal: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
     borderRadius: 8,
     backgroundColor: '#ffe6e6',
-    minHeight: 40,
+    minHeight: 48,
+    minWidth: 48,
+  },
+  removeMemberButtonMobile: {
+    minWidth: 52,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   memberActions: {
     flexDirection: 'row',
@@ -6124,21 +6531,32 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     marginTop: 12,
   },
+  memberActionsMobile: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    width: '100%',
+    marginTop: 8,
+  },
   changeMemberRoleButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     borderRadius: 8,
     backgroundColor: '#e6f3ff',
-    gap: 6,
-    minHeight: 40,
-    minWidth: 150,
+    gap: 8,
+    minHeight: 48,
+    minWidth: 160,
+  },
+  changeMemberRoleButtonMobile: {
+    flex: 1,
   },
   changeMemberRoleButtonText: {
-    fontSize: 13,
+    fontSize: 15,
     color: '#007AFF',
-    fontWeight: '500',
+    fontWeight: '600',
   },
   // Estilos para edição do nome da família
   familyNameContainer: {
@@ -6146,38 +6564,42 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: '#f8f9fa',
-    padding: 12,
+    padding: 16,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#e0e0e0',
   },
   currentFamilyName: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '600',
     color: '#333',
     flex: 1,
   },
   editFamilyNameIconButton: {
-    padding: 6,
-    borderRadius: 4,
+    padding: 10,
+    borderRadius: 6,
     backgroundColor: '#e6f3ff',
+    minHeight: 44,
+    minWidth: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   editFamilyNameContainer: {
     backgroundColor: '#f8f9fa',
-    padding: 12,
+    padding: 16,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#e0e0e0',
   },
   editFamilyNameInput: {
     backgroundColor: '#fff',
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: '#ddd',
-    borderRadius: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 16,
-    marginBottom: 12,
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 17,
+    marginBottom: 16,
   },
   editFamilyNameActions: {
     flexDirection: 'row',
@@ -6185,10 +6607,10 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   editFamilyNameButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 6,
-    minWidth: 80,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 8,
+    minWidth: 90,
     alignItems: 'center',
   },
   saveButton: {
@@ -6197,7 +6619,7 @@ const styles = StyleSheet.create({
   saveButtonText: {
     color: '#fff',
     fontWeight: '600',
-    fontSize: 14,
+    fontSize: 16,
   },
   // Estilos para indicador de conectividade
   connectivityIndicator: {
@@ -6416,19 +6838,19 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 30,
     lineHeight: 22,
-    paddingHorizontal: 10,
+    paddingHorizontal: 20,
   },
   createFamilyInputContainer: {
     marginBottom: 25,
   },
   createFamilyInput: {
     backgroundColor: '#fff',
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: '#e0e0e0',
     borderRadius: 10,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    fontSize: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
+    fontSize: 17,
     color: '#333',
   },
   createFamilyButton: {
@@ -6436,8 +6858,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#007AFF',
-    paddingVertical: 15,
-    paddingHorizontal: 24,
+    paddingVertical: 18,
+    paddingHorizontal: 28,
     borderRadius: 12,
     gap: 10,
     marginBottom: 20,
@@ -6454,29 +6876,36 @@ const styles = StyleSheet.create({
   },
   createFamilyButtonText: {
     color: '#fff',
-    fontSize: 17,
+    fontSize: 18,
     fontWeight: 'bold',
   },
   createFamilyNote: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    backgroundColor: '#f8f9fa',
-    padding: 15,
-    borderRadius: 10,
+    backgroundColor: '#fff9e6',
+    padding: 16,
+    borderRadius: 0,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderLeftWidth: 0,
+    borderRightWidth: 0,
+    borderColor: '#ffc107',
     gap: 10,
+    marginTop: 20,
+    marginHorizontal: -20,
   },
   createFamilyNoteText: {
     flex: 1,
-    fontSize: 14,
+    fontSize: 15,
     color: '#666',
-    lineHeight: 20,
+    lineHeight: 22,
   },
   // ===== Permissões de Membros =====
   permissionsContainer: {
-    marginTop: 8,
-    paddingTop: 8,
+    marginTop: 12,
+    paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: '#eee'
+    borderTopColor: '#e8e8e8'
   },
   permissionsTitle: {
     fontSize: 12,

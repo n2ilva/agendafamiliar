@@ -137,9 +137,10 @@ export default function FamilySetupScreen({ onFamilySetup, onLogout, userEmail, 
       </View>
 
       <View style={styles.optionsContainer}>
-        <Pressable
+          <Pressable
           style={({ pressed }) => [
-            styles.roleOption,
+              styles.roleOption,
+              Platform.OS === 'web' && styles.roleOptionWeb,
             pressed && { opacity: 0.7, transform: [{ scale: 0.98 }] }
           ]}
           onPress={() => goTo('create')}
@@ -154,7 +155,8 @@ export default function FamilySetupScreen({ onFamilySetup, onLogout, userEmail, 
 
         <Pressable
           style={({ pressed }) => [
-            styles.roleOption,
+              styles.roleOption,
+              Platform.OS === 'web' && styles.roleOptionWeb,
             pressed && { opacity: 0.7, transform: [{ scale: 0.98 }] }
           ]}
           onPress={() => goTo('join')}
@@ -283,10 +285,12 @@ export default function FamilySetupScreen({ onFamilySetup, onLogout, userEmail, 
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <ScrollView
-        contentContainerStyle={styles.scrollContainer}
+        contentContainerStyle={[styles.scrollContainer, Platform.OS === 'web' && styles.scrollContainerWeb]}
         showsVerticalScrollIndicator={false}
       >
-        {renderCurrentStep()}
+        <View style={[styles.pageContainer, Platform.OS === 'web' && styles.pageContainerWeb]}>
+          {renderCurrentStep()}
+        </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -301,6 +305,19 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     justifyContent: 'center',
     padding: 20,
+  },
+  scrollContainerWeb: {
+    paddingHorizontal: 0,
+  },
+  pageContainer: {
+    width: '100%',
+    alignSelf: 'center',
+  },
+  pageContainerWeb: {
+    width: '70%',
+    maxWidth: 1000,
+    minWidth: 320,
+    alignSelf: 'center',
   },
   container: {
     flex: 1,
@@ -337,20 +354,29 @@ const styles = StyleSheet.create({
     width: '100%',
     gap: 20,
   },
-  roleOption: {
-    backgroundColor: THEME.surface,
-    padding: 30,
-    borderRadius: 15,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
+    // No web, remover espaçamentos extras entre "cards" de opção
+    optionsContainerWeb: {
+      gap: 12,
     },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
+    roleOption: {
+      backgroundColor: THEME.surface,
+      padding: 30,
+      borderRadius: 15,
+      alignItems: 'center',
+      shadowColor: '#000',
+      shadowOffset: {
+        width: 0,
+        height: 2,
+      },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      elevation: 3,
+    },
+    roleOptionWeb: {
+      alignSelf: 'stretch',
+      width: '100%',
+      marginHorizontal: 0,
+    },
   roleTitle: {
     fontSize: 18,
     fontWeight: 'bold',

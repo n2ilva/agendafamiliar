@@ -3,7 +3,7 @@ module.exports = {
   testEnvironment: 'node',
   testMatch: ['**/__tests__/**/*.(spec|test).ts?(x)'],
   transform: {
-    '^.+\\.tsx?$': 'ts-jest'
+    '^.+\\.tsx?$': ['ts-jest', { tsconfig: 'tsconfig.json' }]
   },
   moduleFileExtensions: ['ts','tsx','js','jsx','json','node'],
   transformIgnorePatterns: ['/node_modules/'],
@@ -11,9 +11,5 @@ module.exports = {
     '^react-native$': '<rootDir>/__mocks__/react-native.js',
     '^@react-native-community/netinfo$': '<rootDir>/__mocks__/@react-native-community/netinfo.js'
   },
-  globals: {
-    'ts-jest': {
-      tsconfig: 'tsconfig.json'
-    }
-  }
+  // ts-jest config moved into transform options to avoid deprecation warnings
 };
