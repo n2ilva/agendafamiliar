@@ -102,14 +102,10 @@ class FirebaseFamilyService {
   // Methods not implemented in local-only mode will throw or return defaults
   async deleteFamilyTask(taskId: string, familyId: string): Promise<void> {
     // best-effort: remove from local tasks store if present
-    try {
+    // @ts-ignore
+    if (typeof localFamilyService.deleteFamilyTask === 'function') {
       // @ts-ignore
-      const tasksModule = await import('./LocalFamilyService');
-      const svc = tasksModule.familyService;
-      // @ts-ignore
-      if (typeof svc.deleteFamilyTask === 'function') return await svc.deleteFamilyTask(taskId, familyId);
-    } catch (e) {
-      // ignore
+      return await localFamilyService.deleteFamilyTask(taskId, familyId);
     }
     throw new Error('deleteFamilyTask is not supported in local-only mode');
   }

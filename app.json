@@ -4,7 +4,7 @@
     "slug": "task-app",
     "version": "1.0.0",
     "orientation": "portrait",
-  "icon": "./assets/icons/android/icon-xxxhdpi.png",
+    "icon": "./assets/icons/android/icon-xxxhdpi.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "scheme": "taskapp",
@@ -46,6 +46,9 @@
       "eas": {
         "projectId": "81e5447d-98d1-493b-8999-0655322c9a18"
       }
-    }
+    },
+    "plugins": [
+      "expo-font"
+    ]
   }
 }
