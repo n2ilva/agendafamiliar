@@ -4703,32 +4703,34 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                       ]}
                     >
                       <View style={styles.memberCardContent}>
-                        <View style={styles.memberAvatar}>
-                          {member.picture ? (
-                            <Image source={{ uri: member.picture }} style={styles.memberAvatarImage} />
-                          ) : (
-                            <Ionicons name="person" size={24} color="#666" />
-                          )}
-                        </View>
-                        
-                        <View style={styles.memberInfo}>
-                          <Text style={styles.memberName}>{member.name}</Text>
-                          <View style={styles.memberRoleBadge}>
-                            <Ionicons 
-                              name={member.role === 'admin' ? 'shield-checkmark' : 'person'} 
-                              size={14} 
-                              color={member.role === 'admin' ? '#007AFF' : '#666'} 
-                            />
-                            <Text style={[
-                              styles.memberRoleText,
-                              member.role === 'admin' && styles.memberRoleAdmin
-                            ]}>
-                              {member.role === 'admin' ? 'Administrador' : 'Dependente'}
+                        <View style={styles.memberAvatarAndInfo}>
+                          <View style={styles.memberAvatar}>
+                            {member.picture ? (
+                              <Image source={{ uri: member.picture }} style={styles.memberAvatarImage} />
+                            ) : (
+                              <Ionicons name="person" size={24} color="#666" />
+                            )}
+                          </View>
+                          
+                          <View style={styles.memberInfo}>
+                            <Text style={styles.memberName}>{member.name}</Text>
+                            <View style={styles.memberRoleBadge}>
+                              <Ionicons 
+                                name={member.role === 'admin' ? 'shield-checkmark' : 'person'} 
+                                size={14} 
+                                color={member.role === 'admin' ? '#007AFF' : '#666'} 
+                              />
+                              <Text style={[
+                                styles.memberRoleText,
+                                member.role === 'admin' && styles.memberRoleAdmin
+                              ]}>
+                                {member.role === 'admin' ? 'Administrador' : 'Dependente'}
+                              </Text>
+                            </View>
+                            <Text style={styles.memberJoinDate}>
+                              Entrou em: {member.joinedAt ? new Date(member.joinedAt).toLocaleDateString('pt-BR') : 'Data não disponível'}
                             </Text>
                           </View>
-                          <Text style={styles.memberJoinDate}>
-                            Entrou em: {member.joinedAt ? new Date(member.joinedAt).toLocaleDateString('pt-BR') : 'Data não disponível'}
-                          </Text>
                         </View>
 
                         {member.id !== user.id && user.role === 'admin' && (
@@ -6679,7 +6681,16 @@ const styles = StyleSheet.create({
   memberCardContent: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
     gap: 14,
+  },
+  memberAvatarAndInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    flex: 1,
+    minWidth: 200,
   },
   memberRoleBadge: {
     flexDirection: 'row',
@@ -6690,11 +6701,13 @@ const styles = StyleSheet.create({
   editMemberButton: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 6,
     paddingVertical: 10,
     paddingHorizontal: 14,
     backgroundColor: '#e6f3ff',
     borderRadius: 8,
+    minWidth: 100,
   },
   editMemberButtonText: {
     fontSize: 14,
