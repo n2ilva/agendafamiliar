@@ -1,20 +1,29 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    // Estrutura esperada: profilePictures/{userId}/{filename}
-    match /profilePictures/{userId}/{allPaths=**} {
-      // Todos autenticados podem ler qualquer foto de perfil
+    match /profilePictures/{userId}/{filename} {
+      // Qualquer usuário autenticado pode ler fotos de perfil
       allow read: if request.auth != null;
-      // Somente o próprio usuário pode enviar/atualizar E apenas arquivos de imagem
+
+      // Somente o próprio usuário pode enviar/atualizar imagens
       allow write: if request.auth != null
                    && request.auth.uid == userId
                    && request.resource != null
-                   && request.resource.contentType.matches('image/.*');
-      // Somente o próprio usuário pode deletar (qualquer arquivo já existente ali)
-      allow delete: if request.auth != null && request.auth.uid == userId;
+                   && request.resource.contentType.matches('image/.*')
+                   && (
+                        filename.endsWith('.jpg') ||
+                        filename.endsWith('.jpeg') ||
+                        filename.endsWith('.png') ||
+                        filename.endsWith('.gif') ||
+                        filename.endsWith('.webp')
+                      );
+
+      // Somente o próprio usuário pode deletar
+      allow delete: if request.auth != null
+                    && request.auth.uid == userId;
     }
 
-    // Demais caminhos bloqueados por padrão
+    // Bloqueia todos os outros caminhos
     match /{allPaths=**} {
       allow read, write: if false;
     }
