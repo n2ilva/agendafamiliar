@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { TaskScreen } from './screens/TaskScreen';
 import { LoginScreen } from './screens/LoginScreen';
@@ -12,6 +12,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import BackgroundSyncService from './services/BackgroundSyncService';
 import Alert from './utils/Alert';
 import ConnectivityService from './services/ConnectivityService';
+import * as SplashScreen from 'expo-splash-screen';
 
 
 
@@ -21,6 +22,12 @@ export default function App() {
   const [user, setUser] = useState<FamilyUser | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [familyConfigured, setFamilyConfigured] = useState<boolean>(false);
+  const [appIsReady, setAppIsReady] = useState<boolean>(false);
+
+  // Evita que o Splash desapareça automaticamente; será escondido manualmente após boot essencial
+  try {
+    SplashScreen.preventAutoHideAsync();
+  } catch {}
 
   useEffect(() => {
     (async () => {
@@ -32,6 +39,21 @@ export default function App() {
       await checkPersistedUser();
     })();
   }, []);
+
+  // Quando o carregamento essencial terminar, marcamos appIsReady para esconder Splash no onLayout
+  useEffect(() => {
+    if (!loading) {
+      setAppIsReady(true);
+    }
+  }, [loading]);
+
+  const onLayoutRootView = useCallback(async () => {
+    if (appIsReady) {
+      try {
+        await SplashScreen.hideAsync();
+      } catch {}
+    }
+  }, [appIsReady]);
 
   const checkPersistedUser = async () => {
     try {
@@ -47,9 +69,20 @@ export default function App() {
             console.log('🏠 Família encontrada no Firebase:', userFamily.name);
             if (!userData.familyId || userData.familyId !== userFamily.id) {
               userData.familyId = userFamily.id;
-              await saveUserToStorage(userData);
               console.log('✅ FamilyId atualizado no storage:', userFamily.id);
             }
+            // Sincronizar role silenciosamente a partir do membro da família
+            try {
+              const me = userFamily.members.find(m => m.id === userData.id);
+              if (me && me.role && me.role !== userData.role) {
+                userData.role = me.role;
+                // Atualizar nos serviços locais (sem Alert)
+                try { await LocalAuthService.updateUserRole(userData.id, me.role); } catch {}
+                console.log('🔄 Role sincronizada do servidor (silencioso):', me.role);
+              }
+            } catch {}
+
+            await saveUserToStorage(userData);
             setFamilyConfigured(true);
           } else {
             console.log('👤 Usuário não possui família');
@@ -102,10 +135,20 @@ export default function App() {
             console.log('🏠 Família encontrada no Firebase:', userFamily.name);
             if (!authUser.familyId || authUser.familyId !== userFamily.id) {
               authUser.familyId = userFamily.id;
-              setUser(authUser);
-              await saveUserToStorage(authUser);
               console.log('✅ FamilyId atualizado:', userFamily.id);
             }
+            // Sincronizar role silenciosamente com base no membro
+            try {
+              const me = userFamily.members.find(m => m.id === authUser.id);
+              if (me && me.role && me.role !== authUser.role) {
+                authUser.role = me.role;
+                try { await LocalAuthService.updateUserRole(authUser.id, me.role); } catch {}
+                console.log('🔄 Role sincronizada do servidor (silencioso):', me.role);
+              }
+            } catch {}
+
+            setUser(authUser);
+            await saveUserToStorage(authUser);
             setFamilyConfigured(true);
           } else {
             console.log('👤 Usuário não possui família');
@@ -230,7 +273,7 @@ export default function App() {
     console.log('✅ Família configurada com sucesso');
   };
 
-  const handleUserRoleChange = async (newRole: UserRole) => {
+  const handleUserRoleChange = async (newRole: UserRole, opts?: { silent?: boolean }) => {
     if (user) {
       try {
         // Atualizar role no armazenamento local se não for convidado
@@ -246,10 +289,12 @@ export default function App() {
         setUser(updatedUser);
         await saveUserToStorage(updatedUser); // Salvar mudança de role
         
-        Alert.alert(
-          'Perfil Atualizado',
-          `Seu perfil foi alterado para ${newRole === 'admin' ? 'Administrador' : 'Dependente'}.`
-        );
+        if (!opts?.silent) {
+          Alert.alert(
+            'Perfil Atualizado',
+            `Seu perfil foi alterado para ${newRole === 'admin' ? 'Administrador' : 'Dependente'}.`
+          );
+        }
       } catch (error: any) {
         Alert.alert('Erro', 'Não foi possível alterar o perfil: ' + error.message);
       }
@@ -257,6 +302,7 @@ export default function App() {
   };
 
   return (
+    <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
     <SafeAreaProvider>
       {loading ? (
         <View style={styles.loadingContainer}>
@@ -284,6 +330,7 @@ export default function App() {
         <LoginScreen />
       )}
     </SafeAreaProvider>
+    </View>
   );
 }
 

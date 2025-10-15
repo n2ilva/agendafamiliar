@@ -195,7 +195,7 @@ interface TaskScreenProps {
   onLogout: () => Promise<void>;
   onUserNameChange: (newName: string) => void;
   onUserImageChange?: (newImageUrl: string) => void;
-  onUserRoleChange?: (newRole: UserRole) => void;
+  onUserRoleChange?: (newRole: UserRole, opts?: { silent?: boolean }) => void;
 }
 
 export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNameChange, onUserImageChange, onUserRoleChange }) => {
@@ -238,6 +238,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   const [codeCountdown, setCodeCountdown] = useState('');
   const [editMemberModalVisible, setEditMemberModalVisible] = useState(false);
   const [selectedMemberForEdit, setSelectedMemberForEdit] = useState<FamilyUser | null>(null);
+  // Ref para gerenciar unsubscribe da assinatura de membros em tempo real
+  const membersUnsubRef = useRef<(() => void) | null>(null);
 
   const isWeb = Platform.OS === 'web';
 
@@ -260,6 +262,27 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     const currentUserEntry = familyMembers.find(member => member.id === userId);
     return currentUserEntry ? [currentUserEntry, ...others] : others;
   }, [familyMembers, user?.id]);
+  
+  // Helper: garante permissão atualizada do membro autenticado; retorna true/false
+  const ensureFamilyPermission = useCallback(async (perm: 'create'|'edit'|'delete'): Promise<boolean> => {
+    if (!currentFamily || user.role !== 'dependente') return true;
+    try {
+      // Sempre buscar do servidor para evitar permissões locais desatualizadas (ex.: revogadas recentemente)
+      const refreshed = await familyService.getFamilyById(currentFamily.id);
+      if (refreshed) {
+        setCurrentFamily(refreshed);
+        setFamilyMembers(refreshed.members);
+        const me = refreshed.members.find(m => m.id === user.id) as any;
+        return !!me?.permissions?.[perm];
+      }
+    } catch (e) {
+      console.warn('Falha ao atualizar permissões da família:', e);
+      // Fallback: usar estado local em caso de erro de rede
+      const selfMember = familyMembers.find(m => m.id === user.id) as any;
+      return !!selfMember?.permissions?.[perm];
+    }
+    return false;
+  }, [currentFamily, familyMembers, user]);
   
   // Estados de aprovação
   const [approvals, setApprovals] = useState<TaskApproval[]>([]);
@@ -309,9 +332,12 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   const [isSavingFamilyName, setIsSavingFamilyName] = useState(false);
   const [editingFamilyName, setEditingFamilyName] = useState(false);
   const [newFamilyName, setNewFamilyName] = useState('');
+  const [isSyncingFamily, setIsSyncingFamily] = useState(false);
   
   // Estados de resolução de pedidos admin
   const [resolvingAdminRequestId, setResolvingAdminRequestId] = useState<string | null>(null);
+  // Permissões efetivas do próprio usuário (atualizadas do servidor para visual)
+  const [myEffectivePerms, setMyEffectivePerms] = useState<{ create?: boolean; edit?: boolean; delete?: boolean } | null>(null);
   
   // Animated value para transições de tab
   const tabFade = useRef(new Animated.Value(1)).current;
@@ -320,6 +346,78 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   const changeTab = useCallback((tab: 'today' | 'upcoming') => {
     setActiveTab(tab);
   }, []);
+
+  // Atualizar permissões efetivas do dependente ao entrar/alterar família
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        if (!currentFamily || user.role !== 'dependente') {
+          setMyEffectivePerms(null);
+          return;
+        }
+        const refreshed = await familyService.getFamilyById(currentFamily.id);
+        if (!cancelled && refreshed) {
+          setCurrentFamily(refreshed);
+          setFamilyMembers(refreshed.members);
+          const me = refreshed.members.find(m => m.id === user.id) as any;
+          setMyEffectivePerms(me?.permissions || {});
+        }
+      } catch (e) {
+        // Em caso de falha de rede, manter estado atual
+        console.warn('Falha ao carregar permissões efetivas do usuário:', e);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [currentFamily?.id, user?.id, user?.role]);
+
+  // Assinar membros da família em tempo real quando o modal "Gerenciar Família" estiver aberto
+  useEffect(() => {
+    try {
+      // Se o modal abrir e houver uma família atual, iniciamos a assinatura
+      if (familyModalVisible && currentFamily?.id) {
+        // Garante que não haja duas assinaturas ativas
+        if (membersUnsubRef.current) {
+          try { membersUnsubRef.current(); } catch {}
+          membersUnsubRef.current = null;
+        }
+        const unsubscribe = (familyService as any).subscribeToFamilyMembers(
+          currentFamily.id,
+          (members: FamilyUser[]) => {
+            setFamilyMembers(members);
+          }
+        );
+        membersUnsubRef.current = unsubscribe;
+        // Cleanup quando dependências mudarem ou componente desmontar
+        return () => {
+          try { unsubscribe && unsubscribe(); } catch {}
+          membersUnsubRef.current = null;
+        };
+      }
+      // Se o modal fechar, cancelar assinatura se existir
+      if (!familyModalVisible && membersUnsubRef.current) {
+        try { membersUnsubRef.current(); } catch {}
+        membersUnsubRef.current = null;
+      }
+    } catch (e) {
+      console.warn('[TaskScreen] Falha ao gerenciar assinatura de membros:', e);
+    }
+    // Sem retorno aqui quando modal está fechado
+  }, [familyModalVisible, currentFamily?.id]);
+
+  // Texto unificado para indicador de sincronização dentro do modal de família
+  const familySyncBanner = useMemo(() => {
+    if (!familyModalVisible) return null;
+    // Se dependente e as permissões efetivas ainda não foram carregadas, indicar sincronização de permissões
+    if (user.role === 'dependente' && currentFamily?.id && myEffectivePerms == null) {
+      return 'Sincronizando permissões…';
+    }
+    // Se houve pedido de sincronização explícita de família
+    if (isSyncingFamily) {
+      return 'Sincronizando dados da família…';
+    }
+    return null;
+  }, [familyModalVisible, user.role, currentFamily?.id, myEffectivePerms, isSyncingFamily]);
 
   // Refs para controlar estado do gesto e evitar múltiplas trocas
   const hasSwitchedRef = useRef(false);
@@ -1301,10 +1399,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     // Enforcement: dependente criando/atualizando tarefa de família pública precisa de permissões
     const isFamilyContext = !!currentFamily && !newTaskPrivate; // tarefa pública de família
     if (isFamilyContext && user.role === 'dependente') {
-      const selfMember = familyMembers.find(m => m.id === user.id);
-      const perms = (selfMember as any)?.permissions || {};
       const needed = isEditing ? 'edit' : 'create';
-      if (!perms[needed]) {
+      const has = await ensureFamilyPermission(needed as 'create'|'edit'|'delete');
+      if (!has) {
         Alert.alert('Sem permissão', `Você não tem permissão para ${needed === 'create' ? 'criar' : 'editar'} tarefas da família.`);
         return;
       }
@@ -1526,12 +1623,34 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     if (user.role === 'dependente') {
       const isFamilyTask = (task as any).familyId && (task as any).private !== true;
       if (isFamilyTask) {
-        const selfMember = familyMembers.find(m => m.id === user.id);
-        const perms = (selfMember as any)?.permissions || {};
-        if (!perms.edit) {
-          Alert.alert('Sem permissão', 'Você não tem permissão para editar tarefas da família.');
-          return;
-        }
+        (async () => {
+          const ok = await ensureFamilyPermission('edit');
+          if (!ok) {
+            Alert.alert('Sem permissão', 'Você não tem permissão para editar tarefas da família.');
+            return;
+          } else {
+            // Rechamar com permissões ok
+            setNewTaskTitle(task.title);
+            setNewTaskDescription(task.description);
+            setSelectedCategory(task.category);
+            setSelectedDate(task.dueDate);
+            setSelectedTime(task.dueTime);
+            setRepeatType(task.repeat.type);
+            setCustomDays(task.repeat.days || []);
+            setSubtasksDraft((task as any).subtasks ? (task as any).subtasks.map((st: any) => ({
+              id: st.id,
+              title: st.title,
+              done: !!st.done,
+              completedById: st.completedById,
+              completedByName: st.completedByName,
+              completedAt: st.completedAt ? safeToDate(st.completedAt) || undefined : undefined,
+            })) : []);
+            setIsEditing(true);
+            setEditingTaskId(task.id);
+            setModalVisible(true);
+          }
+        })();
+        return;
       }
     }
     setNewTaskTitle(task.title);
@@ -1954,6 +2073,18 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     const safeTime = safeToDate(time);
     if (!safeTime) return '';
     return safeTime.toLocaleTimeString('pt-BR', {
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const formatDateTime = (dateValue?: Date | any): string => {
+    const d = safeToDate(dateValue);
+    if (!d) return '';
+    return d.toLocaleString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
       hour: '2-digit',
       minute: '2-digit'
     });
@@ -2824,7 +2955,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                   // Se o usuário atual foi promovido/demitido, atualizar role no app
                   const selfAfter = (refreshed as any).members?.find((m: any) => m.id === user.id);
                   if (selfAfter && selfAfter.role && selfAfter.role !== user.role && onUserRoleChange) {
-                    try { await onUserRoleChange(selfAfter.role); } catch {}
+                    try { await onUserRoleChange(selfAfter.role, { silent: true }); } catch {}
                   }
                 }
               }
@@ -2910,7 +3041,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         const myMember = familyData.members.find(m => m.id === user.id);
         if (myMember && myMember.role && myMember.role !== user.role) {
           try {
-            if (onUserRoleChange) await onUserRoleChange(myMember.role);
+            if (onUserRoleChange) await onUserRoleChange(myMember.role, { silent: true });
           } catch (e) {
             console.warn('Falha ao sincronizar role do usuário ao abrir Gerenciar Família:', e);
           }
@@ -2972,14 +3103,13 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     }
   };
 
-  const deleteTask = useCallback((taskId: string) => {
+  const deleteTask = useCallback(async (taskId: string) => {
     const task = tasks.find(t => t.id === taskId);
     if (!task) return;
     const isFamilyTask = (task as any).familyId && (task as any).private !== true;
     if (user.role === 'dependente' && isFamilyTask) {
-      const selfMember = familyMembers.find(m => m.id === user.id);
-      const perms = (selfMember as any)?.permissions || {};
-      if (!perms.delete) {
+      const ok = await ensureFamilyPermission('delete');
+      if (!ok) {
         Alert.alert('Sem permissão', 'Você não tem permissão para excluir tarefas da família.');
         return;
       }
@@ -3021,7 +3151,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         },
       ]
     );
-  }, [tasks, isOffline, user.role]);
+  }, [tasks, isOffline, user.role, ensureFamilyPermission]);
+
 
   const removeFamilyMember = useCallback((memberId: string) => {
     // implementação existente usa Alert.confirm onPress handler — reutilizar função deleteMember parcialmente
@@ -3044,17 +3175,37 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         {
           text: 'Remover',
           style: 'destructive',
-          onPress: () => {
-            const updatedMembers = familyMembers.filter(m => m.id !== memberId);
-            setFamilyMembers(updatedMembers);
-            const updatedTasks = tasks.filter(t => t.userId !== memberId);
-            setTasks(updatedTasks);
-            Alert.alert('Sucesso', `${member.name} foi removido da família.`);
+          onPress: async () => {
+            if (!currentFamily) return;
+            try {
+              // Otimista: atualizar UI
+              const updatedMembers = familyMembers.filter(m => m.id !== memberId);
+              setFamilyMembers(updatedMembers);
+              const updatedTasks = tasks.filter(t => t.userId !== memberId);
+              setTasks(updatedTasks);
+
+              // Persistir no Firestore
+              await (familyService as any).removeMember(currentFamily.id, memberId);
+
+              // Recarregar membros para garantir consistência
+              try {
+                const refreshed = await familyService.getFamilyById(currentFamily.id);
+                if (refreshed) {
+                  setCurrentFamily(refreshed);
+                  setFamilyMembers(refreshed.members);
+                }
+              } catch {}
+
+              Alert.alert('Sucesso', `${member.name} foi removido da família.`);
+            } catch (e) {
+              console.error('Erro ao remover membro:', e);
+              Alert.alert('Erro', 'Não foi possível remover o membro.');
+            }
           }
         }
       ]
     );
-  }, [familyMembers, user, tasks]);
+  }, [familyMembers, user, tasks, currentFamily]);
 
   const handleSettings = () => {
     setSettingsModalVisible(true);
@@ -3208,7 +3359,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
 
         {/* Informações de Agendamento */}
         <View style={styles.scheduleInfo}>
-          {item.dueTime && (
+          {(item.dueTime || item.dueDate) && (
             <View style={styles.scheduleItem}>
               <Ionicons 
                 name="time-outline" 
@@ -3216,7 +3367,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                 color={isOverdue ? "#e74c3c" : "#666"} 
               />
               <Text style={[styles.scheduleText, isOverdue && styles.overdueText]}>
-                {formatTime(item.dueTime)}
+                {item.dueDate ? `${formatDate(item.dueDate)} ` : ''}{formatTime(item.dueTime)}
               </Text>
             </View>
           )}
@@ -3234,29 +3385,30 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             </View>
           )}
 
-          {/* Botões de ação (admin sempre; dependente somente com permissões) */}
+          {/* Botões de ação: sempre clicáveis; handlers validam permissão em runtime */}
           {(user.role === 'admin' || user.role === 'dependente') && (
             (() => {
               const isFamilyTask = (item as any).familyId && (item as any).private !== true;
               const selfMember = familyMembers.find(m => m.id === user.id);
-              const perms = (selfMember as any)?.permissions || {};
-              const canEdit = user.role === 'admin' || (user.role === 'dependente' && isFamilyTask && perms.edit);
-              const canDelete = user.role === 'admin' || (user.role === 'dependente' && isFamilyTask && perms.delete);
+              // Preferir permissões efetivas; se ausentes, cair para permissões locais
+              const perms = (myEffectivePerms ?? (selfMember as any)?.permissions) || {};
+              // Visual: só mostrar como desativado se soubermos explicitamente que NÃO pode (false).
+              // Quando indefinido (ainda sincronizando), exibimos ativo (o handler fará o enforcement).
+              const visualCanEdit = user.role === 'admin' || (user.role === 'dependente' && isFamilyTask && perms.edit !== false);
+              const visualCanDelete = user.role === 'admin' || (user.role === 'dependente' && isFamilyTask && perms.delete !== false);
               return (
                 <View style={styles.scheduleActions}>
                   <Pressable
-                    onPress={() => canEdit && editTask(item)}
-                    disabled={!canEdit}
-                    style={[styles.scheduleActionButton, !canEdit && { opacity: 0.35 }]}
+                    onPress={() => editTask(item)}
+                    style={[styles.scheduleActionButton, !visualCanEdit && { opacity: 0.5 }]}
                   >
-                    <Ionicons name="pencil-outline" size={16} color={canEdit ? '#007AFF' : '#999'} />
+                    <Ionicons name="pencil-outline" size={16} color={visualCanEdit ? '#007AFF' : '#999'} />
                   </Pressable>
                   <Pressable
-                    onPress={() => canDelete && deleteTask(item.id)}
-                    disabled={!canDelete}
-                    style={[styles.scheduleActionButton, !canDelete && { opacity: 0.35 }]}
+                    onPress={() => deleteTask(item.id)}
+                    style={[styles.scheduleActionButton, !visualCanDelete && { opacity: 0.5 }]}
                   >
-                    <Ionicons name="trash-outline" size={16} color={canDelete ? '#e74c3c' : '#bbb'} />
+                    <Ionicons name="trash-outline" size={16} color={visualCanDelete ? '#e74c3c' : '#bbb'} />
                   </Pressable>
                 </View>
               );
@@ -3275,14 +3427,16 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                 >
                   {st.done && <Ionicons name="checkmark" size={16} color="#fff" />}
                 </Pressable>
-                <Text style={[styles.taskDescription, st.done && styles.taskDescriptionCompleted, { flex: 1 }]}>
-                  {st.title || 'Subtarefa'}
-                </Text>
-                {st.done && st.completedByName && (
-                  <Text style={[styles.authorshipText, { fontSize: 10 }]}>
-                    {`por ${st.completedByName}`}
+                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
+                  <Text style={[styles.taskDescription, st.done && styles.taskDescriptionCompleted, { flexShrink: 1 }]}>
+                    {st.title || 'Subtarefa'}
                   </Text>
-                )}
+                  {st.done && st.completedByName && (
+                    <Text style={[styles.authorshipText, { fontSize: 10, marginLeft: 8 }]}>
+                      {`por ${st.completedByName}`}
+                    </Text>
+                  )}
+                </View>
               </View>
             ))}
           </View>
@@ -3313,14 +3467,14 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           <View style={styles.authorshipRow}>
             <Ionicons name="person-outline" size={12} color="#999" />
             <Text style={styles.authorshipText}>
-              {`${sanitizedCreatedByName || 'Usuário'} • ${formatDate(item.createdAt)}`}
+              {`${sanitizedCreatedByName || 'Usuário'} • ${formatDateTime(item.createdAt)}`}
             </Text>
           </View>
           {item.editedBy && sanitizedEditedByName && (
             <View style={styles.authorshipRow}>
               <Ionicons name="pencil-outline" size={12} color="#999" />
               <Text style={styles.authorshipText}>
-                {`Editado por ${sanitizedEditedByName}${item.editedAt ? ` • ${formatDate(item.editedAt)}` : ''}`}
+                {`Editado por ${sanitizedEditedByName}${item.editedAt ? ` • ${formatDateTime(item.editedAt)}` : ''}`}
               </Text>
             </View>
           )}
@@ -3338,6 +3492,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           userRole={user?.role}
           familyName={currentFamily?.name}
           familyId={currentFamily?.id}
+          isSyncingPermissions={user.role === 'dependente' && currentFamily?.id ? (myEffectivePerms == null) : false}
           onUserNameChange={onUserNameChange}
           onUserImageChange={onUserImageChange}
           onUserRoleChange={onUserRoleChange}
@@ -3371,7 +3526,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
               const myMember = newFamily.members.find(m => m.id === user.id);
               if (myMember && myMember.role && myMember.role !== user.role) {
                 try {
-                  if (onUserRoleChange) await onUserRoleChange(myMember.role);
+                  if (onUserRoleChange) await onUserRoleChange(myMember.role, { silent: true });
                 } catch (e) {
                   console.warn('Falha ao sincronizar role do usuário após entrar na família:', e);
                 }
@@ -4359,7 +4514,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             )}
             
             <Pressable
-              style={[styles.closeButton, styles.closeButtonFixed]}
+              style={[styles.closeButton, styles.closeButtonFixed, Platform.OS === 'web' && styles.closeButtonFixedWeb]}
               onPress={() => setApprovalModalVisible(false)}
             >
               <Text style={styles.closeButtonText}>Fechar</Text>
@@ -4392,6 +4547,41 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
               <Text style={styles.modalTitle}>
                 {isCreatingFamilyMode ? 'Criar Família' : 'Gerenciar Família'}
               </Text>
+              {familySyncBanner && (
+                <View style={styles.familySyncBanner} accessibilityLabel="Indicador de sincronização da família">
+                  <ActivityIndicator size="small" color="#007AFF" style={{ marginRight: 8 }} />
+                  <Text style={styles.familySyncBannerText}>{familySyncBanner}</Text>
+                </View>
+              )}
+              {!isCreatingFamilyMode && (
+                <Pressable
+                  style={[styles.editFamilyNameIconButton, { marginTop: 12 }]}
+                  onPress={async () => {
+                    if (!currentFamily) return;
+                    try {
+                      setIsSyncingFamily(true);
+                      const refreshed = await familyService.getFamilyById(currentFamily.id);
+                      if (refreshed) {
+                        setCurrentFamily(refreshed);
+                        setFamilyMembers(refreshed.members);
+                      }
+                    } catch (e) {
+                      console.warn('Falha ao sincronizar família:', e);
+                    } finally {
+                      setIsSyncingFamily(false);
+                    }
+                  }}
+                >
+                  {isSyncingFamily ? (
+                    <ActivityIndicator size="small" color="#007AFF" />
+                  ) : (
+                    <>
+                      <Ionicons name="cloud-download-outline" size={16} color="#007AFF" />
+                      <Text style={{ color: '#007AFF', fontWeight: '600', marginLeft: 6 }}>Sincronizar</Text>
+                    </>
+                  )}
+                </Pressable>
+              )}
             </View>
 
             {isCreatingFamilyMode ? (
@@ -4822,7 +5012,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                   </Text>
                 </View>
 
-                {/* Permissões */}
+                {/* Permissões (somente para dependente) */}
+                {selectedMemberForEdit.role === 'dependente' && (
                 <View style={styles.editSection}>
                   <Text style={styles.editSectionTitle}>Permissões</Text>
                   <Text style={styles.editSectionDescription}>
@@ -4891,6 +5082,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                     Sem permissões selecionadas, o membro não terá acesso às tarefas públicas da família.
                   </Text>
                 </View>
+                )}
 
                 {/* Alterar Função */}
                 <View style={styles.editSection}>
@@ -5165,6 +5357,20 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginTop: 16,
     marginHorizontal: 16,
+    alignSelf: 'center',
+    width: '90%',
+    maxWidth: 480,
+  },
+  closeButtonFixedWeb: {
+    position: 'relative',
+    left: undefined as unknown as number,
+    right: undefined as unknown as number,
+    bottom: 0,
+    alignSelf: 'center',
+    width: '90%',
+    maxWidth: 480,
+    marginTop: 16,
+    marginBottom: 16,
   },
   // Bloco esquerdo: avatar + detalhes (ocupa o espaço disponível)
   memberLeftContainer: {
@@ -7252,6 +7458,24 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#666',
     marginTop: 2
+  },
+  // Banner unificado de sincronização no modal de família
+  familySyncBanner: {
+    marginTop: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: '#f0f6ff',
+    borderWidth: 1,
+    borderColor: '#cfe3ff',
+    alignSelf: 'stretch',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  familySyncBannerText: {
+    color: '#0a58ca',
+    fontSize: 13,
+    fontWeight: '600',
   },
 });
 

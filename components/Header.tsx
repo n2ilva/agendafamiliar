@@ -38,6 +38,7 @@ interface HeaderProps {
     hasError?: boolean;
     isOnline?: boolean;
   };
+  isSyncingPermissions?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({ 
@@ -59,6 +60,7 @@ export const Header: React.FC<HeaderProps> = ({
   onManageFamily,
   onJoinFamilyByCode,
   syncStatus,
+  isSyncingPermissions,
 }) => {
   const [userImageLocal, setUserImageLocal] = useState<string | null>(userImage || null);
   const [profileIconLocal, setProfileIconLocal] = useState<string | undefined>(userProfileIcon);
@@ -298,7 +300,15 @@ export const Header: React.FC<HeaderProps> = ({
               <Ionicons name="pencil" size={14} color="#999" style={styles.editNameIcon} />
             </View>
             {familyName ? (
-              <Text style={styles.subtitle}>{familyName}</Text>
+              <View style={styles.subtitleRow}>
+                <Text style={styles.subtitle}>{familyName}</Text>
+                {userRole === 'dependente' && isSyncingPermissions ? (
+                  <View style={styles.syncPill} accessibilityLabel="Sincronizando permissões">
+                    <ActivityIndicator size="small" color="#fff" style={{ marginRight: 6 }} />
+                    <Text style={styles.syncPillText}>Sincronizando permissões…</Text>
+                  </View>
+                ) : null}
+              </View>
             ) : (
               <Text style={styles.subtitle}>Família não configurada</Text>
             )}
@@ -709,6 +719,11 @@ const styles = StyleSheet.create({
   userInfo: {
     flex: 1,
   },
+  subtitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   userName: {
     fontSize: 18,
     fontWeight: 'bold',
@@ -718,6 +733,20 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 14,
   color: THEME.textSecondary,
+  },
+  syncPill: {
+    marginLeft: 8,
+    backgroundColor: THEME.primary,
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  syncPillText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '600',
   },
   rightSection: {
     flexDirection: 'row',

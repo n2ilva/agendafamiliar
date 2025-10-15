@@ -40,6 +40,11 @@ class FirebaseFamilyService {
     return localFamilyService.subscribeToFamilyHistory(familyId, callback, limit);
   }
 
+  subscribeToFamilyMembers(familyId: string, callback: (members: FamilyUser[]) => void) {
+    // @ts-ignore - implemented in LocalFamilyService
+    return (localFamilyService as any).subscribeToFamilyMembers(familyId, callback);
+  }
+
   async addFamilyHistoryItem(familyId: string, item: any): Promise<any> {
     // Suporte para assinatura legada com múltiplos parâmetros
     if (typeof item === 'string' || Array.isArray(arguments) && arguments.length > 2) {
@@ -74,6 +79,11 @@ class FirebaseFamilyService {
 
   async updateFamilyName(familyId: string, newName: string): Promise<void> {
     return await localFamilyService.updateFamilyName(familyId, newName);
+  }
+
+  async removeMember(familyId: string, memberId: string): Promise<void> {
+    // @ts-ignore - implemented in LocalFamilyService
+    return await (localFamilyService as any).removeMember(familyId, memberId);
   }
 
   async regenerateInviteCode(familyId: string) {

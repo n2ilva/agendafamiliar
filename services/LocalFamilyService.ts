@@ -185,6 +185,41 @@ class LocalFamilyService {
     }
   }
 
+  /**
+   * Assina as mudanças dos membros da família em tempo real e retorna um unsubscribe.
+   * Os dados dos membros já estão completos na subcoleção /families/{familyId}/members.
+   */
+  subscribeToFamilyMembers(
+    familyId: string,
+    callback: (members: FamilyUser[]) => void
+  ): () => void {
+    const db = this.getFirestore();
+    const membersRef = collection(db, 'families', familyId, 'members');
+    // Usar onSnapshot para atualizações em tempo real
+    // @ts-ignore - import onSnapshot dinamicamente para evitar conflitos de bundling quando não disponível
+    const { onSnapshot } = require('firebase/firestore');
+    const unsub = onSnapshot(membersRef, async (snap: any) => {
+      try {
+        const members = snap.docs.map((d: any) => ({
+          ...d.data(),
+          joinedAt: d.data().joinedAt?.toDate?.() || new Date(d.data().joinedAt),
+        }));
+        callback(members as FamilyUser[]);
+      } catch (e) {
+        console.warn('[subscribeToFamilyMembers] Falha ao processar membros:', e);
+      }
+    }, (err: any) => {
+      // Erros de permissão são esperados se o usuário ainda não é membro ou perdeu acesso
+      if (err?.code === 'permission-denied') {
+        console.warn('[subscribeToFamilyMembers] Permissão negada - usuário não é membro da família ou acesso foi revogado');
+        callback([]); // Retorna lista vazia em vez de deixar o listener quebrado
+      } else {
+        console.warn('[subscribeToFamilyMembers] onSnapshot error:', err);
+      }
+    });
+    return unsub;
+  }
+
   async getUserFamily(userId: string): Promise<Family | null> {
     try {
       console.log('🔍 Buscando família do usuário:', userId);
@@ -627,6 +662,23 @@ class LocalFamilyService {
     } catch (error) {
       console.error('❌ Erro ao atualizar nome da família:', error);
       throw new Error('Não foi possível atualizar o nome da família.');
+    }
+  }
+
+  /**
+   * Remove um membro da família (delete em families/{familyId}/members/{memberId}).
+   * Regras do Firestore permitem admin remover qualquer membro ou o próprio membro se remover.
+   */
+  async removeMember(familyId: string, memberId: string): Promise<void> {
+    try {
+      console.log('🗑️ Removendo membro da família:', familyId, memberId);
+      const db = this.getFirestore();
+      const memberRef = doc(db, 'families', familyId, 'members', memberId);
+      await deleteDoc(memberRef);
+      console.log('✅ Membro removido com sucesso');
+    } catch (error) {
+      console.error('❌ Erro ao remover membro:', error);
+      throw new Error('Não foi possível remover o membro da família.');
     }
   }
 
