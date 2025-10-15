@@ -553,7 +553,8 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     borderColor: THEME.border,
-    paddingHorizontal: 15,
+    paddingLeft: 15,
+    paddingRight: 8, // Menos padding à direita para o botão de senha
     paddingVertical: 12,
     marginBottom: 15,
     shadowColor: '#000',
@@ -569,8 +570,10 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   passwordToggle: {
-    padding: 5,
-    marginLeft: 5,
+    padding: 8,
+    marginLeft: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   input: {
     flex: 1,

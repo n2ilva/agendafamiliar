@@ -4875,8 +4875,8 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
   },
   pageContainerWeb: {
-    width: '70%',
-    maxWidth: 1100,
+    width: '100%',
+    maxWidth: 1100, // Limita a largura máxima em pixels para desktop
     minWidth: 320,
     alignSelf: 'center',
   },
