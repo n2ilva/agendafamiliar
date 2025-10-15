@@ -4986,15 +4986,9 @@ const styles = StyleSheet.create({
   },
   // Container para centralizar a lista de membros
   familyMemberCardWeb: {
-    borderRadius: 10,
-    borderWidth: 1,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderLeftWidth: 1,
-    borderRightWidth: 1,
-    marginHorizontal: 0,
-    marginBottom: 12,
-    alignSelf: 'stretch',
+    flexDirection: 'column',
+    gap: 16,
+    padding: 18,
   },
   inviteCodeBoxWeb: {
     borderRadius: 10,
@@ -5627,10 +5621,17 @@ const styles = StyleSheet.create({
     flex: 1,
     maxHeight: '92%', // Aumentar altura máxima
   },
-  // No web, expandir o modal de Gerenciar Família para 70% centralizado
+  // No web, expandir o modal de Gerenciar Família para ocupar tela cheia (como mobile)
   modalContentWeb: {
-    width: '70%',
-    maxWidth: 1100,
+    flex: 1,
+    width: '100%',
+    maxWidth: '100%',
+    minHeight: '100%',
+    maxHeight: '100%',
+    borderRadius: 0,
+    padding: 0,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
     alignSelf: 'center',
   },
   // Conteúdo do modal de configurações com espaço para o botão fixo
