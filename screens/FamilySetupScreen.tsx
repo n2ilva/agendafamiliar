@@ -360,7 +360,7 @@ const styles = StyleSheet.create({
     },
     roleOption: {
       backgroundColor: THEME.surface,
-      padding: 30,
+      padding: 20,
       borderRadius: 15,
       alignItems: 'center',
       shadowColor: '#000',
@@ -378,14 +378,14 @@ const styles = StyleSheet.create({
       marginHorizontal: 0,
     },
   roleTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
     color: THEME.textPrimary,
     marginTop: 15,
     marginBottom: 8,
   },
   roleDescription: {
-    fontSize: 14,
+    fontSize: 12,
     color: THEME.textSecondary,
     textAlign: 'center',
     lineHeight: 20,

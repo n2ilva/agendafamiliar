@@ -234,6 +234,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   const [familyName, setFamilyName] = useState('');
   const [inviteCode, setInviteCode] = useState('');
   const [codeCountdown, setCodeCountdown] = useState('');
+  const [editMemberModalVisible, setEditMemberModalVisible] = useState(false);
+  const [selectedMemberForEdit, setSelectedMemberForEdit] = useState<FamilyUser | null>(null);
 
   const isWeb = Platform.OS === 'web';
 
@@ -4700,19 +4702,18 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                         isWeb ? styles.familyMemberCardWeb : styles.familyMemberCardMobile
                       ]}
                     >
-                      <View style={[styles.memberLeftContainer, !isWeb && styles.memberLeftContainerMobile]}>
-                        <View style={styles.memberAvatarColumn}>
-                          <View style={styles.memberAvatar}>
-                            {member.picture ? (
-                              <Image source={{ uri: member.picture }} style={styles.memberAvatarImage} />
-                            ) : (
-                              <Ionicons name="person" size={20} color="#666" />
-                            )}
-                          </View>
+                      <View style={styles.memberCardContent}>
+                        <View style={styles.memberAvatar}>
+                          {member.picture ? (
+                            <Image source={{ uri: member.picture }} style={styles.memberAvatarImage} />
+                          ) : (
+                            <Ionicons name="person" size={24} color="#666" />
+                          )}
                         </View>
-                        <View style={styles.memberDetailsColumn}>
+                        
+                        <View style={styles.memberInfo}>
                           <Text style={styles.memberName}>{member.name}</Text>
-                          <View style={styles.memberRole}>
+                          <View style={styles.memberRoleBadge}>
                             <Ionicons 
                               name={member.role === 'admin' ? 'shield-checkmark' : 'person'} 
                               size={14} 
@@ -4728,104 +4729,24 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                           <Text style={styles.memberJoinDate}>
                             Entrou em: {member.joinedAt ? new Date(member.joinedAt).toLocaleDateString('pt-BR') : 'Data não disponível'}
                           </Text>
-                          {user.role === 'admin' && member.id !== user.id && (
-                            <View style={styles.permissionsContainer}>
-                              <Text style={styles.permissionsTitle}>Permissões</Text>
-                              <View style={styles.permissionsRow}>
-                                {['create','edit','delete'].map(key => {
-                                  const labelMap: any = { create: 'Criar', edit: 'Editar', delete: 'Excluir' };
-                                  const has = !!(member as any).permissions?.[key];
-                                  return (
-                                    <Pressable
-                                      key={key}
-                                      style={[styles.permissionChip, has && styles.permissionChipActive]}
-                                      onPress={async () => {
-                                        try {
-                                          const newValue = !has;
-                                          const updatedPerms = { ...(member as any).permissions };
-                                          if (newValue) {
-                                            updatedPerms[key] = true;
-                                          } else {
-                                            delete updatedPerms[key];
-                                          }
-                                          await familyService.updateMemberPermissions(currentFamily!.id, member.id, updatedPerms);
-                                          setFamilyMembers(prev => prev.map(m => m.id === member.id ? { ...m, permissions: { ...updatedPerms } } : m));
-                                          if (member.id === user.id && currentFamily) {
-                                            try {
-                                              const refreshed = await familyService.getFamilyTasks(currentFamily.id, user.id);
-                                              setTasks(prev => {
-                                                const privateTasks = prev.filter(t => (t as any).private === true || !(t as any).familyId) as any as Task[];
-                                                const merged = [...privateTasks, ...(refreshed as any as Task[])];
-                                                return merged as Task[];
-                                              });
-                                            } catch (err) {
-                                              console.warn('Falha ao refazer fetch das tasks após permissão:', err);
-                                            }
-                                          }
-                                        } catch (e) {
-                                          Alert.alert('Erro', 'Não foi possível atualizar permissões.');
-                                        }
-                                      }}
-                                    >
-                                      <Text style={[styles.permissionChipText, has && styles.permissionChipTextActive]}>
-                                        {labelMap[key]}
-                                      </Text>
-                                    </Pressable>
-                                  );
-                                })}
-                              </View>
-                              <Text style={styles.permissionsHint}>Ausência de seleção = sem acesso a tarefas públicas.</Text>
-                            </View>
-                          )}
                         </View>
-                      </View>
-                      {member.id !== user.id && user.role === 'admin' && (
-                        isWeb ? (
-                          <View style={styles.memberRightColumn}>
-                            <View style={styles.memberActions}>
-                              <Pressable
-                                onPress={() => changeMemberRole(member.id)}
-                                style={styles.changeMemberRoleButton}
-                              >
-                                <Ionicons 
-                                  name="swap-horizontal" 
-                                  size={16} 
-                                  color="#007AFF" 
-                                />
-                                <Text style={styles.changeMemberRoleButtonText}>
-                                  {member.role === 'admin' ? 'Tornar Dependente' : 'Tornar Admin'}
-                                </Text>
-                              </Pressable>
-                              
-                              <Pressable
-                                onPress={() => removeFamilyMember(member.id)}
-                                style={styles.removeMemberButton}
-                              >
-                                <Ionicons name="trash-outline" size={18} color="#e74c3c" />
-                              </Pressable>
-                            </View>
-                          </View>
-                        ) : (
-                          <View style={styles.memberActionsMobile}>
-                            <Pressable
-                              onPress={() => changeMemberRole(member.id)}
-                              style={[styles.changeMemberRoleButton, styles.changeMemberRoleButtonMobile]}
-                            >
-                              <Ionicons name="swap-horizontal" size={18} color="#007AFF" />
-                              <Text style={styles.changeMemberRoleButtonText}>
-                                {member.role === 'admin' ? 'Tornar Dependente' : 'Tornar Admin'}
-                              </Text>
-                            </Pressable>
 
-                            <Pressable
-                              onPress={() => removeFamilyMember(member.id)}
-                              style={[styles.removeMemberButton, styles.removeMemberButtonMobile]}
-                            >
-                              <Ionicons name="trash-outline" size={18} color="#e74c3c" />
-                            </Pressable>
-                          </View>
-                        )
-                      )}
+                        {member.id !== user.id && user.role === 'admin' && (
+                          <Pressable
+                            style={({ pressed }) => [
+                              styles.editMemberButton,
+                              pressed && { opacity: 0.7 }
+                            ]}
+                            onPress={() => {
+                              setSelectedMemberForEdit(member);
+                              setEditMemberModalVisible(true);
+                            }}
+                          >
+                            <Ionicons name="create-outline" size={20} color="#007AFF" />
+                            <Text style={styles.editMemberButtonText}>Editar</Text>
+                          </Pressable>
+                        )}
+                      </View>
                     </View>
                   ))}
                 </View>
@@ -4847,6 +4768,183 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                 setNewFamilyNameInput('');
               }}
               android_ripple={{ color: 'rgba(255, 255, 255, 0.3)' }}
+            >
+              <Text style={styles.closeModalButtonText}>Fechar</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal de Edição de Membro */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={editMemberModalVisible}
+        onRequestClose={() => {
+          setEditMemberModalVisible(false);
+          setSelectedMemberForEdit(null);
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, styles.editMemberModalContent]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Editar Membro</Text>
+              <Pressable
+                onPress={() => {
+                  setEditMemberModalVisible(false);
+                  setSelectedMemberForEdit(null);
+                }}
+                style={styles.closeIconButton}
+              >
+                <Ionicons name="close" size={24} color="#666" />
+              </Pressable>
+            </View>
+
+            {selectedMemberForEdit && (
+              <ScrollView style={styles.editMemberScroll}>
+                {/* Informações do Membro */}
+                <View style={styles.editMemberInfo}>
+                  <View style={styles.editMemberAvatar}>
+                    {selectedMemberForEdit.picture ? (
+                      <Image source={{ uri: selectedMemberForEdit.picture }} style={styles.editMemberAvatarImage} />
+                    ) : (
+                      <Ionicons name="person" size={32} color="#666" />
+                    )}
+                  </View>
+                  <Text style={styles.editMemberName}>{selectedMemberForEdit.name}</Text>
+                  <Text style={styles.editMemberJoinDate}>
+                    Membro desde {selectedMemberForEdit.joinedAt ? new Date(selectedMemberForEdit.joinedAt).toLocaleDateString('pt-BR') : 'Data não disponível'}
+                  </Text>
+                </View>
+
+                {/* Permissões */}
+                <View style={styles.editSection}>
+                  <Text style={styles.editSectionTitle}>Permissões</Text>
+                  <Text style={styles.editSectionDescription}>
+                    Defina quais ações este membro pode realizar com as tarefas da família
+                  </Text>
+                  <View style={styles.permissionsEditContainer}>
+                    {['create','edit','delete'].map(key => {
+                      const labelMap: any = { 
+                        create: { label: 'Criar Tarefas', icon: 'add-circle-outline' },
+                        edit: { label: 'Editar Tarefas', icon: 'create-outline' },
+                        delete: { label: 'Excluir Tarefas', icon: 'trash-outline' }
+                      };
+                      const has = !!(selectedMemberForEdit as any).permissions?.[key];
+                      return (
+                        <Pressable
+                          key={key}
+                          style={[styles.permissionEditItem, has && styles.permissionEditItemActive]}
+                          onPress={async () => {
+                            try {
+                              const newValue = !has;
+                              const updatedPerms = { ...(selectedMemberForEdit as any).permissions };
+                              if (newValue) {
+                                updatedPerms[key] = true;
+                              } else {
+                                delete updatedPerms[key];
+                              }
+                              await familyService.updateMemberPermissions(currentFamily!.id, selectedMemberForEdit.id, updatedPerms);
+                              setFamilyMembers(prev => prev.map(m => m.id === selectedMemberForEdit.id ? { ...m, permissions: { ...updatedPerms } } : m));
+                              setSelectedMemberForEdit({ ...selectedMemberForEdit, permissions: { ...updatedPerms } } as any);
+                              
+                              if (selectedMemberForEdit.id === user.id && currentFamily) {
+                                try {
+                                  const refreshed = await familyService.getFamilyTasks(currentFamily.id, user.id);
+                                  setTasks(prev => {
+                                    const privateTasks = prev.filter(t => (t as any).private === true || !(t as any).familyId) as any as Task[];
+                                    const merged = [...privateTasks, ...(refreshed as any as Task[])];
+                                    return merged as Task[];
+                                  });
+                                } catch (err) {
+                                  console.warn('Falha ao refazer fetch das tasks após permissão:', err);
+                                }
+                              }
+                            } catch (e) {
+                              Alert.alert('Erro', 'Não foi possível atualizar permissões.');
+                            }
+                          }}
+                        >
+                          <View style={styles.permissionEditLeft}>
+                            <Ionicons 
+                              name={labelMap[key].icon} 
+                              size={24} 
+                              color={has ? '#007AFF' : '#666'} 
+                            />
+                            <Text style={[styles.permissionEditLabel, has && styles.permissionEditLabelActive]}>
+                              {labelMap[key].label}
+                            </Text>
+                          </View>
+                          <View style={[styles.permissionCheckbox, has && styles.permissionCheckboxActive]}>
+                            {has && <Ionicons name="checkmark" size={16} color="#fff" />}
+                          </View>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                  <Text style={styles.permissionsNote}>
+                    Sem permissões selecionadas, o membro não terá acesso às tarefas públicas da família.
+                  </Text>
+                </View>
+
+                {/* Alterar Função */}
+                <View style={styles.editSection}>
+                  <Text style={styles.editSectionTitle}>Função na Família</Text>
+                  <Text style={styles.editSectionDescription}>
+                    {selectedMemberForEdit.role === 'admin' 
+                      ? 'Este membro é um administrador e tem controle total sobre a família.' 
+                      : 'Este membro é um dependente e pode ter permissões limitadas.'}
+                  </Text>
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.changeRoleButton,
+                      pressed && { opacity: 0.7 }
+                    ]}
+                    onPress={() => {
+                      setEditMemberModalVisible(false);
+                      changeMemberRole(selectedMemberForEdit.id);
+                    }}
+                  >
+                    <Ionicons name="swap-horizontal" size={20} color="#007AFF" />
+                    <Text style={styles.changeRoleButtonText}>
+                      {selectedMemberForEdit.role === 'admin' ? 'Tornar Dependente' : 'Tornar Administrador'}
+                    </Text>
+                  </Pressable>
+                </View>
+
+                {/* Remover Membro */}
+                <View style={styles.editSection}>
+                  <Text style={styles.editSectionTitle}>Zona de Perigo</Text>
+                  <Text style={styles.editSectionDescription}>
+                    Remover este membro da família. Esta ação não pode ser desfeita.
+                  </Text>
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.removeMemberButtonEdit,
+                      pressed && { opacity: 0.7 }
+                    ]}
+                    onPress={() => {
+                      setEditMemberModalVisible(false);
+                      removeFamilyMember(selectedMemberForEdit.id);
+                    }}
+                  >
+                    <Ionicons name="trash-outline" size={20} color="#fff" />
+                    <Text style={styles.removeMemberButtonTextEdit}>Remover da Família</Text>
+                  </Pressable>
+                </View>
+              </ScrollView>
+            )}
+
+            <Pressable
+              style={({ pressed }) => [
+                styles.closeModalButton,
+                Platform.OS === 'web' && styles.closeModalButtonWeb,
+                pressed && { opacity: 0.8 }
+              ]}
+              onPress={() => {
+                setEditMemberModalVisible(false);
+                setSelectedMemberForEdit(null);
+              }}
             >
               <Text style={styles.closeModalButtonText}>Fechar</Text>
             </Pressable>
@@ -6291,7 +6389,7 @@ const styles = StyleSheet.create({
   familyModalContent: {
     maxHeight: '85%',
     minHeight: '70%',
-    paddingBottom: 80, // espaço para o botão "Fechar" fixo
+    paddingBottom: 20, // espaço para o botão "Fechar" fixo
   },
   familyModalContentMobile: {
     flex: 1,
@@ -6303,7 +6401,7 @@ const styles = StyleSheet.create({
     padding: 0,
     paddingHorizontal: 0,
     paddingVertical: 0,
-    paddingBottom: 80, // espaço para o botão "Fechar" fixo
+    paddingBottom: 20, // espaço para o botão "Fechar" fixo
   },
   familyModalHeader: {
     alignItems: 'center',
@@ -6482,31 +6580,29 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   memberAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     backgroundColor: '#f0f0f0',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 14,
     borderWidth: 2,
     borderColor: '#e0e0e0',
   },
   memberAvatarImage: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
   },
   memberDetails: {
     flex: 1,
     gap: 4,
   },
   memberName: {
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: 17,
+    fontWeight: '600',
     color: '#333',
-    marginBottom: 6,
-    lineHeight: 24,
+    marginBottom: 4,
   },
   memberRole: {
     flexDirection: 'row',
@@ -6515,13 +6611,12 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   memberRoleText: {
-    fontSize: 15,
+    fontSize: 14,
     color: '#666',
-    lineHeight: 20,
   },
   memberRoleAdmin: {
     color: '#007AFF',
-    fontWeight: 'bold',
+    fontWeight: '600',
   },
   memberEmail: {
     fontSize: 13,
@@ -6532,7 +6627,6 @@ const styles = StyleSheet.create({
   memberJoinDate: {
     fontSize: 12,
     color: '#999',
-    lineHeight: 18,
   },
   removeMemberButton: {
     paddingVertical: 12,
@@ -6581,6 +6675,180 @@ const styles = StyleSheet.create({
     color: '#007AFF',
     fontWeight: '600',
   },
+  
+  // Novos estilos para cards de membros - Design simplificado
+  memberCardContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  memberRoleBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 4,
+  },
+  editMemberButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    backgroundColor: '#e6f3ff',
+    borderRadius: 8,
+  },
+  editMemberButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#007AFF',
+  },
+
+  // Estilos do Modal de Edição de Membro
+  editMemberModalContent: {
+    maxHeight: '90%',
+    minHeight: '60%',
+    paddingBottom: 0,
+  },
+  editMemberScroll: {
+    flex: 1,
+  },
+  editMemberInfo: {
+    alignItems: 'center',
+    paddingVertical: 24,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  editMemberAvatar: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#f0f0f0',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 3,
+    borderColor: '#e0e0e0',
+    marginBottom: 12,
+  },
+  editMemberAvatarImage: {
+    width: 74,
+    height: 74,
+    borderRadius: 37,
+  },
+  editMemberName: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 6,
+  },
+  editMemberJoinDate: {
+    fontSize: 14,
+    color: '#666',
+  },
+  editSection: {
+    paddingHorizontal: 20,
+    paddingVertical: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  editSectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 8,
+  },
+  editSectionDescription: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 16,
+    lineHeight: 20,
+  },
+  permissionsEditContainer: {
+    gap: 12,
+  },
+  permissionEditItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#e0e0e0',
+  },
+  permissionEditItemActive: {
+    backgroundColor: '#e6f3ff',
+    borderColor: '#007AFF',
+  },
+  permissionEditLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  permissionEditLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+  },
+  permissionEditLabelActive: {
+    color: '#007AFF',
+  },
+  permissionCheckbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#ccc',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  permissionCheckboxActive: {
+    backgroundColor: '#007AFF',
+    borderColor: '#007AFF',
+  },
+  permissionsNote: {
+    fontSize: 12,
+    color: '#999',
+    marginTop: 12,
+    fontStyle: 'italic',
+    lineHeight: 16,
+  },
+  changeRoleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    backgroundColor: '#e6f3ff',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#007AFF',
+  },
+  changeRoleButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#007AFF',
+  },
+  removeMemberButtonEdit: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    backgroundColor: '#e74c3c',
+    borderRadius: 10,
+  },
+  removeMemberButtonTextEdit: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  closeIconButton: {
+    padding: 4,
+  },
+  
   // Estilos para edição do nome da família
   familyNameContainer: {
     flexDirection: 'row',
