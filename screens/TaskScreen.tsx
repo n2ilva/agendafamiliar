@@ -236,6 +236,26 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   const [codeCountdown, setCodeCountdown] = useState('');
 
   const isWeb = Platform.OS === 'web';
+
+  const sortedFamilyMembers = useMemo(() => {
+    if (!familyMembers.length) return [];
+
+    const userId = user?.id;
+    const normalizeName = (name?: string) => (name || '').trim().toLocaleLowerCase('pt-BR');
+
+    const others = familyMembers
+      .filter(member => member.id !== userId)
+      .sort((a, b) =>
+        normalizeName(a.name).localeCompare(normalizeName(b.name), 'pt-BR', { sensitivity: 'base' })
+      );
+
+    if (!userId) {
+      return others;
+    }
+
+    const currentUserEntry = familyMembers.find(member => member.id === userId);
+    return currentUserEntry ? [currentUserEntry, ...others] : others;
+  }, [familyMembers, user?.id]);
   
   // Estados de aprovação
   const [approvals, setApprovals] = useState<TaskApproval[]>([]);
@@ -4672,7 +4692,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                     </View>
                   )}
 
-                  {familyMembers.map(member => (
+                  {sortedFamilyMembers.map(member => (
                     <View
                       key={member.id}
                       style={[
