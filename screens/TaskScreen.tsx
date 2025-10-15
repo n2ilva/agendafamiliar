@@ -6291,6 +6291,7 @@ const styles = StyleSheet.create({
   familyModalContent: {
     maxHeight: '85%',
     minHeight: '70%',
+    paddingBottom: 80, // espaço para o botão "Fechar" fixo
   },
   familyModalContentMobile: {
     flex: 1,
@@ -6302,6 +6303,7 @@ const styles = StyleSheet.create({
     padding: 0,
     paddingHorizontal: 0,
     paddingVertical: 0,
+    paddingBottom: 80, // espaço para o botão "Fechar" fixo
   },
   familyModalHeader: {
     alignItems: 'center',
