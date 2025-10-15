@@ -200,6 +200,8 @@ interface TaskScreenProps {
 
 export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNameChange, onUserImageChange, onUserRoleChange }) => {
   const [isRefreshing, setIsRefreshing] = useState(false);
+  // Gating de boot inicial: evita UI "travando" enquanto sincroniza
+  const [isBootstrapping, setIsBootstrapping] = useState(true);
   // Loading global para aguardar sincronizações específicas (ex.: exclusão remota)
   const [isGlobalLoading, setGlobalLoading] = useState(false);
   // Controle de auto-sync para evitar chamadas excessivas
@@ -724,8 +726,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           setIsOffline(!state.isConnected);
         });
 
-        // Inicializar sincronização
-        await SyncService.initialize();
+  // Inicializar sincronização (rápido) sem bloquear UI
+  await SyncService.initialize();
         
         // Configurar listener de sincronização
         const removeSyncListener = SyncService.addSyncListener((status) => {
@@ -737,10 +739,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         setConnectivityState(initialState);
         setIsOffline(!initialState.isConnected);
 
-        // Carregar dados do cache se estiver offline
-        if (!initialState.isConnected) {
-          await loadDataFromCache();
-        }
+        // Carregar dados iniciais de forma otimista do cache
+        await loadDataFromCache();
 
         console.log('Sistema offline inicializado');
 
@@ -778,11 +778,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             familyId: user.familyId,
             isOffline: isOffline
           });
-          
-          if (!isOffline) {
-            // Online: forçar sincronização completa para garantir dados atualizados
-            await SyncService.forceFullSync();
-          }
+          // Mostra overlay de boot enquanto carrega dados essenciais
+          setIsBootstrapping(true);
           
           const userFamily = await familyService.getUserFamily(user.id);
           console.log('🔍 Resultado da busca por família:', userFamily);
@@ -803,6 +800,10 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                 setTasks(convertedTasks);
             
             console.log(`📋 ${familyTasks.length} tarefas da família carregadas e convertidas`);
+            // Disparar sync completo em background para atualizar tudo sem travar a UI
+            if (!isOffline) {
+              SyncService.forceFullSync().catch(e => console.warn('forceFullSync bg error:', e));
+            }
           } else {
             console.log('👤 Usuário não possui família');
             
@@ -829,6 +830,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         } catch (cacheError) {
           console.error('❌ Erro ao carregar do cache:', cacheError);
         }
+      } finally {
+        setIsBootstrapping(false);
       }
     };
 
@@ -4955,11 +4958,13 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       </Modal>
       
       {/* Removido overlay de atualização manual para UX mais discreta; o banner "Sincronizando..." abaixo do header já indica progresso */}
-      {isGlobalLoading && (
+      {(isGlobalLoading || isBootstrapping) && (
         <View style={styles.fullscreenLoadingOverlay} pointerEvents="auto">
           <View style={styles.fullscreenLoadingContent}>
             <ActivityIndicator size="large" color="#fff" />
-            <Text style={styles.fullscreenLoadingText}>Sincronizando...</Text>
+            <Text style={styles.fullscreenLoadingText}>
+              {isBootstrapping ? 'Carregando seus dados...' : 'Sincronizando...'}
+            </Text>
           </View>
         </View>
       )}

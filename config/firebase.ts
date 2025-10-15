@@ -1,7 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { getAnalytics, isSupported } from 'firebase/analytics';
 import { getAuth, initializeAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { getFirestore, enableIndexedDbPersistence } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -94,6 +94,20 @@ function getFirestoreInstance() {
   if (_db) return _db;
   try {
     _db = getFirestore(app);
+    // Habilitar persistência IndexedDB no web para acelerar leituras subsequentes
+    if (Platform.OS === 'web') {
+      try {
+        // Ignorar erros de múltiplas abas: o app continua funcionando sem persistência
+        // @ts-ignore
+        enableIndexedDbPersistence(_db).then(() => {
+          console.log('✅ Firestore persistence (IndexedDB) habilitada no web');
+        }).catch((e: any) => {
+          console.warn('ℹ️ Firestore persistence não habilitada (provável múltiplas abas):', e?.code || e);
+        });
+      } catch (e) {
+        console.warn('Falha ao habilitar persistence do Firestore no web:', e);
+      }
+    }
   } catch (e) {
     console.warn('getFirestore falhou durante inicialização (ambiente de teste?). Retornando stub.');
     // @ts-ignore
