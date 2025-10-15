@@ -6575,9 +6575,8 @@ const styles = StyleSheet.create({
     paddingLeft: 16,
   },
   memberInfo: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
     flex: 1,
+    gap: 4,
   },
   memberAvatar: {
     width: 56,
