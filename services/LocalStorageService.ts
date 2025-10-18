@@ -42,13 +42,25 @@ class LocalStorageService {
 
   // Helper function to fix date fields in tasks
   private static fixTaskDates(task: any): Task {
-    return {
+    const fixed: Task = {
       ...task,
       dueDate: safeToDate(task.dueDate),
       dueTime: safeToDate(task.dueTime),
       createdAt: safeToDate(task.createdAt) || new Date(),
       editedAt: safeToDate(task.editedAt)
-    };
+    } as any;
+
+    // Normalizar datas das subtarefas, se existirem
+    if (Array.isArray((task as any).subtasks)) {
+      fixed.subtasks = (task as any).subtasks.map((st: any) => ({
+        ...st,
+        dueDate: safeToDate(st?.dueDate),
+        dueTime: safeToDate(st?.dueTime),
+        completedAt: safeToDate(st?.completedAt)
+      }));
+    }
+
+    return fixed;
   }
 
   // Salvar dados no cache local

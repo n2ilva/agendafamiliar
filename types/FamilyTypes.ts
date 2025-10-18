@@ -107,6 +107,8 @@ export interface Task {
     id: string;
     title: string;
     done: boolean;
+    dueDate?: Date; // data de vencimento da subtarefa
+    dueTime?: Date; // horário de vencimento da subtarefa
     completedById?: string;
     completedByName?: string;
     completedAt?: Date | string;

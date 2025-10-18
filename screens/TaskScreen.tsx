@@ -302,8 +302,13 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   const [selectedColorIndex, setSelectedColorIndex] = useState(0);
   
   // Estados de subtarefas
-  const [subtasksDraft, setSubtasksDraft] = useState<Array<{ id: string; title: string; done: boolean; completedById?: string; completedByName?: string; completedAt?: Date; }>>([]);
+  const [subtasksDraft, setSubtasksDraft] = useState<Array<{ id: string; title: string; done: boolean; completedById?: string; completedByName?: string; completedAt?: Date; dueDate?: Date; dueTime?: Date; }>>([]);
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
+  const [editingSubtaskId, setEditingSubtaskId] = useState<string | null>(null);
+  const [subtaskDatePickerVisible, setSubtaskDatePickerVisible] = useState(false);
+  const [subtaskTimePickerVisible, setSubtaskTimePickerVisible] = useState(false);
+  const [subtaskSelectedDate, setSubtaskSelectedDate] = useState<Date | undefined>(undefined);
+  const [subtaskSelectedTime, setSubtaskSelectedTime] = useState<Date | undefined>(undefined);
   
   // Estados de conectividade e sincronização
   const [isOffline, setIsOffline] = useState(false);
@@ -1457,6 +1462,22 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           } catch (e) {
             console.warn('[Notifications] rescheduleTaskReminder falhou (ignorado):', e);
           }
+
+          // Reagendar lembretes das subtarefas
+          try {
+            // Cancelar todas as notificações antigas de subtarefas
+            await NotificationService.cancelAllSubtaskReminders(updatedTask.id);
+            // Agendar novamente com as subtarefas atualizadas
+            if (Array.isArray((updatedTask as any).subtasks) && (updatedTask as any).subtasks.length > 0) {
+              await NotificationService.scheduleSubtaskReminders(
+                updatedTask.id, 
+                updatedTask.title, 
+                (updatedTask as any).subtasks
+              );
+            }
+          } catch (e) {
+            console.warn('[Notifications] Falha ao reagendar subtarefas (ignorado):', e);
+          }
           
           // Determinar se é create ou update baseado no ID
           const isTemporaryId = updatedTask.id.startsWith('temp_') || updatedTask.id === 'temp';
@@ -1555,6 +1576,15 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     await NotificationService.scheduleTaskReminder(newTask as any);
   } catch (e) {
     console.warn('[Notifications] scheduleTaskReminder falhou (ignorado):', e);
+  }
+
+  // Agendar lembretes das subtarefas
+  try {
+    if (Array.isArray(subtasksDraft) && subtasksDraft.length > 0) {
+      await NotificationService.scheduleSubtaskReminders(newTask.id, newTask.title, subtasksDraft);
+    }
+  } catch (e) {
+    console.warn('[Notifications] scheduleSubtaskReminders falhou (ignorado):', e);
   }
         
         // Salvar no cache local
@@ -2242,6 +2272,17 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           }
         }
         
+        // Resetar subtarefas para não concluídas
+        const resetSubtasks = Array.isArray((task as any).subtasks) 
+          ? (task as any).subtasks.map((st: any) => ({
+              ...st,
+              done: false,
+              completedById: undefined,
+              completedByName: undefined,
+              completedAt: undefined
+            }))
+          : undefined;
+
         const nextTask: Task = {
           ...task,
           id: uuidv4(),
@@ -2249,13 +2290,14 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           status: 'pendente',
           dueDate: nextDate,
           dueTime: nextDateTime,
+          subtasks: resetSubtasks,
           createdAt: new Date(),
           createdBy: user.id,
           createdByName: user.name,
           editedBy: user.id,
           editedByName: user.name,
           editedAt: new Date()
-        };
+        } as any;
         
         console.log('✨ Nova tarefa recorrente criada:', {
           id: nextTask.id,
@@ -2483,6 +2525,46 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     const task = tasks.find(t => t.id === taskId);
     if (!task) return;
 
+    // Verificar se a subtarefa pode ser concluída (data de vencimento)
+    const subtaskToCheck = (task as any).subtasks?.find((st: any) => st.id === subtaskId);
+    if (subtaskToCheck && !subtaskToCheck.done && subtaskToCheck.dueDate) {
+      const now = new Date();
+      const dueDate = safeToDate(subtaskToCheck.dueDate);
+      
+      if (dueDate) {
+        // Se tem hora definida, considerar data+hora, senão apenas data
+        if (subtaskToCheck.dueTime) {
+          const dueTime = safeToDate(subtaskToCheck.dueTime);
+          if (dueTime) {
+            const dueDateTimeCheck = new Date(dueDate);
+            dueDateTimeCheck.setHours(dueTime.getHours(), dueTime.getMinutes(), 0, 0);
+            
+            if (now < dueDateTimeCheck) {
+              Alert.alert(
+                'Subtarefa Agendada',
+                `Esta subtarefa só pode ser concluída a partir de ${formatDate(dueDate)} às ${formatTime(dueTime)}.`
+              );
+              return;
+            }
+          }
+        } else {
+          // Apenas data, comparar início do dia
+          const dueDateStart = new Date(dueDate);
+          dueDateStart.setHours(0, 0, 0, 0);
+          const nowStart = new Date(now);
+          nowStart.setHours(0, 0, 0, 0);
+          
+          if (nowStart < dueDateStart) {
+            Alert.alert(
+              'Subtarefa Agendada',
+              `Esta subtarefa só pode ser concluída a partir de ${formatDate(dueDate)}.`
+            );
+            return;
+          }
+        }
+      }
+    }
+
     // Dependente pode marcar subtarefa, mas a conclusão da tarefa principal pode exigir aprovação
     const now = new Date();
     const updatedTasks = tasks.map(t => {
@@ -2510,6 +2592,17 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     setTasks(updatedTasks);
 
     const updatedTask = updatedTasks.find(t => t.id === taskId)!;
+    
+    // Cancelar notificação da subtarefa se foi marcada como concluída
+    const subtask = (updatedTask as any).subtasks?.find((st: any) => st.id === subtaskId);
+    if (subtask?.done) {
+      try {
+        await NotificationService.cancelSubtaskReminder(taskId, subtaskId);
+      } catch (e) {
+        console.warn('[Notifications] Falha ao cancelar notificação de subtarefa (ignorado):', e);
+      }
+    }
+    
     try {
       const remoteTask = taskToRemoteTask(updatedTask as any);
       await LocalStorageService.saveTask(remoteTask);
@@ -3129,6 +3222,13 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
               // Atualizar UI imediatamente
               setTasks(prev => prev.filter(t => t.id !== taskId));
               await NotificationService.cancelTaskReminder(taskId).catch(()=>{});
+              
+              // Cancelar todas as notificações de subtarefas
+              try {
+                await NotificationService.cancelAllSubtaskReminders(taskId);
+              } catch (e) {
+                console.warn('[Notifications] Falha ao cancelar notificações de subtarefas (ignorado):', e);
+              }
 
               // Usar SyncService para executar remotamente quando online ou enfileirar quando offline
               // Inclui familyId para respeitar lógica de famílias locais
@@ -3982,7 +4082,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             {subtasksDraft.length > 0 && (
               <View style={{ gap: 8, marginBottom: 8 }}>
                 {subtasksDraft.map((st, idx) => (
-                  <View key={st.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <View key={st.id} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
                     <Pressable
                       onPress={() => {
                         setSubtasksDraft(prev => {
@@ -3991,20 +4091,55 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                           return next;
                         });
                       }}
-                      style={[styles.checkbox, st.done && styles.checkboxCompleted]}
+                      style={[styles.checkbox, st.done && styles.checkboxCompleted, { marginTop: 10 }]}
                     >
                       {st.done && <Ionicons name="checkmark" size={16} color="#fff" />}
                     </Pressable>
-                    <TextInput
-                      style={[styles.input, { flex: 1 }]}
-                      placeholder={`Subtarefa ${idx + 1}`}
-                      value={st.title}
-                      onChangeText={(txt) => setSubtasksDraft(prev => {
-                        const next = prev.map(s => s.id === st.id ? { ...s, title: txt } : s);
-                        // Não persistimos a cada digitação para evitar flood; persistiremos ao sair/salvar.
-                        return next;
-                      })}
-                    />
+                    <View style={{ flex: 1 }}>
+                      <TextInput
+                        style={[styles.input]}
+                        placeholder={`Subtarefa ${idx + 1}`}
+                        value={st.title}
+                        onChangeText={(txt) => setSubtasksDraft(prev => {
+                          const next = prev.map(s => s.id === st.id ? { ...s, title: txt } : s);
+                          return next;
+                        })}
+                      />
+                      {(st.dueDate || st.dueTime) && (
+                        <View style={{ flexDirection: 'row', marginTop: 4, gap: 8 }}>
+                          {st.dueDate && (
+                            <Text style={{ fontSize: 12, color: '#666' }}>
+                              {formatDate(st.dueDate)}
+                            </Text>
+                          )}
+                          {st.dueTime && (
+                            <Text style={{ fontSize: 12, color: '#666' }}>
+                              {formatTime(st.dueTime)}
+                            </Text>
+                          )}
+                        </View>
+                      )}
+                    </View>
+                    <Pressable 
+                      onPress={() => {
+                        setEditingSubtaskId(st.id);
+                        setSubtaskSelectedDate(st.dueDate);
+                        setSubtaskDatePickerVisible(true);
+                      }}
+                      style={[styles.scheduleActionButton]}
+                    >
+                      <Ionicons name="calendar-outline" size={16} color="#007AFF" />
+                    </Pressable>
+                    <Pressable 
+                      onPress={() => {
+                        setEditingSubtaskId(st.id);
+                        setSubtaskSelectedTime(st.dueTime);
+                        setSubtaskTimePickerVisible(true);
+                      }}
+                      style={[styles.scheduleActionButton]}
+                    >
+                      <Ionicons name="time-outline" size={16} color="#007AFF" />
+                    </Pressable>
                     <Pressable onPress={() => setSubtasksDraft(prev => {
                         const next = prev.filter(s => s.id !== st.id);
                         persistSubtasksDraftIfEditing(next);
@@ -5149,6 +5284,126 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         </View>
       </Modal>
       
+      {/* Modal de seleção de data para subtarefa */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={subtaskDatePickerVisible}
+        onRequestClose={() => setSubtaskDatePickerVisible(false)}
+      >
+        <Pressable 
+          style={styles.modalOverlay}
+          onPress={() => setSubtaskDatePickerVisible(false)}
+        >
+          <Pressable 
+            style={styles.modalContent}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <Text style={styles.modalTitle}>Selecionar Data da Subtarefa</Text>
+            <View style={{ alignItems: 'center', padding: 20 }}>
+              <Text style={{ fontSize: 14, color: '#666', marginBottom: 10 }}>
+                {subtaskSelectedDate ? formatDate(subtaskSelectedDate) : 'Nenhuma data selecionada'}
+              </Text>
+              <Pressable
+                style={[styles.button, { backgroundColor: '#007AFF', marginTop: 10 }]}
+                onPress={() => {
+                  const now = new Date();
+                  setSubtaskSelectedDate(now);
+                }}
+              >
+                <Text style={styles.addButtonText}>Usar data de hoje</Text>
+              </Pressable>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 12, marginTop: 20 }}>
+              <Pressable
+                style={[styles.button, styles.cancelButton, { flex: 1 }]}
+                onPress={() => {
+                  setSubtaskSelectedDate(undefined);
+                  setSubtaskDatePickerVisible(false);
+                }}
+              >
+                <Text style={styles.cancelButtonText}>Limpar</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.button, { flex: 1, backgroundColor: '#007AFF' }]}
+                onPress={() => {
+                  if (editingSubtaskId) {
+                    setSubtasksDraft(prev => prev.map(st => 
+                      st.id === editingSubtaskId 
+                        ? { ...st, dueDate: subtaskSelectedDate }
+                        : st
+                    ));
+                  }
+                  setSubtaskDatePickerVisible(false);
+                }}
+              >
+                <Text style={styles.addButtonText}>Confirmar</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Modal de seleção de hora para subtarefa */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={subtaskTimePickerVisible}
+        onRequestClose={() => setSubtaskTimePickerVisible(false)}
+      >
+        <Pressable 
+          style={styles.modalOverlay}
+          onPress={() => setSubtaskTimePickerVisible(false)}
+        >
+          <Pressable 
+            style={styles.modalContent}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <Text style={styles.modalTitle}>Selecionar Hora da Subtarefa</Text>
+            <View style={{ alignItems: 'center', padding: 20 }}>
+              <Text style={{ fontSize: 14, color: '#666', marginBottom: 10 }}>
+                {subtaskSelectedTime ? formatTime(subtaskSelectedTime) : 'Nenhuma hora selecionada'}
+              </Text>
+              <Pressable
+                style={[styles.button, { backgroundColor: '#007AFF', marginTop: 10 }]}
+                onPress={() => {
+                  const now = new Date();
+                  setSubtaskSelectedTime(now);
+                }}
+              >
+                <Text style={styles.addButtonText}>Usar hora atual</Text>
+              </Pressable>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 12, marginTop: 20 }}>
+              <Pressable
+                style={[styles.button, styles.cancelButton, { flex: 1 }]}
+                onPress={() => {
+                  setSubtaskSelectedTime(undefined);
+                  setSubtaskTimePickerVisible(false);
+                }}
+              >
+                <Text style={styles.cancelButtonText}>Limpar</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.button, { flex: 1, backgroundColor: '#007AFF' }]}
+                onPress={() => {
+                  if (editingSubtaskId) {
+                    setSubtasksDraft(prev => prev.map(st => 
+                      st.id === editingSubtaskId 
+                        ? { ...st, dueTime: subtaskSelectedTime }
+                        : st
+                    ));
+                  }
+                  setSubtaskTimePickerVisible(false);
+                }}
+              >
+                <Text style={styles.addButtonText}>Confirmar</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       {/* Removido overlay de atualização manual para UX mais discreta; o banner "Sincronizando..." abaixo do header já indica progresso */}
       {(isGlobalLoading || isBootstrapping) && (
         <View style={styles.fullscreenLoadingOverlay} pointerEvents="auto">
@@ -5862,7 +6117,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e9ecef',
     borderRadius: 8,
-    padding: 6,
+    padding: 10,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',

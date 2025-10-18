@@ -4,7 +4,7 @@ import { TaskScreen } from './screens/TaskScreen';
 import { LoginScreen } from './screens/LoginScreen';
 import FamilySetupScreen from './screens/FamilySetupScreen';
 
-import { ActivityIndicator, View, StyleSheet } from 'react-native';
+import { ActivityIndicator, View, StyleSheet, Text } from 'react-native';
 import { FamilyUser, UserRole } from './types/FamilyTypes';
 import LocalAuthService from './services/LocalAuthService';
 import familyService from './services/LocalFamilyService';
@@ -25,9 +25,9 @@ export default function App() {
   const [appIsReady, setAppIsReady] = useState<boolean>(false);
 
   // Evita que o Splash desapareça automaticamente; será escondido manualmente após boot essencial
-  try {
-    SplashScreen.preventAutoHideAsync();
-  } catch {}
+  useEffect(() => {
+    SplashScreen.preventAutoHideAsync().catch(() => {});
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -47,11 +47,14 @@ export default function App() {
     }
   }, [loading]);
 
-  const onLayoutRootView = useCallback(async () => {
+  // Assim que o app estiver pronto, hide o Splash (sem depender de onLayout)
+  useEffect(() => {
     if (appIsReady) {
-      try {
-        await SplashScreen.hideAsync();
-      } catch {}
+      // Pequeno atraso garante que a primeira pintura do layout já ocorreu
+      const t = setTimeout(() => {
+        SplashScreen.hideAsync().catch(() => {});
+      }, 0);
+      return () => clearTimeout(t);
     }
   }, [appIsReady]);
 
@@ -121,14 +124,26 @@ export default function App() {
   };
 
   useEffect(() => {
+  console.log('🔔 Configurando listener de autenticação');
+  
+  // Timeout de segurança - se após 10s o loading não mudou, forçar false
+  const safetyTimeout = setTimeout(() => {
+    console.warn('⏱️ Timeout de segurança atingido - forçando loading=false');
+    setLoading(false);
+  }, 10000);
+  
   const unsubscribe = LocalAuthService.onAuthStateChange(async (authUser) => {
+      clearTimeout(safetyTimeout); // Cancela o timeout quando auth responde
+      
       if (authUser) {
+        console.log('👤 Usuário autenticado detectado:', authUser.email);
         setUser(authUser);
         await saveUserToStorage(authUser);
         await LocalAuthService.initializeOfflineSupport();
         await BackgroundSyncService.registerBackgroundSyncAsync();
         
         try {
+          console.log('🔍 Buscando família do usuário:', authUser.id);
           const userFamily = await familyService.getUserFamily(authUser.id);
           
           if (userFamily) {
@@ -164,10 +179,14 @@ export default function App() {
         setFamilyConfigured(false);
         await removeUserFromStorage();
       }
+      console.log('✅ onAuthStateChange concluído - definindo loading=false');
       setLoading(false);
     });
 
-    return unsubscribe;
+    return () => {
+      clearTimeout(safetyTimeout);
+      unsubscribe();
+    };
   }, []);
 
   const handleUserNameChange = async (newName: string) => {
@@ -302,32 +321,42 @@ export default function App() {
   };
 
   return (
-    <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
+    <View style={{ flex: 1 }}>
     <SafeAreaProvider>
       {loading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#007AFF" />
+          <Text style={{ marginTop: 10, color: '#666' }}>Carregando...</Text>
         </View>
       ) : user ? (
         familyConfigured ? (
-          <TaskScreen 
-            user={user}
-            onLogout={handleLogout}
-            onUserNameChange={handleUserNameChange}
-            onUserImageChange={handleUserImageChange}
-            onUserRoleChange={handleUserRoleChange}
-          />
+          <>
+            {console.log('🎯 Renderizando TaskScreen', { user: user.name, familyId: user.familyId })}
+            <TaskScreen 
+              user={user}
+              onLogout={handleLogout}
+              onUserNameChange={handleUserNameChange}
+              onUserImageChange={handleUserImageChange}
+              onUserRoleChange={handleUserRoleChange}
+            />
+          </>
         ) : (
-          <FamilySetupScreen
-            onFamilySetup={handleFamilySetup}
-            onLogout={handleLogout}
-            userEmail={user.email || ''}
-            userName={user.name}
-            userId={user.id}
-          />
+          <>
+            {console.log('🏗️ Renderizando FamilySetupScreen', { user: user.name })}
+            <FamilySetupScreen
+              onFamilySetup={handleFamilySetup}
+              onLogout={handleLogout}
+              userEmail={user.email || ''}
+              userName={user.name}
+              userId={user.id}
+            />
+          </>
         )
       ) : (
-        <LoginScreen />
+        <>
+          {console.log('🔐 Renderizando LoginScreen')}
+          <LoginScreen />
+        </>
       )}
     </SafeAreaProvider>
     </View>
