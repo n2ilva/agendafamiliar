@@ -304,11 +304,16 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   // Estados de subtarefas
   const [subtasksDraft, setSubtasksDraft] = useState<Array<{ id: string; title: string; done: boolean; completedById?: string; completedByName?: string; completedAt?: Date; dueDate?: Date; dueTime?: Date; }>>([]);
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
+  const [newSubtaskDate, setNewSubtaskDate] = useState<Date | undefined>(undefined);
+  const [newSubtaskTime, setNewSubtaskTime] = useState<Date | undefined>(undefined);
   const [editingSubtaskId, setEditingSubtaskId] = useState<string | null>(null);
   const [subtaskDatePickerVisible, setSubtaskDatePickerVisible] = useState(false);
   const [subtaskTimePickerVisible, setSubtaskTimePickerVisible] = useState(false);
   const [subtaskSelectedDate, setSubtaskSelectedDate] = useState<Date | undefined>(undefined);
   const [subtaskSelectedTime, setSubtaskSelectedTime] = useState<Date | undefined>(undefined);
+  
+  // Estado para controlar expansão dos cards de tarefas
+  const [expandedTaskIds, setExpandedTaskIds] = useState<Set<string>>(new Set());
   
   // Estados de conectividade e sincronização
   const [isOffline, setIsOffline] = useState(false);
@@ -521,6 +526,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         completedById: st.completedById || null,
         completedByName: st.completedByName || null,
         completedAt: st.completedAt || null,
+        dueDate: (st as any).dueDate || null,
+        dueTime: (st as any).dueTime || null,
       }));
     }
 
@@ -611,6 +618,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         completedById: st.completedById || undefined,
         completedByName: st.completedByName || undefined,
         completedAt: safeToDate(st.completedAt) || undefined,
+        dueDate: safeToDate(st.dueDate) || undefined,
+        dueTime: safeToDate(st.dueTime) || undefined,
       })) : [],
       // Campos de autoria com fallback para dados antigos
       createdBy: remoteTask.createdBy || remoteTask.userId,
@@ -620,6 +629,60 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       editedAt: safeToDate(remoteTask.editedAt),
       // Campo de privacidade
       private: (remoteTask as any).private
+    };
+  };
+
+  // Função para encontrar a próxima data/hora mais próxima das subtarefas não concluídas
+  const getNextSubtaskDueDateTime = (subtasks: any[]): { dueDate?: Date; dueTime?: Date } => {
+    if (!Array.isArray(subtasks) || subtasks.length === 0) {
+      return {};
+    }
+
+    // Filtrar apenas subtarefas não concluídas que têm data ou hora
+    const pendingSubtasks = subtasks.filter(st => 
+      !st.done && (st.dueDate || st.dueTime)
+    );
+
+    if (pendingSubtasks.length === 0) {
+      return {};
+    }
+
+    // Criar array de timestamps combinando data e hora
+    const subtasksWithTimestamps = pendingSubtasks.map(st => {
+      const date = st.dueDate ? new Date(st.dueDate) : new Date();
+      const time = st.dueTime ? new Date(st.dueTime) : null;
+      
+      // Combinar data e hora em um único timestamp
+      let timestamp = new Date(date);
+      if (time) {
+        timestamp.setHours(time.getHours());
+        timestamp.setMinutes(time.getMinutes());
+        timestamp.setSeconds(0);
+        timestamp.setMilliseconds(0);
+      } else {
+        // Se não tem hora, considerar início do dia
+        timestamp.setHours(0, 0, 0, 0);
+      }
+
+      return {
+        subtask: st,
+        timestamp: timestamp.getTime()
+      };
+    });
+
+    // Ordenar por timestamp e pegar o mais próximo
+    subtasksWithTimestamps.sort((a, b) => a.timestamp - b.timestamp);
+    const nextSubtask = subtasksWithTimestamps[0].subtask;
+
+    console.log('📅 Próxima data/hora das subtarefas:', {
+      dueDate: nextSubtask.dueDate,
+      dueTime: nextSubtask.dueTime,
+      subtaskTitle: nextSubtask.title
+    });
+
+    return {
+      dueDate: nextSubtask.dueDate,
+      dueTime: nextSubtask.dueTime
     };
   };
 
@@ -1418,6 +1481,12 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       if (isEditing && editingTaskId) {
         // Atualizar tarefa existente
         const defaultDueDateForEdit = selectedDate || (repeatType !== RepeatType.NONE ? getInitialDueDateForRecurrence(repeatType, customDays) : undefined);
+        
+        // Se não há data/hora definida manualmente, usar a próxima data/hora das subtarefas
+        const nextSubtaskDueDateTime = getNextSubtaskDueDateTime(subtasksDraft);
+        const finalDueDateEdit = defaultDueDateForEdit || nextSubtaskDueDateTime.dueDate;
+        const finalDueTimeEdit = selectedTime || nextSubtaskDueDateTime.dueTime;
+        
         const updatedTasks = tasks.map(task => 
           task.id === editingTaskId 
             ? {
@@ -1425,8 +1494,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                 title: newTaskTitle.trim(),
                 description: newTaskDescription.trim(),
                 category: selectedCategory,
-                dueDate: defaultDueDateForEdit,
-                dueTime: selectedTime,
+                dueDate: finalDueDateEdit,
+                dueTime: finalDueTimeEdit,
                 repeat: {
                   type: repeatType,
                   days: repeatType === RepeatType.CUSTOM ? customDays : undefined
@@ -1538,6 +1607,11 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           selectedTime: selectedTime
         });
 
+        // Se não há data/hora definida manualmente, usar a próxima data/hora das subtarefas
+        const nextSubtaskDueDateTime = getNextSubtaskDueDateTime(subtasksDraft);
+        const finalDueDate = defaultDueDate || nextSubtaskDueDateTime.dueDate;
+        const finalDueTime = selectedTime || nextSubtaskDueDateTime.dueTime;
+
         const newTask: Task = {
           id: uuidv4(), // Usar UUID para garantir ID único
           title: newTaskTitle.trim(),
@@ -1545,8 +1619,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           completed: false,
           status: 'pendente' as TaskStatus,
           category: selectedCategory,
-          dueDate: defaultDueDate,
-          dueTime: selectedTime,
+          dueDate: finalDueDate,
+          dueTime: finalDueTime,
           repeat: {
             type: repeatType,
             days: repeatType === RepeatType.CUSTOM ? customDays : undefined
@@ -1601,8 +1675,23 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             if (!isOffline) {
               const toSave = { ...remoteTask, familyId: currentFamily.id } as any;
               const res = await FirestoreService.saveTask(toSave);
-              await LocalStorageService.saveTask({ ...toSave, id: toSave.id || (res && (res as any).id) } as any);
-              console.log(`👨‍👩‍👧‍👦 Nova tarefa salva no Firestore (online): taskId=${toSave.id || (res && (res as any).id)} familyId=${currentFamily.id}`);
+              const savedId = toSave.id || (res && (res as any).id);
+              await LocalStorageService.saveTask({ ...toSave, id: savedId } as any);
+              console.log(`👨‍👩‍👧‍👦 Nova tarefa salva no Firestore (online): taskId=${savedId} familyId=${currentFamily.id}`);
+              
+              // Atualizar o estado local com a tarefa salva incluindo o familyId
+              setTasks(prevTasks => {
+                const taskIndex = prevTasks.findIndex(t => t.id === newTask.id);
+                if (taskIndex !== -1) {
+                  const updatedTasksList = [...prevTasks];
+                  updatedTasksList[taskIndex] = { 
+                    ...updatedTasksList[taskIndex], 
+                    familyId: currentFamily.id 
+                  } as Task;
+                  return updatedTasksList;
+                }
+                return prevTasks;
+              });
             } else {
               await SyncService.addOfflineOperation('create', 'tasks', { ...remoteTask, familyId: currentFamily.id });
               console.log(`👨‍👩‍👧‍👦 Nova tarefa enfileirada (offline family): taskId=${remoteTask.id} familyId=${currentFamily.id}`);
@@ -2193,6 +2282,19 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     }
   };
 
+  // Função para alternar expansão do card de tarefa
+  const toggleTaskExpansion = useCallback((taskId: string) => {
+    setExpandedTaskIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(taskId)) {
+        newSet.delete(taskId);
+      } else {
+        newSet.add(taskId);
+      }
+      return newSet;
+    });
+  }, []);
+
   const toggleTask = useCallback(async (taskId: string) => {
     const task = tasks.find(t => t.id === taskId);
     if (!task) return;
@@ -2481,14 +2583,20 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   };
 
   // Persistir alterações de subtarefas feitas no modal durante edição (salvar imediatamente)
-  const persistSubtasksDraftIfEditing = useCallback(async (nextDraft: Array<{ id: string; title: string; done: boolean; completedById?: string; completedByName?: string; completedAt?: Date }>) => {
+  const persistSubtasksDraftIfEditing = useCallback(async (nextDraft: Array<{ id: string; title: string; done: boolean; completedById?: string; completedByName?: string; completedAt?: Date; dueDate?: Date; dueTime?: Date; }>) => {
     if (!isEditing || !editingTaskId) return;
     const baseTask = tasks.find(t => t.id === editingTaskId);
     if (!baseTask) return;
     const now = new Date();
+    
+    // Calcular próxima data/hora das subtarefas pendentes
+    const nextSubtaskDueDateTime = getNextSubtaskDueDateTime(nextDraft);
+    
     const updatedTask: Task = {
       ...baseTask,
       subtasks: nextDraft as any,
+      dueDate: nextSubtaskDueDateTime.dueDate || baseTask.dueDate,
+      dueTime: nextSubtaskDueDateTime.dueTime || baseTask.dueTime,
       editedBy: user.id,
       editedByName: user.name,
       editedAt: now,
@@ -2580,9 +2688,15 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           completedAt: newDone ? now : undefined,
         };
       }) || [];
+      
+      // Calcular próxima data/hora das subtarefas pendentes
+      const nextDueDateTime = getNextSubtaskDueDateTime(updatedSubtasks);
+      
       return {
         ...t,
         subtasks: updatedSubtasks,
+        dueDate: nextDueDateTime.dueDate || t.dueDate,
+        dueTime: nextDueDateTime.dueTime || t.dueTime,
         editedBy: user.id,
         editedByName: user.name,
         editedAt: now,
@@ -3365,6 +3479,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     const isRecurring = item.repeat.type !== 'none';
     const canComplete = isRecurringTaskCompletable(item.dueDate, isRecurring);
     const isPendingRecurring = isRecurring && !canComplete && !item.completed;
+    const isExpanded = expandedTaskIds.has(item.id);
     
     // Sanitizar valores para evitar "Unexpected text node: ." no web
     const sanitizedTitle = (item.title === '.' || !item.title) ? '' : item.title;
@@ -3381,8 +3496,11 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           isPendingRecurring && styles.taskPendingRecurring
         ]}
       >
-        {/* Header da Categoria - Topo do Card */}
-        <View style={[styles.categoryHeader, { backgroundColor: categoryConfig.bgColor }] }>
+        {/* Header da Categoria - Topo do Card - Clicável para expandir/recolher */}
+        <Pressable 
+          style={[styles.categoryHeader, { backgroundColor: categoryConfig.bgColor }]}
+          onPress={() => toggleTaskExpansion(item.id)}
+        >
           <View style={styles.categoryHeaderContent}>
             <Ionicons 
               name={categoryConfig.icon as any} 
@@ -3402,28 +3520,36 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
               />
             )}
           </View>
-          {/* Indicador de tarefa privada (direita) */}
-          {((item as any).private === true) && item.createdBy === user.id && (
-            <View style={styles.privateIndicatorRight}>
-              <Ionicons name="lock-closed" size={12} color="#666" />
-              <Text style={styles.privateIndicatorRightText}>Privado</Text>
-            </View>
-          )}
-          {/* Indicador de tarefa vencida */}
-          {isOverdue && (
-            <View style={styles.overdueIndicator}>
-              <Ionicons name="warning" size={14} color="#e74c3c" />
-              <Text style={styles.overdueLabel}>VENCIDA</Text>
-            </View>
-          )}
-          {/* Indicador de tarefa recorrente pendente */}
-          {isPendingRecurring && (
-            <View style={styles.pendingRecurringIndicator}>
-              <Ionicons name="time" size={14} color="#f39c12" />
-              <Text style={styles.pendingRecurringLabel}>AGENDADA</Text>
-            </View>
-          )}
-        </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            {/* Indicador de tarefa privada (direita) */}
+            {((item as any).private === true) && item.createdBy === user.id && (
+              <View style={styles.privateIndicatorRight}>
+                <Ionicons name="lock-closed" size={12} color="#666" />
+                <Text style={styles.privateIndicatorRightText}>Privado</Text>
+              </View>
+            )}
+            {/* Indicador de tarefa vencida */}
+            {isOverdue && (
+              <View style={styles.overdueIndicator}>
+                <Ionicons name="warning" size={14} color="#e74c3c" />
+                <Text style={styles.overdueLabel}>VENCIDA</Text>
+              </View>
+            )}
+            {/* Indicador de tarefa recorrente pendente */}
+            {isPendingRecurring && (
+              <View style={styles.pendingRecurringIndicator}>
+                <Ionicons name="time" size={14} color="#f39c12" />
+                <Text style={styles.pendingRecurringLabel}>AGENDADA</Text>
+              </View>
+            )}
+            {/* Indicador de expandir/recolher */}
+            <Ionicons 
+              name={isExpanded ? "chevron-up" : "chevron-down"} 
+              size={18} 
+              color={categoryConfig.color} 
+            />
+          </View>
+        </Pressable>
 
         {/* Conteúdo Principal da Tarefa */}
         <View style={styles.taskCardHeader}>
@@ -3457,7 +3583,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           </View>
         </View>
 
-        {/* Informações de Agendamento */}
+        {/* Informações de Agendamento - Sempre visível (data/hora resumida) */}
         <View style={styles.scheduleInfo}>
           {(item.dueTime || item.dueDate) && (
             <View style={styles.scheduleItem}>
@@ -3471,114 +3597,175 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
               </Text>
             </View>
           )}
-
-          {item.repeat.type !== RepeatType.NONE && (
-            <View style={styles.scheduleItem}>
-              <Ionicons 
-                name="repeat-outline" 
-                size={14} 
-                color="#666" 
-              />
-              <Text style={styles.scheduleText}>
-                {getRepeatText(item.repeat)}
-              </Text>
-            </View>
-          )}
-
-          {/* Botões de ação: sempre clicáveis; handlers validam permissão em runtime */}
-          {(user.role === 'admin' || user.role === 'dependente') && (
-            (() => {
-              const isFamilyTask = (item as any).familyId && (item as any).private !== true;
-              const selfMember = familyMembers.find(m => m.id === user.id);
-              // Preferir permissões efetivas; se ausentes, cair para permissões locais
-              const perms = (myEffectivePerms ?? (selfMember as any)?.permissions) || {};
-              // Visual: só mostrar como desativado se soubermos explicitamente que NÃO pode (false).
-              // Quando indefinido (ainda sincronizando), exibimos ativo (o handler fará o enforcement).
-              const visualCanEdit = user.role === 'admin' || (user.role === 'dependente' && isFamilyTask && perms.edit !== false);
-              const visualCanDelete = user.role === 'admin' || (user.role === 'dependente' && isFamilyTask && perms.delete !== false);
-              return (
-                <View style={styles.scheduleActions}>
-                  <Pressable
-                    onPress={() => editTask(item)}
-                    style={[styles.scheduleActionButton, !visualCanEdit && { opacity: 0.5 }]}
-                  >
-                    <Ionicons name="pencil-outline" size={16} color={visualCanEdit ? '#007AFF' : '#999'} />
-                  </Pressable>
-                  <Pressable
-                    onPress={() => deleteTask(item.id)}
-                    style={[styles.scheduleActionButton, !visualCanDelete && { opacity: 0.5 }]}
-                  >
-                    <Ionicons name="trash-outline" size={16} color={visualCanDelete ? '#e74c3c' : '#bbb'} />
-                  </Pressable>
-                </View>
-              );
-            })()
-          )}
         </View>
 
-        {/* Subtarefas no card */}
-        {Array.isArray((item as any).subtasks) && (item as any).subtasks.length > 0 && (
-          <View style={{ paddingHorizontal: 12, paddingBottom: 8, gap: 6 }}>
-            {(item as any).subtasks.map((st: any) => (
-              <View key={st.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <Pressable
-                  onPress={() => toggleSubtask(item.id, st.id)}
-                  style={[styles.checkbox, st.done && styles.checkboxCompleted]}
-                >
-                  {st.done && <Ionicons name="checkmark" size={16} color="#fff" />}
-                </Pressable>
-                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
-                  <Text style={[styles.taskDescription, st.done && styles.taskDescriptionCompleted, { flexShrink: 1 }]}>
-                    {st.title || 'Subtarefa'}
+        {/* Seções expandidas - Visíveis apenas quando isExpanded === true */}
+        {isExpanded && (
+          <>
+            {/* Informação de Repetição */}
+            {item.repeat.type !== RepeatType.NONE && (
+              <View style={[styles.scheduleInfo, { paddingTop: 0 }]}>
+                <View style={styles.scheduleItem}>
+                  <Ionicons 
+                    name="repeat-outline" 
+                    size={14} 
+                    color="#666" 
+                  />
+                  <Text style={styles.scheduleText}>
+                    {getRepeatText(item.repeat)}
                   </Text>
-                  {st.done && st.completedByName && (
-                    <Text style={[styles.authorshipText, { fontSize: 10, marginLeft: 8 }]}>
-                      {`por ${st.completedByName}`}
-                    </Text>
-                  )}
                 </View>
               </View>
-            ))}
-          </View>
-        )}
+            )}
 
-        {/* Indicador de status de aprovação */}
-        {item.status === 'pendente_aprovacao' && (
-          <View style={styles.approvalStatus}>
-            <Ionicons name="hourglass-outline" size={16} color="#ff9800" />
-            <Text style={styles.approvalStatusText}>Pendente Aprovação</Text>
-          </View>
-        )}
-        {item.status === 'aprovada' && (
-          <View style={[styles.approvalStatus, styles.approvalStatusApproved]}>
-            <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />
-            <Text style={[styles.approvalStatusText, styles.approvalStatusTextApproved]}>Aprovada</Text>
-          </View>
-        )}
-        {item.status === 'rejeitada' && (
-          <View style={[styles.approvalStatus, styles.approvalStatusRejected]}>
-            <Ionicons name="close-circle" size={16} color="#e74c3c" />
-            <Text style={[styles.approvalStatusText, styles.approvalStatusTextRejected]}>Rejeitada</Text>
-          </View>
-        )}
+            {/* Subtarefas no card */}
+            {Array.isArray((item as any).subtasks) && (item as any).subtasks.length > 0 && (
+              <View style={{ paddingHorizontal: 12, paddingBottom: 8, gap: 6 }}>
+                {(item as any).subtasks.map((st: any) => {
+                  // Verificar se a subtarefa está bloqueada (tarefa recorrente antes do vencimento)
+                  const isSubtaskBlocked = isRecurring && !canComplete && !st.done;
+                  
+                  return (
+                    <View key={st.id} style={{ flexDirection: 'column', gap: 4 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <Pressable
+                          onPress={() => toggleSubtask(item.id, st.id)}
+                          style={[
+                            styles.checkbox, 
+                            st.done && styles.checkboxCompleted,
+                            isSubtaskBlocked && styles.checkboxDisabled
+                          ]}
+                        >
+                          {st.done && <Ionicons name="checkmark" size={16} color="#fff" />}
+                        </Pressable>
+                        <View style={{ flex: 1, opacity: isSubtaskBlocked ? 0.5 : 1 }}>
+                          <Text style={[styles.taskDescription, st.done && styles.taskDescriptionCompleted]}>
+                            {st.title || 'Subtarefa'}
+                          </Text>
+                          {/* Linha com autor e data/hora da subtarefa */}
+                          <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: 2 }}>
+                            {st.done && st.completedByName && (
+                              <Text style={[styles.authorshipText, { fontSize: 10 }]}>
+                                {`por ${st.completedByName}`}
+                              </Text>
+                            )}
+                            {(st.dueDate || st.dueTime) && (
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                <Ionicons name="time-outline" size={10} color="#999" />
+                                <Text style={[styles.authorshipText, { fontSize: 10 }]}>
+                                  {st.dueDate ? formatDate(st.dueDate) : ''}{st.dueDate && st.dueTime ? ' ' : ''}{st.dueTime ? formatTime(st.dueTime) : ''}
+                                </Text>
+                              </View>
+                            )}
+                            {/* Botão de Desbloquear */}
+                            {isSubtaskBlocked && (
+                              <Pressable
+                                onPress={() => {
+                                  Alert.alert(
+                                    'Desbloquear Subtarefa',
+                                    'Deseja desbloquear esta subtarefa para poder marcá-la como concluída antes do vencimento?',
+                                    [
+                                      { text: 'Cancelar', style: 'cancel' },
+                                      {
+                                        text: 'Desbloquear',
+                                        onPress: () => toggleSubtask(item.id, st.id)
+                                      }
+                                    ]
+                                  );
+                                }}
+                                style={{
+                                  flexDirection: 'row',
+                                  alignItems: 'center',
+                                  gap: 4,
+                                  backgroundColor: '#f39c12',
+                                  paddingHorizontal: 8,
+                                  paddingVertical: 3,
+                                  borderRadius: 12
+                                }}
+                              >
+                                <Ionicons name="lock-open" size={10} color="#fff" />
+                                <Text style={{ fontSize: 10, color: '#fff', fontWeight: '600' }}>
+                                  Desbloquear
+                                </Text>
+                              </Pressable>
+                            )}
+                          </View>
+                        </View>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
 
-        {/* Informações de Autoria - Compactas */}
-        <View style={styles.authorshipInfo}>
-          <View style={styles.authorshipRow}>
-            <Ionicons name="person-outline" size={12} color="#999" />
-            <Text style={styles.authorshipText}>
-              {`${sanitizedCreatedByName || 'Usuário'} • ${formatDateTime(item.createdAt)}`}
-            </Text>
-          </View>
-          {item.editedBy && sanitizedEditedByName && (
-            <View style={styles.authorshipRow}>
-              <Ionicons name="pencil-outline" size={12} color="#999" />
-              <Text style={styles.authorshipText}>
-                {`Editado por ${sanitizedEditedByName}${item.editedAt ? ` • ${formatDateTime(item.editedAt)}` : ''}`}
-              </Text>
+            {/* Indicador de status de aprovação */}
+            {item.status === 'pendente_aprovacao' && (
+              <View style={styles.approvalStatus}>
+                <Ionicons name="hourglass-outline" size={16} color="#ff9800" />
+                <Text style={styles.approvalStatusText}>Pendente Aprovação</Text>
+              </View>
+            )}
+            {item.status === 'aprovada' && (
+              <View style={[styles.approvalStatus, styles.approvalStatusApproved]}>
+                <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />
+                <Text style={[styles.approvalStatusText, styles.approvalStatusTextApproved]}>Aprovada</Text>
+              </View>
+            )}
+            {item.status === 'rejeitada' && (
+              <View style={[styles.approvalStatus, styles.approvalStatusRejected]}>
+                <Ionicons name="close-circle" size={16} color="#e74c3c" />
+                <Text style={[styles.approvalStatusText, styles.approvalStatusTextRejected]}>Rejeitada</Text>
+              </View>
+            )}
+
+            {/* Informações de Autoria - Compactas */}
+            <View style={styles.authorshipInfo}>
+              <View style={{ flex: 1 }}>
+                <View style={styles.authorshipRow}>
+                  <Ionicons name="person-outline" size={12} color="#999" />
+                  <Text style={styles.authorshipText}>
+                    {`${sanitizedCreatedByName || 'Usuário'} • ${formatDateTime(item.createdAt)}`}
+                  </Text>
+                </View>
+                {item.editedBy && sanitizedEditedByName && (
+                  <View style={styles.authorshipRow}>
+                    <Ionicons name="pencil-outline" size={12} color="#999" />
+                    <Text style={styles.authorshipText}>
+                      {`Editado por ${sanitizedEditedByName}${item.editedAt ? ` • ${formatDateTime(item.editedAt)}` : ''}`}
+                    </Text>
+                  </View>
+                )}
+              </View>
+              
+              {/* Botões de ação no canto direito */}
+              {(user.role === 'admin' || user.role === 'dependente') && (
+                (() => {
+                  const isFamilyTask = (item as any).familyId && (item as any).private !== true;
+                  const selfMember = familyMembers.find(m => m.id === user.id);
+                  const perms = (myEffectivePerms ?? (selfMember as any)?.permissions) || {};
+                  const visualCanEdit = user.role === 'admin' || (user.role === 'dependente' && isFamilyTask && perms.edit !== false);
+                  const visualCanDelete = user.role === 'admin' || (user.role === 'dependente' && isFamilyTask && perms.delete !== false);
+                  return (
+                    <View style={styles.authorshipActions}>
+                      <Pressable
+                        onPress={() => editTask(item)}
+                        style={[styles.authorshipActionButton, !visualCanEdit && { opacity: 0.5 }]}
+                      >
+                        <Ionicons name="pencil-outline" size={18} color={visualCanEdit ? '#007AFF' : '#999'} />
+                      </Pressable>
+                      <Pressable
+                        onPress={() => deleteTask(item.id)}
+                        style={[styles.authorshipActionButton, !visualCanDelete && { opacity: 0.5 }]}
+                      >
+                        <Ionicons name="trash-outline" size={18} color={visualCanDelete ? '#e74c3c' : '#bbb'} />
+                      </Pressable>
+                    </View>
+                  );
+                })()
+              )}
             </View>
-          )}
-        </View>
+          </>
+        )}
       </View>
     );
   };
@@ -3894,9 +4081,25 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>{isEditing ? 'Editar Tarefa' : 'Nova Tarefa'}</Text>
-                <Pressable onPress={resetForm} disabled={isAddingTask}>
-                  <Ionicons name="close" size={24} color="#666" />
-                </Pressable>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  {/* Botão Privado no header */}
+                  <Pressable
+                    style={[styles.privateToggleButtonHeader, newTaskPrivate && styles.privateToggleButtonHeaderActive]}
+                    onPress={() => setNewTaskPrivate(prev => !prev)}
+                  >
+                    <Ionicons 
+                      name={newTaskPrivate ? "lock-closed" : "lock-open"} 
+                      size={16} 
+                      color={newTaskPrivate ? "#fff" : "#666"} 
+                    />
+                    <Text style={[styles.privateToggleTextHeader, newTaskPrivate && styles.privateToggleTextHeaderActive]}>
+                      {newTaskPrivate ? 'Privada' : 'Privado'}
+                    </Text>
+                  </Pressable>
+                  <Pressable onPress={resetForm} disabled={isAddingTask}>
+                    <Ionicons name="close" size={24} color="#666" />
+                  </Pressable>
+                </View>
               </View>
 
               <ScrollView 
@@ -3905,6 +4108,46 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                 showsVerticalScrollIndicator={false}
                 keyboardShouldPersistTaps="handled"
               >
+                {/* 1. CATEGORIAS NO TOPO */}
+                <Text style={styles.categoryLabel}>Categoria:</Text>
+                <View style={styles.categorySelectorContainer}>
+                  <ScrollView 
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.categorySelectorScroll}
+                    style={styles.categorySelectorScrollView}
+                    decelerationRate="fast"
+                  >
+                    {categories.filter(cat => cat.id !== 'all').map((category) => (
+                      <Pressable
+                        key={category.id}
+                        style={[
+                          styles.categorySelector,
+                          selectedCategory === category.id && styles.categorySelectorActive,
+                          { 
+                            borderColor: category.color,
+                            backgroundColor: selectedCategory === category.id ? category.color : category.bgColor
+                          }
+                        ]}
+                        onPress={() => setSelectedCategory(category.id)}
+                      >
+                        <Ionicons 
+                          name={category.icon as any} 
+                          size={16} 
+                          color={selectedCategory === category.id ? '#fff' : category.color} 
+                        />
+                        <Text style={[
+                          styles.categorySelectorText,
+                          { color: selectedCategory === category.id ? '#fff' : category.color }
+                        ]}>
+                          {category.name}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                </View>
+
+                {/* 2. TÍTULO E DESCRIÇÃO */}
                 <TextInput
                   style={styles.input}
                   placeholder="Título da tarefa"
@@ -3923,103 +4166,271 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                   maxLength={300}
                 />
 
-            <Text style={styles.categoryLabel}>Categoria:</Text>
-            <View style={styles.categorySelectorContainer}>
-              <ScrollView 
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.categorySelectorScroll}
-                style={styles.categorySelectorScrollView}
-                decelerationRate="fast"
-              >
-                {categories.filter(cat => cat.id !== 'all').map((category) => (
+                {/* 3. SUBTAREFAS */}
+                <Text style={[styles.categoryLabel, { marginTop: 12 }]}>Subtarefas:</Text>
+                {subtasksDraft.length > 0 && (
+                  <View style={{ gap: 8, marginBottom: 8 }}>
+                    {subtasksDraft.map((st, idx) => (
+                      <View key={st.id} style={styles.subtaskRow}>
+                        <View style={{ flex: 1 }}>
+                          <TextInput
+                            style={[styles.subtaskInput]}
+                            placeholder={`Subtarefa ${idx + 1}`}
+                            value={st.title}
+                            onChangeText={(txt) => setSubtasksDraft(prev => {
+                              const next = prev.map(s => s.id === st.id ? { ...s, title: txt } : s);
+                              return next;
+                            })}
+                          />
+                          {(st.dueDate || st.dueTime) && (
+                            <View style={{ flexDirection: 'row', marginTop: 4, gap: 8 }}>
+                              {st.dueDate && (
+                                <Text style={{ fontSize: 12, color: '#666' }}>
+                                  {formatDate(st.dueDate)}
+                                </Text>
+                              )}
+                              {st.dueTime && (
+                                <Text style={{ fontSize: 12, color: '#666' }}>
+                                  {formatTime(st.dueTime)}
+                                </Text>
+                              )}
+                            </View>
+                          )}
+                        </View>
+                        <Pressable 
+                          onPress={() => {
+                            setEditingSubtaskId(st.id);
+                            setSubtaskSelectedDate(st.dueDate);
+                            setSubtaskDatePickerVisible(true);
+                          }}
+                          style={[styles.scheduleActionButton]}
+                        >
+                          <Ionicons name="calendar-outline" size={16} color="#007AFF" />
+                        </Pressable>
+                        <Pressable 
+                          onPress={() => {
+                            setEditingSubtaskId(st.id);
+                            setSubtaskSelectedTime(st.dueTime);
+                            setSubtaskTimePickerVisible(true);
+                          }}
+                          style={[styles.scheduleActionButton]}
+                        >
+                          <Ionicons name="time-outline" size={16} color="#007AFF" />
+                        </Pressable>
+                        <Pressable onPress={() => setSubtasksDraft(prev => {
+                            const next = prev.filter(s => s.id !== st.id);
+                            persistSubtasksDraftIfEditing(next);
+                            return next;
+                          })}
+                          style={[styles.scheduleActionButton]}
+                        >
+                          <Ionicons name="trash-outline" size={16} color="#e74c3c" />
+                        </Pressable>
+                      </View>
+                    ))}
+                  </View>
+                )}
+                <View style={styles.subtaskRow}>
+                  <TextInput
+                    style={[styles.subtaskInput, { flex: 1 }]}
+                    placeholder="Adicionar subtarefa"
+                    value={newSubtaskTitle}
+                    onChangeText={setNewSubtaskTitle}
+                  />
                   <Pressable
-                    key={category.id}
+                    onPress={() => {
+                      const title = newSubtaskTitle.trim();
+                      if (!title) {
+                        Alert.alert('Atenção', 'Digite um título para a subtarefa.');
+                        return;
+                      }
+                      if (!newSubtaskDate) {
+                        Alert.alert('Data Obrigatória', 'Selecione uma data para a subtarefa.');
+                        return;
+                      }
+                      if (!newSubtaskTime) {
+                        Alert.alert('Hora Obrigatória', 'Selecione uma hora para a subtarefa.');
+                        return;
+                      }
+                      setSubtasksDraft(prev => {
+                        const next = [...prev, { 
+                          id: uuidv4(), 
+                          title, 
+                          done: false,
+                          dueDate: newSubtaskDate,
+                          dueTime: newSubtaskTime
+                        }];
+                        persistSubtasksDraftIfEditing(next);
+                        return next;
+                      });
+                      setNewSubtaskTitle('');
+                      setNewSubtaskDate(undefined);
+                      setNewSubtaskTime(undefined);
+                    }}
+                    style={[styles.scheduleActionButton]}
+                  >
+                    <Ionicons name="add" size={18} color="#007AFF" />
+                  </Pressable>
+                  <Pressable 
+                    onPress={() => {
+                      setEditingSubtaskId('new');
+                      setSubtaskSelectedDate(newSubtaskDate);
+                      setSubtaskDatePickerVisible(true);
+                    }}
                     style={[
-                      styles.categorySelector,
-                      selectedCategory === category.id && styles.categorySelectorActive,
-                      { 
-                        borderColor: category.color,
-                        backgroundColor: selectedCategory === category.id ? category.color : category.bgColor
+                      styles.scheduleActionButton,
+                      newSubtaskDate && { 
+                        backgroundColor: '#007AFF',
+                        paddingHorizontal: 12,
+                        minWidth: 80,
                       }
                     ]}
-                    onPress={() => setSelectedCategory(category.id)}
                   >
                     <Ionicons 
-                      name={category.icon as any} 
+                      name={newSubtaskDate ? "calendar" : "calendar-outline"} 
                       size={16} 
-                      color={selectedCategory === category.id ? '#fff' : category.color} 
+                      color={newSubtaskDate ? '#fff' : '#999'} 
                     />
-                    <Text style={[
-                      styles.categorySelectorText,
-                      { color: selectedCategory === category.id ? '#fff' : category.color }
-                    ]}>
-                      {category.name}
-                    </Text>
+                    {newSubtaskDate && (
+                      <Text style={{ fontSize: 12, color: '#fff', fontWeight: '600', marginLeft: 6 }}>
+                        {formatDate(newSubtaskDate)}
+                      </Text>
+                    )}
                   </Pressable>
-                ))}
-              </ScrollView>
-            </View>
+                  <Pressable 
+                    onPress={() => {
+                      setEditingSubtaskId('new');
+                      setSubtaskSelectedTime(newSubtaskTime);
+                      setSubtaskTimePickerVisible(true);
+                    }}
+                    style={[
+                      styles.scheduleActionButton,
+                      newSubtaskTime && { 
+                        backgroundColor: '#007AFF',
+                        paddingHorizontal: 12,
+                        minWidth: 70,
+                      }
+                    ]}
+                  >
+                    <Ionicons 
+                      name={newSubtaskTime ? "time" : "time-outline"} 
+                      size={16} 
+                      color={newSubtaskTime ? '#fff' : '#999'} 
+                    />
+                    {newSubtaskTime && (
+                      <Text style={{ fontSize: 12, color: '#fff', fontWeight: '600', marginLeft: 6 }}>
+                        {formatTime(newSubtaskTime)}
+                      </Text>
+                    )}
+                  </Pressable>
+                  <Pressable style={[styles.scheduleActionButton, { opacity: 0, pointerEvents: 'none' }]}>
+                    <Ionicons name="trash-outline" size={16} color="transparent" />
+                  </Pressable>
+                </View>
+                
+                {/* Aviso se falta data ou hora */}
+                {(newSubtaskTitle.trim() && (!newSubtaskDate || !newSubtaskTime)) && (
+                  <View style={{ 
+                    flexDirection: 'row', 
+                    alignItems: 'center', 
+                    gap: 8, 
+                    paddingHorizontal: 12, 
+                    paddingVertical: 8,
+                    backgroundColor: '#fff3e0',
+                    borderRadius: 8,
+                    marginTop: 8,
+                    borderLeftWidth: 3,
+                    borderLeftColor: '#ff9800'
+                  }}>
+                    <Ionicons name="alert-circle" size={18} color="#f57c00" />
+                    <Text style={{ fontSize: 12, color: '#e65100', flex: 1, fontWeight: '500' }}>
+                      {!newSubtaskDate && !newSubtaskTime ? 'Selecione data e hora para a subtarefa' : 
+                       !newSubtaskDate ? 'Selecione a data' : 'Selecione a hora'}
+                    </Text>
+                  </View>
+                )}
 
-            {/* Seleção de Data e Hora */}
-            <Text style={styles.categoryLabel}>Agendamento:</Text>
-            
-            <View style={[
-              styles.dateTimeContainer,
-              Platform.OS === 'web' && styles.dateTimeContainerWeb
-            ]}>
-              <Pressable 
-                style={[
-                  styles.dateTimeButton,
-                  Platform.OS === 'web' && styles.dateTimeButtonWeb
-                ]}
-                onPress={() => {
-                  if (Platform.OS === 'web') {
-                    const el = webDateInputRef.current as any;
-                    if (el) {
-                      if (typeof el.showPicker === 'function') el.showPicker();
-                      else if (typeof el.click === 'function') el.click();
-                    }
-                  } else {
-                    // Capturar uma base estável para o picker
-                    datePickerBaseRef.current = selectedDate || new Date();
-                    setShowDatePicker(true);
-                  }
-                }}
-              >
-                <Ionicons name="calendar-outline" size={16} color="#666" />
-                <Text style={styles.dateTimeButtonText}>
-                  {selectedDate ? formatDate(selectedDate) : 'Selecionar data'}
-                </Text>
-              </Pressable>
-              
-              <Pressable 
-                style={[
-                  styles.dateTimeButton,
-                  Platform.OS === 'web' && styles.dateTimeButtonWeb
-                ]}
-                onPress={() => {
-                  if (Platform.OS === 'web') {
-                    const el = webTimeInputRef.current as any;
-                    if (el) {
-                      if (typeof el.showPicker === 'function') el.showPicker();
-                      else if (typeof el.click === 'function') el.click();
-                    }
-                  } else {
-                    // Capturar uma base estável para o picker
-                    timePickerBaseRef.current = selectedTime || new Date();
-                    setShowTimePicker(true);
-                  }
-                }}
-              >
-                <Ionicons name="time-outline" size={16} color="#666" />
-                <Text style={styles.dateTimeButtonText}>
-                  {selectedTime ? formatTime(selectedTime) : 'Selecionar hora'}
-                </Text>
-              </Pressable>
-            </View>
+                {/* 4. DATAS (AGENDAMENTO) - Oculto quando há subtarefas */}
+                {subtasksDraft.length === 0 && (
+                  <>
+                    <Text style={styles.categoryLabel}>Agendamento:</Text>
+                
+                    <View style={[
+                      styles.dateTimeContainer,
+                      Platform.OS === 'web' && styles.dateTimeContainerWeb
+                    ]}>
+                      <Pressable 
+                        style={[
+                          styles.dateTimeButton,
+                          Platform.OS === 'web' && styles.dateTimeButtonWeb
+                        ]}
+                        onPress={() => {
+                          if (Platform.OS === 'web') {
+                            const el = webDateInputRef.current as any;
+                            if (el) {
+                              if (typeof el.showPicker === 'function') el.showPicker();
+                              else if (typeof el.click === 'function') el.click();
+                            }
+                          } else {
+                            // Capturar uma base estável para o picker
+                            datePickerBaseRef.current = selectedDate || new Date();
+                            setShowDatePicker(true);
+                          }
+                        }}
+                      >
+                        <Ionicons name="calendar-outline" size={16} color="#666" />
+                        <Text style={styles.dateTimeButtonText}>
+                          {selectedDate ? formatDate(selectedDate) : 'Selecionar data'}
+                        </Text>
+                      </Pressable>
+                      
+                      <Pressable 
+                        style={[
+                          styles.dateTimeButton,
+                          Platform.OS === 'web' && styles.dateTimeButtonWeb
+                        ]}
+                        onPress={() => {
+                          if (Platform.OS === 'web') {
+                            const el = webTimeInputRef.current as any;
+                            if (el) {
+                              if (typeof el.showPicker === 'function') el.showPicker();
+                              else if (typeof el.click === 'function') el.click();
+                            }
+                          } else {
+                            // Capturar uma base estável para o picker
+                            timePickerBaseRef.current = selectedTime || new Date();
+                            setShowTimePicker(true);
+                          }
+                        }}
+                      >
+                        <Ionicons name="time-outline" size={16} color="#666" />
+                        <Text style={styles.dateTimeButtonText}>
+                          {selectedTime ? formatTime(selectedTime) : 'Selecionar hora'}
+                        </Text>
+                      </Pressable>
+                    </View>
+                  </>
+                )}
 
-            {/* Seleção de Repetição */}
+                {/* Aviso quando há subtarefas */}
+                {subtasksDraft.length > 0 && (
+                  <View style={{ 
+                    backgroundColor: '#e3f2fd', 
+                    padding: 12, 
+                    borderRadius: 8, 
+                    flexDirection: 'row', 
+                    alignItems: 'center', 
+                    gap: 8,
+                    marginTop: 8
+                  }}>
+                    <Ionicons name="information-circle" size={20} color="#1976d2" />
+                    <Text style={{ fontSize: 13, color: '#1565c0', flex: 1 }}>
+                      O vencimento da tarefa será baseado na data/hora das subtarefas
+                    </Text>
+                  </View>
+                )}
+
+            {/* 5. RECORRÊNCIA (REPETIR) */}
             <Text style={styles.categoryLabel}>Repetir:</Text>
             <View style={styles.repeatContainer}>
               {[
@@ -4076,120 +4487,6 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                 </View>
               </View>
             )}
-
-            {/* Subtarefas */}
-            <Text style={[styles.categoryLabel, { marginTop: 12 }]}>Subtarefas:</Text>
-            {subtasksDraft.length > 0 && (
-              <View style={{ gap: 8, marginBottom: 8 }}>
-                {subtasksDraft.map((st, idx) => (
-                  <View key={st.id} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
-                    <Pressable
-                      onPress={() => {
-                        setSubtasksDraft(prev => {
-                          const next = prev.map(s => s.id === st.id ? { ...s, done: !s.done } : s);
-                          persistSubtasksDraftIfEditing(next);
-                          return next;
-                        });
-                      }}
-                      style={[styles.checkbox, st.done && styles.checkboxCompleted, { marginTop: 10 }]}
-                    >
-                      {st.done && <Ionicons name="checkmark" size={16} color="#fff" />}
-                    </Pressable>
-                    <View style={{ flex: 1 }}>
-                      <TextInput
-                        style={[styles.input]}
-                        placeholder={`Subtarefa ${idx + 1}`}
-                        value={st.title}
-                        onChangeText={(txt) => setSubtasksDraft(prev => {
-                          const next = prev.map(s => s.id === st.id ? { ...s, title: txt } : s);
-                          return next;
-                        })}
-                      />
-                      {(st.dueDate || st.dueTime) && (
-                        <View style={{ flexDirection: 'row', marginTop: 4, gap: 8 }}>
-                          {st.dueDate && (
-                            <Text style={{ fontSize: 12, color: '#666' }}>
-                              {formatDate(st.dueDate)}
-                            </Text>
-                          )}
-                          {st.dueTime && (
-                            <Text style={{ fontSize: 12, color: '#666' }}>
-                              {formatTime(st.dueTime)}
-                            </Text>
-                          )}
-                        </View>
-                      )}
-                    </View>
-                    <Pressable 
-                      onPress={() => {
-                        setEditingSubtaskId(st.id);
-                        setSubtaskSelectedDate(st.dueDate);
-                        setSubtaskDatePickerVisible(true);
-                      }}
-                      style={[styles.scheduleActionButton]}
-                    >
-                      <Ionicons name="calendar-outline" size={16} color="#007AFF" />
-                    </Pressable>
-                    <Pressable 
-                      onPress={() => {
-                        setEditingSubtaskId(st.id);
-                        setSubtaskSelectedTime(st.dueTime);
-                        setSubtaskTimePickerVisible(true);
-                      }}
-                      style={[styles.scheduleActionButton]}
-                    >
-                      <Ionicons name="time-outline" size={16} color="#007AFF" />
-                    </Pressable>
-                    <Pressable onPress={() => setSubtasksDraft(prev => {
-                        const next = prev.filter(s => s.id !== st.id);
-                        persistSubtasksDraftIfEditing(next);
-                        return next;
-                      })}
-                      style={[styles.scheduleActionButton]}
-                    >
-                      <Ionicons name="trash-outline" size={16} color="#e74c3c" />
-                    </Pressable>
-                  </View>
-                ))}
-              </View>
-            )}
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <TextInput
-                style={[styles.input, { flex: 1 }]}
-                placeholder="Adicionar subtarefa"
-                value={newSubtaskTitle}
-                onChangeText={setNewSubtaskTitle}
-              />
-              <Pressable
-                onPress={() => {
-                  const title = newSubtaskTitle.trim();
-                  if (!title) return;
-                  setSubtasksDraft(prev => {
-                    const next = [...prev, { id: uuidv4(), title, done: false }];
-                    persistSubtasksDraftIfEditing(next);
-                    return next;
-                  });
-                  setNewSubtaskTitle('');
-                }}
-                style={[styles.scheduleActionButton]}
-              >
-                <Ionicons name="add" size={18} color="#007AFF" />
-              </Pressable>
-            </View>
-            
-            {/* Toggle Privado */}
-            <View style={styles.privateToggleContainer}>
-              <Pressable
-                style={[styles.privateToggleButton, newTaskPrivate && styles.privateToggleButtonActive]}
-                onPress={() => setNewTaskPrivate(prev => !prev)}
-              >
-                <Text style={[styles.privateToggleText, newTaskPrivate && styles.privateToggleTextActive]}>Privado</Text>
-                {newTaskPrivate && (
-                  <Ionicons name="checkmark" size={16} color="#fff" />
-                )}
-              </Pressable>
-              <Text style={styles.privateHint}>Apenas você verá esta tarefa na família</Text>
-            </View>
               </ScrollView>
 
               <View style={styles.modalButtons}>
@@ -4342,7 +4639,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             <DateTimePicker
               value={selectedDate || datePickerBaseRef.current || new Date()}
               mode="date"
-              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+              display="default"
               onChange={onDateChange}
               minimumDate={new Date()}
             />
@@ -4351,7 +4648,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             <DateTimePicker
               value={selectedTime || timePickerBaseRef.current || new Date()}
               mode="time"
-              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+              display="default"
               onChange={onTimeChange}
               is24Hour={true}
             />
@@ -5284,125 +5581,61 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         </View>
       </Modal>
       
-      {/* Modal de seleção de data para subtarefa */}
-      <Modal
-        animationType="fade"
-        transparent={true}
-        visible={subtaskDatePickerVisible}
-        onRequestClose={() => setSubtaskDatePickerVisible(false)}
-      >
-        <Pressable 
-          style={styles.modalOverlay}
-          onPress={() => setSubtaskDatePickerVisible(false)}
-        >
-          <Pressable 
-            style={styles.modalContent}
-            onPress={(e) => e.stopPropagation()}
-          >
-            <Text style={styles.modalTitle}>Selecionar Data da Subtarefa</Text>
-            <View style={{ alignItems: 'center', padding: 20 }}>
-              <Text style={{ fontSize: 14, color: '#666', marginBottom: 10 }}>
-                {subtaskSelectedDate ? formatDate(subtaskSelectedDate) : 'Nenhuma data selecionada'}
-              </Text>
-              <Pressable
-                style={[styles.button, { backgroundColor: '#007AFF', marginTop: 10 }]}
-                onPress={() => {
-                  const now = new Date();
-                  setSubtaskSelectedDate(now);
-                }}
-              >
-                <Text style={styles.addButtonText}>Usar data de hoje</Text>
-              </Pressable>
-            </View>
-            <View style={{ flexDirection: 'row', gap: 12, marginTop: 20 }}>
-              <Pressable
-                style={[styles.button, styles.cancelButton, { flex: 1 }]}
-                onPress={() => {
-                  setSubtaskSelectedDate(undefined);
-                  setSubtaskDatePickerVisible(false);
-                }}
-              >
-                <Text style={styles.cancelButtonText}>Limpar</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.button, { flex: 1, backgroundColor: '#007AFF' }]}
-                onPress={() => {
-                  if (editingSubtaskId) {
-                    setSubtasksDraft(prev => prev.map(st => 
-                      st.id === editingSubtaskId 
-                        ? { ...st, dueDate: subtaskSelectedDate }
-                        : st
-                    ));
-                  }
-                  setSubtaskDatePickerVisible(false);
-                }}
-              >
-                <Text style={styles.addButtonText}>Confirmar</Text>
-              </Pressable>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
+      {/* Seletor de data nativo para subtarefa */}
+      {subtaskDatePickerVisible && (
+        <DateTimePicker
+          value={subtaskSelectedDate || new Date()}
+          mode="date"
+          display="default"
+          onChange={(event, selectedDate) => {
+            setSubtaskDatePickerVisible(false);
+            if (event.type === 'set' && selectedDate && editingSubtaskId) {
+              setSubtaskSelectedDate(selectedDate);
+              if (editingSubtaskId === 'new') {
+                // Adicionando data para nova subtarefa
+                setNewSubtaskDate(selectedDate);
+              } else {
+                // Editando subtarefa existente
+                const updatedDraft = subtasksDraft.map(st => 
+                  st.id === editingSubtaskId 
+                    ? { ...st, dueDate: selectedDate }
+                    : st
+                );
+                setSubtasksDraft(updatedDraft);
+                persistSubtasksDraftIfEditing(updatedDraft);
+              }
+            }
+          }}
+        />
+      )}
 
-      {/* Modal de seleção de hora para subtarefa */}
-      <Modal
-        animationType="fade"
-        transparent={true}
-        visible={subtaskTimePickerVisible}
-        onRequestClose={() => setSubtaskTimePickerVisible(false)}
-      >
-        <Pressable 
-          style={styles.modalOverlay}
-          onPress={() => setSubtaskTimePickerVisible(false)}
-        >
-          <Pressable 
-            style={styles.modalContent}
-            onPress={(e) => e.stopPropagation()}
-          >
-            <Text style={styles.modalTitle}>Selecionar Hora da Subtarefa</Text>
-            <View style={{ alignItems: 'center', padding: 20 }}>
-              <Text style={{ fontSize: 14, color: '#666', marginBottom: 10 }}>
-                {subtaskSelectedTime ? formatTime(subtaskSelectedTime) : 'Nenhuma hora selecionada'}
-              </Text>
-              <Pressable
-                style={[styles.button, { backgroundColor: '#007AFF', marginTop: 10 }]}
-                onPress={() => {
-                  const now = new Date();
-                  setSubtaskSelectedTime(now);
-                }}
-              >
-                <Text style={styles.addButtonText}>Usar hora atual</Text>
-              </Pressable>
-            </View>
-            <View style={{ flexDirection: 'row', gap: 12, marginTop: 20 }}>
-              <Pressable
-                style={[styles.button, styles.cancelButton, { flex: 1 }]}
-                onPress={() => {
-                  setSubtaskSelectedTime(undefined);
-                  setSubtaskTimePickerVisible(false);
-                }}
-              >
-                <Text style={styles.cancelButtonText}>Limpar</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.button, { flex: 1, backgroundColor: '#007AFF' }]}
-                onPress={() => {
-                  if (editingSubtaskId) {
-                    setSubtasksDraft(prev => prev.map(st => 
-                      st.id === editingSubtaskId 
-                        ? { ...st, dueTime: subtaskSelectedTime }
-                        : st
-                    ));
-                  }
-                  setSubtaskTimePickerVisible(false);
-                }}
-              >
-                <Text style={styles.addButtonText}>Confirmar</Text>
-              </Pressable>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
+      {/* Seletor de hora nativo para subtarefa */}
+      {subtaskTimePickerVisible && (
+        <DateTimePicker
+          value={subtaskSelectedTime || new Date()}
+          mode="time"
+          display="default"
+          onChange={(event, selectedTime) => {
+            setSubtaskTimePickerVisible(false);
+            if (event.type === 'set' && selectedTime && editingSubtaskId) {
+              setSubtaskSelectedTime(selectedTime);
+              if (editingSubtaskId === 'new') {
+                // Adicionando hora para nova subtarefa
+                setNewSubtaskTime(selectedTime);
+              } else {
+                // Editando subtarefa existente
+                const updatedDraft = subtasksDraft.map(st => 
+                  st.id === editingSubtaskId 
+                    ? { ...st, dueTime: selectedTime }
+                    : st
+                );
+                setSubtasksDraft(updatedDraft);
+                persistSubtasksDraftIfEditing(updatedDraft);
+              }
+            }
+          }}
+        />
+      )}
 
       {/* Removido overlay de atualização manual para UX mais discreta; o banner "Sincronizando..." abaixo do header já indica progresso */}
       {(isGlobalLoading || isBootstrapping) && (
@@ -5788,6 +6021,29 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#888'
   },
+  privateToggleButtonHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#ccc',
+    backgroundColor: '#f8f9fa',
+    gap: 4,
+  },
+  privateToggleButtonHeaderActive: {
+    backgroundColor: '#007AFF',
+    borderColor: '#007AFF',
+  },
+  privateToggleTextHeader: {
+    fontSize: 12,
+    color: '#666',
+    fontWeight: '500',
+  },
+  privateToggleTextHeaderActive: {
+    color: '#fff',
+  },
   categoryPreviewItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -6118,6 +6374,8 @@ const styles = StyleSheet.create({
     borderColor: '#e9ecef',
     borderRadius: 8,
     padding: 10,
+    width: 40,
+    height: 40,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
@@ -6128,6 +6386,21 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 2,
     elevation: 1,
+  },
+  subtaskRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  subtaskInput: {
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 12,
+    minHeight: 42,
+    backgroundColor: '#f8f9fa',
   },
   overdueText: {
     color: '#dc3545',
@@ -7420,6 +7693,9 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 16,
     borderTopWidth: 1,
     borderTopColor: '#f0f0f0',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   authorshipRow: {
     flexDirection: 'row',
@@ -7432,6 +7708,19 @@ const styles = StyleSheet.create({
     color: '#666',
     fontWeight: '500',
     flex: 1,
+  },
+  authorshipActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginLeft: 8,
+  },
+  authorshipActionButton: {
+    padding: 6,
+    borderRadius: 6,
+    backgroundColor: '#f5f5f5',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   historyAuthor: {
     fontSize: 11,
