@@ -20,6 +20,15 @@
         "GOOGLE_SERVICES_JSON": "@google-services.json"
       }
     },
+    "preview-ios-device": {
+      "distribution": "internal",
+      "ios": {
+        "simulator": false
+      },
+      "env": {
+        "GOOGLE_SERVICES_JSON": "@google-services.json"
+      }
+    },
     "production": {
       "autoIncrement": true,
       "env": {
