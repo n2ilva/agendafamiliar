@@ -1653,6 +1653,13 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   // Estado para controlar quais cards estão colapsados (por padrão todos colapsados)
   const [collapsedCards, setCollapsedCards] = useState<Set<string>>(new Set());
   
+  // Inicializar todas as tarefas como colapsadas ao carregar
+  useEffect(() => {
+    if (tasks.length > 0) {
+      setCollapsedCards(new Set(tasks.map(t => t.id)));
+    }
+  }, [tasks.length]);
+  
   // Toggle para colapsar/expandir um card específico
   const toggleCardCollapse = (taskId: string) => {
     setCollapsedCards(prev => {
@@ -4749,7 +4756,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           styles.taskItem, 
           item.completed && styles.taskCompleted,
           isOverdue && styles.taskOverdue,
-          isPendingRecurring && styles.taskPendingRecurring
+          { borderColor: isOverdue ? THEME.danger : categoryConfig.color }
         ]}
       >
         {/* Header da Categoria - Topo do Card */}
@@ -4792,13 +4799,6 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             <View style={styles.overdueIndicator}>
               <Ionicons name="warning" size={14} color={THEME.danger} />
               <Text style={styles.overdueLabel}>VENCIDA</Text>
-            </View>
-          )}
-          {/* Indicador de tarefa recorrente pendente */}
-          {isPendingRecurring && (
-            <View style={styles.pendingRecurringIndicator}>
-              <Ionicons name="time" size={14} color={THEME.warning} />
-              <Text style={styles.pendingRecurringLabel}>AGENDADA</Text>
             </View>
           )}
           
@@ -5021,6 +5021,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             setApprovalModalVisible(true);
           } : undefined}
           onManageFamily={user.role === 'admin' ? handleManageFamily : undefined}
+          tasks={tasks}
           onCalendarDaySelect={(date: Date) => {
             try { Keyboard.dismiss(); } catch {}
             // Preparar criação de tarefa com data selecionada
@@ -5088,41 +5089,6 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         
         {/* Wrapper centralizado (apenas Web aplica largura 70%) */}
         <View style={[styles.pageContainer, Platform.OS === 'web' && styles.pageContainerWeb]}>
-          {/* Indicador de Status de Conectividade / Sincronização */}
-          {(isOffline || syncStatus.pendingOperations > 0 || syncStatus.isSyncing) && (
-            <Pressable 
-              style={styles.connectivityIndicator}
-              onPress={handleUpdateData}
-              disabled={syncStatus.isSyncing}
-            >
-              <View style={styles.connectivityContent}>
-                <Ionicons 
-                  name={isOffline ? "cloud-offline" : "sync"} 
-                  size={16} 
-                  color={isOffline ? "#ff6b6b" : "#4CAF50"} 
-                />
-                <Text style={[styles.connectivityText, { color: isOffline ? "#ff6b6b" : "#4CAF50" }]}>
-                  {isOffline 
-                    ? `Modo Offline` 
-                    : `Sincronizando...`}
-                </Text>
-                {syncStatus.isSyncing && (
-                  <View style={styles.syncingIndicator}>
-                    <Text style={styles.syncingDot}>•</Text>
-                  </View>
-                )}
-                {!syncStatus.isSyncing && !isOffline && (
-                  <Ionicons 
-                    name="refresh" 
-                    size={14} 
-                    color={isOffline ? "#ff6b6b" : "#4CAF50"} 
-                    style={{ marginLeft: 8 }}
-                  />
-                )}
-              </View>
-            </Pressable>
-          )}
-
           <PanGestureHandler
           onGestureEvent={onSwipeGestureEvent}
             onHandlerStateChange={handleSwipeGesture}
@@ -5949,16 +5915,10 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       >
         <KeyboardAvoidingView 
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.modalOverlay}
+          style={styles.keyboardAvoidingView}
         >
-          <Pressable 
-            style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}
-            onPress={() => { setCategoryModalVisible(false); closeManagedModal('category'); }}
-          >
-            <Pressable 
-              style={styles.modalContent}
-              onPress={(e) => e.stopPropagation()}
-            >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Nova Categoria</Text>
                 <Pressable onPress={() => { setCategoryModalVisible(false); closeManagedModal('category'); }}>
@@ -5967,8 +5927,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
               </View>
 
               <ScrollView 
-                style={{ flex: 1 }}
-                contentContainerStyle={{ paddingBottom: 20 }}
+                style={styles.modalScrollView}
+                contentContainerStyle={styles.modalScrollContent}
                 showsVerticalScrollIndicator={false}
               >
               <TextInput
@@ -6074,8 +6034,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                 <Text style={styles.addButtonText}>Criar</Text>
               </Pressable>
             </View>
-          </Pressable>
-          </Pressable>
+          </View>
+          </View>
         </KeyboardAvoidingView>
       </Modal>
 
@@ -6413,22 +6373,35 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
               </Text>
 
               <Text style={styles.manualSubtitle}>📱 Header do App</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="person-circle" size={16} color={THEME.primary} /> <Text style={{fontWeight: '600'}}>Foto do Perfil:</Text> Toque na foto para alterar sua imagem de perfil. Você pode escolher uma foto da galeria ou tirar uma nova.</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="person-circle" size={16} color={THEME.primary} /> <Text style={{fontWeight: '600'}}>Ícone do Perfil:</Text> Toque no ícone para escolher um emoji como foto de perfil. Selecione entre diversos emojis disponíveis.</Text>
               <Text style={styles.manualListItem}>• <Ionicons name="pencil" size={16} color={THEME.primary} /> <Text style={{fontWeight: '600'}}>Nome:</Text> Toque no nome para editá-lo. Digite seu nome e confirme para salvar.</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="settings" size={16} color={THEME.primary} /> <Text style={{fontWeight: '600'}}>Menu (Configuracoes):</Text> Acesso às configurações, histórico, manual e logout.</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="notifications" size={16} color={THEME.primary} /> <Text style={{fontWeight: '600'}}>Notificações:</Text> Campainha mostra o número de aprovações pendentes. Toque para ver solicitações de conclusão de tarefas.</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="calendar" size={16} color={THEME.primary} /> <Text style={{fontWeight: '600'}}>Calendário:</Text> Visualize feriados brasileiros (amarelo) e tarefas agendadas (verde). Tarefas vencidas aparecem em vermelho. Toque em um dia para criar tarefa rápida.</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="arrow-undo" size={16} color={THEME.primary} /> <Text style={{fontWeight: '600'}}>Desfazer:</Text> Reverte a última ação (concluir, excluir ou editar tarefa). Aparece temporariamente após cada ação.</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="settings" size={16} color={THEME.primary} /> <Text style={{fontWeight: '600'}}>Menu (Configurações):</Text> Acesso às configurações, histórico, manual, atualizar dados e logout.</Text>
 
-              <Text style={styles.manualSubtitle}>🔄 Botões Flutuantes</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="refresh" size={16} color="#28a745" /> <Text style={{fontWeight: '600'}}>Atualizar (Verde):</Text> Sincroniza os dados com o servidor. Use quando notar que as tarefas não estão atualizando.</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="filter" size={16} color="#6c757d" /> <Text style={{fontWeight: '600'}}>Filtros (Cinza):</Text> Filtra tarefas por categoria. Toque para abrir menu de filtros e selecione a categoria desejada.</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="add" size={16} color={THEME.primary} /> <Text style={{fontWeight: '600'}}>Criar Tarefa:</Text> Abre o modal para criar uma nova tarefa com título, descrição, categoria, data/hora e recorrência.</Text>
+              <Text style={styles.manualSubtitle}>� Navegação e Filtros</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="today" size={16} color={THEME.primary} /> <Text style={{fontWeight: '600'}}>Abas Hoje/Próximas:</Text> Alterne entre tarefas do dia atual e tarefas futuras tocando nas abas.</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="filter" size={16} color="#6c757d" /> <Text style={{fontWeight: '600'}}>Filtros:</Text> Ao lado do texto "Próximas", o botão de filtro permite filtrar tarefas por categoria específica.</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="add" size={16} color={THEME.primary} /> <Text style={{fontWeight: '600'}}>Criar Tarefa:</Text> Botão fixo no canto inferior direito abre o modal para criar uma nova tarefa com todos os detalhes.</Text>
 
               <Text style={styles.manualSubtitle}>📋 Funcionamento das Tarefas</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="chevron-down" size={16} color={THEME.primary} /> <Text style={{fontWeight: '600'}}>Expandir/Colapsar:</Text> Tarefas vêm colapsadas por padrão. Toque no cabeçalho colorido para expandir e ver detalhes completos.</Text>
               <Text style={styles.manualListItem}>• <Ionicons name="create" size={16} color={THEME.primary} /> <Text style={{fontWeight: '600'}}>Criando Tarefas:</Text> Use o botão + para criar. Escolha categoria, defina data/hora, configure recorrência e marque como privada se desejar.</Text>
               <Text style={styles.manualListItem}>• <Ionicons name="checkmark-circle" size={16} color="#4CAF50" /> <Text style={{fontWeight: '600'}}>Concluindo Tarefas:</Text> Toque no círculo da tarefa para marcar como concluída. Dependentes precisam de aprovação do admin.</Text>
               <Text style={styles.manualListItem}>• <Ionicons name="pencil" size={16} color="#FF9500" /> <Text style={{fontWeight: '600'}}>Editando Tarefas:</Text> Toque na tarefa para abrir detalhes e editar. Só o criador pode editar suas tarefas.</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="repeat" size={16} color="#9C27B0" /> <Text style={{fontWeight: '600'}}>Tarefas Recorrentes:</Text> Configure para repetir diariamente, fins de semana ou dias específicos da semana.</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="list" size={16} color="#9C27B0" /> <Text style={{fontWeight: '600'}}>Subtarefas:</Text> Adicione subtarefas com datas/horários individuais. Marque como concluídas independentemente.</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="repeat" size={16} color="#9C27B0" /> <Text style={{fontWeight: '600'}}>Tarefas Recorrentes:</Text> Configure para repetir diariamente, fins de semana ou dias específicos da semana com duração definida.</Text>
               <Text style={styles.manualListItem}>• <Ionicons name="lock-closed" size={16} color="#666" /> <Text style={{fontWeight: '600'}}>Tarefas Privadas:</Text> Visíveis apenas para o criador. Outros membros da família não as verão.</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="color-palette" size={16} color="#FF6B6B" /> <Text style={{fontWeight: '600'}}>Cores das Bordas:</Text> Cada tarefa tem borda colorida igual à sua categoria. Tarefas vencidas ficam com borda vermelha.</Text>
               <Text style={styles.manualListItem}>• <Ionicons name="notifications" size={16} color="#e74c3c" /> <Text style={{fontWeight: '600'}}>Aprovações:</Text> Admins recebem notificações na campainha para aprovar conclusões de dependentes.</Text>
+
+              <Text style={styles.manualSubtitle}>📅 Calendário</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="ellipse" size={16} color="#FFD700" /> <Text style={{fontWeight: '600'}}>Feriados (Amarelo):</Text> Todos os feriados nacionais brasileiros do ano são marcados automaticamente.</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="ellipse" size={16} color="#4CAF50" /> <Text style={{fontWeight: '600'}}>Tarefas (Verde):</Text> Dias com tarefas pendentes são marcados com ponto verde.</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="ellipse" size={16} color={THEME.danger} /> <Text style={{fontWeight: '600'}}>Vencidas (Vermelho):</Text> Tarefas com data passada aparecem em vermelho no calendário e na lista.</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="add-circle" size={16} color={THEME.primary} /> <Text style={{fontWeight: '600'}}>Criar do Calendário:</Text> Toque em qualquer dia para criar tarefa já com aquela data preenchida.</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="list" size={16} color={THEME.primary} /> <Text style={{fontWeight: '600'}}>Lista do Mês:</Text> Abaixo do calendário aparecem feriados e tarefas do mês selecionado com scroll automático.</Text>
 
               <Text style={styles.manualSubtitle}>👨‍👩‍👧‍👦 Gerenciar Família</Text>
               <Text style={styles.manualListItem}>• <Ionicons name="pencil" size={16} color={THEME.secondary} /> <Text style={{fontWeight: '600'}}>Alterar Nome:</Text> Apenas admins podem editar o nome da família através do menu de configurações.</Text>
@@ -6449,9 +6422,12 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
 
               <Text style={styles.manualSubtitle}>💡 Dicas Rápidas</Text>
               <Text style={styles.manualListItem}>• Navegação: Use as abas "Hoje" e "Próximas" para alternar entre tarefas do dia e futuras.</Text>
-              <Text style={styles.manualListItem}>• Categorias: Filtre tarefas por categoria usando o botão de filtro flutuante.</Text>
+              <Text style={styles.manualListItem}>• Categorias: Filtre tarefas por categoria usando o botão de filtro ao lado da aba "Próximas".</Text>
+              <Text style={styles.manualListItem}>• Emojis: Personalize seu perfil escolhendo um emoji como foto de perfil.</Text>
+              <Text style={styles.manualListItem}>• Calendário: Use o calendário para visualizar feriados e criar tarefas rapidamente em datas específicas.</Text>
               <Text style={styles.manualListItem}>• Notificações: Permita notificações no dispositivo para receber lembretes de tarefas.</Text>
               <Text style={styles.manualListItem}>• Privacidade: Tarefas privadas são visíveis apenas para seu criador.</Text>
+              <Text style={styles.manualListItem}>• Cores: Bordas coloridas indicam a categoria. Borda vermelha indica tarefa vencida.</Text>
             </ScrollView>
 
             <Pressable
@@ -6528,10 +6504,10 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                 {/* Seção: Solicitações para virar Admin */}
                 <View style={{ paddingHorizontal: 4, marginBottom: 12 }}>
                   <Text style={{ fontSize: 16, fontWeight: '600', color: '#333', marginBottom: 8 }}>
-                    Pedidos de promoção a Admin {adminRoleRequests.length > 0 ? `(${adminRoleRequests.length})` : ''}
+                   {adminRoleRequests.length > 0 ? `(${adminRoleRequests.length})` : ''}
                   </Text>
                   {adminRoleRequests.length === 0 ? (
-                    <Text style={{ color: '#666' }}>Nenhum pedido de promoção pendente.</Text>
+                    <Text style={{ color: '#666' }}></Text>
                   ) : (
                     <View style={{ gap: 10 }}>
                       {adminRoleRequests.map((req: any) => (
@@ -7363,13 +7339,21 @@ const styles = StyleSheet.create({
   familyMemberCard: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    backgroundColor: '#f5f7fa',
-    borderRadius: 10,
+    backgroundColor: '#fff',
+    borderRadius: 12,
     padding: 16,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderWidth: 2,
+    borderColor: THEME.primary,
     marginBottom: 12,
     width: '100%',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   familyMemberCardMobile: {
     flexDirection: 'column',
@@ -7846,11 +7830,12 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   smallModalContent: {
-    width: '85%',
-    maxWidth: 360,
+    width: '95%',
+    maxWidth: 500,
     borderRadius: 12,
     backgroundColor: '#fff',
     padding: 16,
+    maxHeight: '75%',
   },
   smallModalTitle: {
     fontSize: 16,
@@ -8136,7 +8121,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 15, // Reduzir padding para telas menores
+    padding: 8,
   },
   modalOverlayMobile: {
     padding: 0,
@@ -8147,10 +8132,9 @@ const styles = StyleSheet.create({
     backgroundColor: THEME.background,
     borderRadius: 16,
     padding: 20,
-    width: '100%',
-    maxWidth: 400,
-    maxHeight: '90%',
-    minHeight: 400,
+    width: '95%',
+    maxWidth: 500,
+    height: '75%',
     alignSelf: 'center',
   },
   // No web, expandir o modal de Gerenciar Família para ocupar tela cheia (como mobile)
@@ -8464,9 +8448,7 @@ const styles = StyleSheet.create({
     marginBottom: 12, // Reduzir margem
   },
   modalScrollContent: {
-    flexGrow: 1,
-    paddingVertical: 8, // Reduzir padding
-    paddingHorizontal: 0, // Garantir que não há padding horizontal extra
+    paddingBottom: 20,
   },
   // Tab Styles (DEPRECATED - mantidos para compatibilidade)
   /*
@@ -8566,9 +8548,9 @@ const styles = StyleSheet.create({
   },
   // History Styles
   historyModalWrapper: {
-    width: '92%',
-    maxWidth: 520,
-    maxHeight: '88%',
+    width: '95%',
+    maxWidth: 500,
+    maxHeight: '75%',
     minHeight: 320,
     flex: 1,
     backgroundColor: '#fff',
@@ -8674,12 +8656,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff5f5',
     borderWidth: 2,
     borderColor: '#fecaca',
-  },
-  // Pending Recurring Task Styles
-  taskPendingRecurring: {
-    backgroundColor: '#fffbf0',
-    borderWidth: 2,
-    borderColor: '#fde68a',
   },
   pendingRecurringIndicator: {
     flexDirection: 'row',
@@ -8843,8 +8819,8 @@ const styles = StyleSheet.create({
   },
   // Estilos do Modal de Família
   familyModalContent: {
-    maxHeight: '85%',
-    minHeight: '70%',
+    maxHeight: '75%',
+    minHeight: '75%',
     paddingBottom: 20, // espaço para o botão "Fechar" fixo
   },
   familyModalContentMobile: {
@@ -9172,7 +9148,7 @@ const styles = StyleSheet.create({
 
   // Estilos do Modal de Edição de Membro
   editMemberModalContent: {
-    maxHeight: '90%',
+    maxHeight: '75%',
     minHeight: '60%',
     paddingBottom: 20,
   },

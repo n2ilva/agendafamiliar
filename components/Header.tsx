@@ -9,6 +9,7 @@ import {
   TextInput,
   ActivityIndicator,
   ScrollView,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { THEME, getCurrentSeason } from '../utils/colors';
@@ -48,6 +49,8 @@ interface HeaderProps {
   onUndo?: () => void;
   // Callback opcional para criação rápida de tarefa por data
   onCalendarDaySelect?: (date: Date) => void;
+  // Tarefas para marcação no calendário
+  tasks?: Array<{ id: string; title: string; dueDate?: Date | any; completed?: boolean }>;
 }
 
 export const Header: React.FC<HeaderProps> = ({ 
@@ -75,6 +78,7 @@ export const Header: React.FC<HeaderProps> = ({
   showUndoButton = false,
   onUndo,
   onCalendarDaySelect,
+  tasks = [],
 }) => {
   const [userImageLocal, setUserImageLocal] = useState<string | null>(userImage || null);
   const [profileIconLocal, setProfileIconLocal] = useState<string | undefined>(userProfileIcon);
@@ -115,9 +119,48 @@ export const Header: React.FC<HeaderProps> = ({
     holidays.forEach((h: { date: string; name: string }) => {
       map[h.date] = {
         marked: true,
-        dotColor: THEME.danger,
+        dotColor: '#FFD700',
       };
     });
+    
+    // Marcar dias com tarefas
+    const todayDate = new Date();
+    todayDate.setHours(0, 0, 0, 0);
+    
+    tasks.forEach((task: any) => {
+      if (task.dueDate && !task.completed) {
+        let dateObj: Date | undefined;
+        if (task.dueDate instanceof Date) {
+          dateObj = task.dueDate;
+        } else if (task.dueDate.toDate && typeof task.dueDate.toDate === 'function') {
+          dateObj = task.dueDate.toDate();
+        } else if (typeof task.dueDate === 'string' || typeof task.dueDate === 'number') {
+          dateObj = new Date(task.dueDate);
+        }
+        if (dateObj && !isNaN(dateObj.getTime())) {
+          const taskDate = new Date(dateObj);
+          taskDate.setHours(0, 0, 0, 0);
+          const isOverdue = taskDate < todayDate;
+          const taskColor = isOverdue ? THEME.danger : '#4CAF50';
+          
+          const taskYmd = `${dateObj.getFullYear()}-${String(dateObj.getMonth()+1).padStart(2,'0')}-${String(dateObj.getDate()).padStart(2,'0')}`;
+          if (map[taskYmd]) {
+            // Dia já tem feriado, adicionar mais um dot
+            map[taskYmd] = {
+              ...map[taskYmd],
+              dots: [{ color: '#FFD700' }, { color: taskColor }],
+              marked: false,
+            };
+          } else {
+            map[taskYmd] = {
+              marked: true,
+              dotColor: taskColor,
+            };
+          }
+        }
+      }
+    });
+    
     const today = new Date();
     const ymd = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
     map[ymd] = {
@@ -126,7 +169,7 @@ export const Header: React.FC<HeaderProps> = ({
       selectedColor: THEME.primary,
     };
     return map;
-  }, [calendarMonth]);
+  }, [calendarMonth, tasks]);
 
   // Lista de feriados do mês atual do calendário
   const monthHolidays = useMemo(() => {
@@ -136,6 +179,31 @@ export const Header: React.FC<HeaderProps> = ({
     const holidays = getBrazilHolidays(year);
     return holidays.filter(h => h.date.startsWith(monthStr));
   }, [calendarMonth]);
+
+  // Lista de tarefas do mês atual do calendário
+  const monthTasks = useMemo(() => {
+    const year = calendarMonth.getFullYear();
+    const month = calendarMonth.getMonth() + 1;
+    return tasks.filter((task: any) => {
+      if (!task.dueDate || task.completed) return false;
+      let dateObj: Date | undefined;
+      if (task.dueDate instanceof Date) {
+        dateObj = task.dueDate;
+      } else if (task.dueDate.toDate && typeof task.dueDate.toDate === 'function') {
+        dateObj = task.dueDate.toDate();
+      } else if (typeof task.dueDate === 'string' || typeof task.dueDate === 'number') {
+        dateObj = new Date(task.dueDate);
+      }
+      if (dateObj && !isNaN(dateObj.getTime())) {
+        return dateObj.getFullYear() === year && dateObj.getMonth() + 1 === month;
+      }
+      return false;
+    }).sort((a: any, b: any) => {
+      const dateA = a.dueDate instanceof Date ? a.dueDate : a.dueDate.toDate ? a.dueDate.toDate() : new Date(a.dueDate);
+      const dateB = b.dueDate instanceof Date ? b.dueDate : b.dueDate.toDate ? b.dueDate.toDate() : new Date(b.dueDate);
+      return dateA.getTime() - dateB.getTime();
+    });
+  }, [calendarMonth, tasks]);
 
   const sanitizeInviteCode = (value: string) => {
     // Mantém apenas A-Z e 0-9, converte para maiúsculas e limita a 6 chars
@@ -442,7 +510,7 @@ export const Header: React.FC<HeaderProps> = ({
         if (onUserProfileIconChange) {
           onUserProfileIconChange(selectedIcon);
         }
-        Alert.alert('Sucesso', 'Ícone de perfil atualizado e sincronizado com o Firebase.');
+        Alert.alert('Sucesso', 'Ícone de perfil atualizado.');
       } else {
         Alert.alert('Erro', result.error || 'Não foi possível definir o ícone.');
       }
@@ -487,11 +555,7 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <>
-      <Pressable 
-        onPress={onRefresh}
-        disabled={!onRefresh}
-        style={{ width: '100%' }}
-      >
+      <View style={{ width: '100%' }}>
         <View style={[
           styles.container,
           syncStatus?.hasError 
@@ -517,7 +581,7 @@ export const Header: React.FC<HeaderProps> = ({
           <Pressable onPress={() => setNameModalVisible(true)} style={styles.userInfo}>
             <View style={styles.nameContainer}>
               <Text style={styles.userName}>{userName}</Text>
-              <Ionicons name="pencil" size={14} color="#999" style={styles.editNameIcon} />
+              <Ionicons name="pencil" size={16} color="#aaa" style={styles.editNameIcon} />
             </View>
             {familyName ? (
               <View style={styles.subtitleRow}>
@@ -536,15 +600,14 @@ export const Header: React.FC<HeaderProps> = ({
         </View>
 
         <View style={styles.rightSection}>
-          {/* Botão de Desfazer */}
+          {/* Botão de Desfazer - apenas ícone */}
           {showUndoButton && onUndo && (
             <Pressable 
               onPress={() => { setMenuVisible(false); onUndo(); }} 
-              style={styles.undoButton} 
+              style={styles.iconButton} 
               accessibilityLabel="Desfazer última ação"
             >
-              <Ionicons name="arrow-undo" size={20} color="#fff" />
-              <Text style={styles.undoButtonText}>Desfazer</Text>
+              <Ionicons name="arrow-undo" size={24} color={THEME.primary} />
             </Pressable>
           )}
           
@@ -622,6 +685,16 @@ export const Header: React.FC<HeaderProps> = ({
                   <Text style={styles.menuText}>Manual e Informações</Text>
                 </Pressable>
                 <View style={styles.menuSeparator} />
+                {/* Atualizar dados */}
+                {onRefresh && (
+                  <>
+                    <Pressable onPress={() => { setMenuVisible(false); onRefresh(); }} style={styles.menuItem}>
+                      <Ionicons name="refresh" size={18} color="#4CAF50" />
+                      <Text style={styles.menuText}>Atualizar Dados</Text>
+                    </Pressable>
+                    <View style={styles.menuSeparator} />
+                  </>
+                )}
                 {/* Logout no final do menu */}
                 <Pressable onPress={() => { setMenuVisible(false); handleLogout(); }} style={styles.menuItem}>
                   <Ionicons name="log-out-outline" size={18} color={THEME.danger} />
@@ -673,20 +746,47 @@ export const Header: React.FC<HeaderProps> = ({
               }}
             />
             <View style={{ padding: 8 }}>
-              <Text style={{ fontSize: 12, color: THEME.textSecondary }}>
-                • Pontos vermelhos indicam feriados nacionais
-              </Text>
               <View style={styles.holidayListContainer}>
-                {monthHolidays.length > 0 ? (
-                  monthHolidays.map(h => {
-                    const [y, m, d] = h.date.split('-');
-                    const ddmm = `${d}/${m}`;
-                    return (
-                      <Text key={h.date} style={styles.holidayListItem}>• {ddmm} — {h.name}</Text>
-                    );
-                  })
-                ) : (
-                  <Text style={styles.holidayListEmpty}>Nenhum feriado neste mês.</Text>
+                {monthHolidays.length > 0 && (
+                  <View style={{ marginBottom: 8 }}>
+                    {monthHolidays.map(h => {
+                      const [y, m, d] = h.date.split('-');
+                      const ddmm = `${d}/${m}`;
+                      return (
+                        <Text key={h.date} style={[styles.holidayListItem, { color: '#FFD700' }]}>• {ddmm} — {h.name}</Text>
+                      );
+                    })}
+                  </View>
+                )}
+                {monthTasks.length > 0 && (
+                  <ScrollView style={{ maxHeight: 150 }} showsVerticalScrollIndicator={true}>
+                    {monthTasks.map((task: any) => {
+                      let dateObj: Date | undefined;
+                      if (task.dueDate instanceof Date) {
+                        dateObj = task.dueDate;
+                      } else if (task.dueDate.toDate && typeof task.dueDate.toDate === 'function') {
+                        dateObj = task.dueDate.toDate();
+                      } else if (typeof task.dueDate === 'string' || typeof task.dueDate === 'number') {
+                        dateObj = new Date(task.dueDate);
+                      }
+                      if (dateObj && !isNaN(dateObj.getTime())) {
+                        const taskDate = new Date(dateObj);
+                        taskDate.setHours(0, 0, 0, 0);
+                        const nowDate = new Date();
+                        nowDate.setHours(0, 0, 0, 0);
+                        const isOverdue = taskDate < nowDate;
+                        const taskColor = isOverdue ? THEME.danger : '#4CAF50';
+                        const ddmm = `${String(dateObj.getDate()).padStart(2,'0')}/${String(dateObj.getMonth()+1).padStart(2,'0')}`;
+                        return (
+                          <Text key={task.id} style={[styles.holidayListItem, { color: taskColor }]}>• {ddmm} — {task.title}</Text>
+                        );
+                      }
+                      return null;
+                    })}
+                  </ScrollView>
+                )}
+                {monthHolidays.length === 0 && monthTasks.length === 0 && (
+                  <Text style={styles.holidayListEmpty}>Nenhum feriado ou tarefa neste mês.</Text>
                 )}
               </View>
             </View>
@@ -958,7 +1058,7 @@ export const Header: React.FC<HeaderProps> = ({
           </View>
         </View>
       </Modal>
-      </Pressable>
+      </View>
     </>
   );
 };
@@ -971,8 +1071,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 15,
   backgroundColor: THEME.surface,
-  borderBottomWidth: 1,
-  borderBottomColor: THEME.border,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -988,24 +1086,18 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 6,
     elevation: 8,
-  borderBottomColor: THEME.success,
-    borderBottomWidth: 2,
   },
   containerError: {
     shadowColor: THEME.danger, // Vermelho para erro
     shadowOpacity: 0.3,
     shadowRadius: 6,
     elevation: 8,
-  borderBottomColor: THEME.danger,
-    borderBottomWidth: 2,
   },
   containerOffline: {
     shadowColor: THEME.warning, // Laranja para offline
     shadowOpacity: 0.3,
     shadowRadius: 6,
     elevation: 8,
-  borderBottomColor: THEME.warning,
-    borderBottomWidth: 2,
   },
   leftSection: {
     flexDirection: 'row',
@@ -1014,7 +1106,7 @@ const styles = StyleSheet.create({
   },
   avatarContainer: {
     position: 'relative',
-    marginRight: 15,
+    marginRight: 20,
   },
   avatar: {
     width: 50,
@@ -1055,6 +1147,7 @@ const styles = StyleSheet.create({
   },
   userInfo: {
     flex: 1,
+    paddingHorizontal: 10,
   },
   subtitleRow: {
     flexDirection: 'row',
@@ -1065,7 +1158,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
   color: THEME.textPrimary,
-    marginBottom: 2,
+    marginBottom: 4,
   },
   subtitle: {
     fontSize: 14,
@@ -1204,8 +1297,9 @@ const styles = StyleSheet.create({
     backgroundColor: THEME.surface,
     borderRadius: 12,
     paddingVertical: 8,
-    width: '90%',
-    maxWidth: 380,
+    width: '95%',
+    maxWidth: 500,
+    maxHeight: '75%',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
@@ -1246,9 +1340,10 @@ const styles = StyleSheet.create({
   nameContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
   },
   editNameIcon: {
-    marginLeft: 6,
+    marginLeft: 0,
   },
   // Modal Styles
   modalContainer: {
@@ -1258,11 +1353,13 @@ const styles = StyleSheet.create({
   backgroundColor: 'rgba(0, 0, 0, 0.5)',
   },
   modalContent: {
-    width: '80%',
+    width: '95%',
+    maxWidth: 500,
     backgroundColor: THEME.surface,
     borderRadius: 10,
     padding: 20,
     alignItems: 'center',
+    maxHeight: '75%',
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -1445,7 +1542,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#999',
   },
   iconModalContent: {
-    maxHeight: '70%',
+    maxHeight: '75%',
   },
   iconScrollView: {
     maxHeight: 400,
@@ -1478,7 +1575,16 @@ const styles = StyleSheet.create({
     fontSize: 32,
   },
   avatarEmoji: {
-    fontSize: 36,
+    fontSize: 40,
+    textAlign: 'center',
+    width: '100%',
+    alignSelf: 'center',
+    ...(Platform.select({
+      android: {
+        includeFontPadding: false as any,
+        textAlignVertical: 'center' as any,
+      },
+    }) as object),
   },
   primaryButton: {
     backgroundColor: THEME.primary,
