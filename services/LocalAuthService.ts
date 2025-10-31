@@ -241,7 +241,39 @@ class LocalAuthService {
   }
 
   static async resetPassword(email: string) {
-    return { success: true, error: undefined };
+    console.log('🔑 Iniciando reset de senha para:', email);
+    
+    try {
+      // Tenta usar o Firebase Auth primeiro
+      const auth = firebaseAuth() as any;
+      if (auth) {
+        const { sendPasswordResetEmail } = await import('firebase/auth');
+        await sendPasswordResetEmail(auth, email);
+        console.log('✅ Email de reset enviado via Firebase');
+        return { success: true, error: undefined };
+      }
+    } catch (error: any) {
+      console.error('❌ Erro ao enviar email de reset via Firebase:', error);
+      
+      // Mensagens de erro mais amigáveis
+      let errorMessage = error?.message || String(error);
+      if (error?.code === 'auth/user-not-found') {
+        errorMessage = 'Não encontramos uma conta com este email.';
+      } else if (error?.code === 'auth/invalid-email') {
+        errorMessage = 'Email inválido.';
+      } else if (error?.code === 'auth/too-many-requests') {
+        errorMessage = 'Muitas tentativas. Tente novamente mais tarde.';
+      }
+      
+      return { success: false, error: errorMessage };
+    }
+    
+    // Fallback: apenas para modo offline/desenvolvimento
+    console.log('⚠️ Firebase não disponível - modo offline');
+    return { 
+      success: false, 
+      error: 'Sem conexão. O reset de senha requer internet.' 
+    };
   }
 
   static async uploadProfileImage(imageUri: string) {

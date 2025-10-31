@@ -1,4 +1,4 @@
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 import { collection, doc, setDoc } from 'firebase/firestore';
 import { firebaseAuth, firebaseFirestore } from '../config/firebase';
 
@@ -42,6 +42,29 @@ const FirebaseAuthService = {
       return { success: true, user: { id: user.uid, uid: user.uid, email: user.email } };
     } catch (error: any) {
       return { success: false, error: error?.message || String(error) };
+    }
+  },
+
+  async resetPassword(email: string): Promise<AuthResult> {
+    try {
+      const auth = firebaseAuth() as any;
+      await sendPasswordResetEmail(auth, email);
+      console.log('[FirebaseAuthService] resetPassword: email enviado para', email);
+      return { success: true };
+    } catch (error: any) {
+      console.error('[FirebaseAuthService] resetPassword: erro ao enviar email', error);
+      
+      // Mensagens de erro mais amigáveis
+      let errorMessage = error?.message || String(error);
+      if (error?.code === 'auth/user-not-found') {
+        errorMessage = 'Não encontramos uma conta com este email.';
+      } else if (error?.code === 'auth/invalid-email') {
+        errorMessage = 'Email inválido.';
+      } else if (error?.code === 'auth/too-many-requests') {
+        errorMessage = 'Muitas tentativas. Tente novamente mais tarde.';
+      }
+      
+      return { success: false, error: errorMessage };
     }
   }
 };

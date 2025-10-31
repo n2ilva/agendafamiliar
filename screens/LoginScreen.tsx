@@ -173,7 +173,32 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
     setResetLoading(true);
 
     try {
-  const result = await LocalAuthService.resetPassword(resetEmail.trim());
+      // Verificar conectividade
+      let isOnline = ConnectivityService.isConnected();
+      
+      if (!isOnline) {
+        try {
+          const st = await ConnectivityService.checkConnectivity();
+          isOnline = st.isConnected;
+        } catch (e) {
+          isOnline = false;
+        }
+      }
+
+      let result;
+      
+      if (isOnline) {
+        // Usar Firebase diretamente quando online
+        result = await FirebaseAuthService.resetPassword(resetEmail.trim());
+      } else {
+        // Offline: avisa que precisa de conexão
+        Alert.alert(
+          'Sem conexão', 
+          'O reset de senha requer conexão com a internet. Por favor, conecte-se e tente novamente.'
+        );
+        setResetLoading(false);
+        return;
+      }
       
       if (result.success) {
         Alert.alert(
@@ -183,9 +208,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
         );
         setResetEmail('');
       } else {
-        Alert.alert('Erro', result.error);
+        Alert.alert('Erro', result.error || 'Não foi possível enviar o email de reset.');
       }
     } catch (error: any) {
+      console.error('Erro inesperado no reset de senha:', error);
       Alert.alert('Erro', 'Erro inesperado: ' + error.message);
     }
 
