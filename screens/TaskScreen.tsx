@@ -425,6 +425,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState(new Date());
   const [activeTab, setActiveTab] = useState<'today' | 'upcoming'>('today');
+  const [unlockedTasks, setUnlockedTasks] = useState<Set<string>>(new Set());
   
   // Estado para funcionalidade de desfazer
   const [lastAction, setLastAction] = useState<{
@@ -3227,6 +3228,14 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     }
   }, [editingSubtaskId, editingSubtask, showSubtaskTimePicker]);
 
+  const unlockTask = useCallback((taskId: string) => {
+    setUnlockedTasks(prev => {
+      const newSet = new Set(prev);
+      newSet.add(taskId);
+      return newSet;
+    });
+  }, []);
+
   const toggleTask = useCallback(async (taskId: string) => {
     const task = tasks.find(t => t.id === taskId);
     if (!task) return;
@@ -4791,6 +4800,11 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     const canComplete = isRecurringTaskCompletable(item.dueDate, isRecurring);
     const isPendingRecurring = isRecurring && !canComplete && !item.completed;
     
+    // Verificar se está na aba Próximas e se a tarefa não está desbloqueada
+    const isUpcomingTab = activeTab === 'upcoming';
+    const isTaskUnlocked = unlockedTasks.has(item.id);
+    const shouldDisableCheckbox = isUpcomingTab && !isTaskUnlocked && !item.completed;
+    
     // Sanitizar valores para evitar "Unexpected text node: ." no web
     const sanitizedTitle = (item.title === '.' || !item.title) ? '' : item.title;
     const sanitizedDescription = (item.description === '.' || !item.description) ? '' : item.description;
@@ -4865,12 +4879,12 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             <Pressable
               onPress={() => toggleTask(item.id)}
               style={styles.checkboxContainer}
-              disabled={isPendingRecurring}
+              disabled={isPendingRecurring || shouldDisableCheckbox}
             >
               <View style={[
                 styles.checkbox,
                 item.completed && styles.checkboxCompleted,
-                isPendingRecurring && styles.checkboxDisabled
+                (isPendingRecurring || shouldDisableCheckbox) && styles.checkboxDisabled
               ]}>
                 {item.completed && (
                   <Ionicons name="checkmark" size={18} color="#fff" />
@@ -4930,7 +4944,12 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                   <View key={st.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                     <Pressable
                       onPress={() => toggleSubtask(item.id, st.id)}
-                      style={[styles.checkbox, st.done && styles.checkboxCompleted]}
+                      style={[
+                        styles.checkbox, 
+                        st.done && styles.checkboxCompleted,
+                        shouldDisableCheckbox && styles.checkboxDisabled
+                      ]}
+                      disabled={shouldDisableCheckbox}
                     >
                       {st.done && <Ionicons name="checkmark" size={16} color="#fff" />}
                     </Pressable>
@@ -5030,6 +5049,17 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
               )}
             </View>
           </>
+        )}
+        
+        {/* Botão de Desbloquear no final do card (apenas para admin na aba Próximas) */}
+        {shouldDisableCheckbox && user.role === 'admin' && (
+          <Pressable
+            onPress={() => unlockTask(item.id)}
+            style={styles.unlockButton}
+          >
+            <Ionicons name="lock-open-outline" size={16} color={THEME.primary} />
+            <Text style={styles.unlockButtonText}>Desbloquear para Finalizar</Text>
+          </Pressable>
         )}
       </View>
     );
@@ -8054,6 +8084,23 @@ const styles = StyleSheet.create({
   checkboxDisabled: {
     backgroundColor: '#f5f5f5',
     borderColor: '#ccc',
+  },
+  unlockButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    backgroundColor: '#EFF6FF',
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+    marginTop: 8,
+  },
+  unlockButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: THEME.primary,
   },
   taskTextContent: {
     flex: 1,
