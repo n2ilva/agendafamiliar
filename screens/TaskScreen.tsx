@@ -2444,15 +2444,17 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       
       console.log('✅ Modal fechado, tarefa deve estar visível na lista');
       
-      // Mostrar loading de sincronização
+      // Mostrar loading de sincronização e forçar atualização dos dados
       setIsSyncing(true);
       setSyncMessage('Sincronizando tarefa...');
       
-      // Simular processo de sincronização (aguardar um pouco para sincronização real)
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      // Aguardar um momento para o modal de tarefa fechar
+      await new Promise(resolve => setTimeout(resolve, 300));
       
       setSyncMessage('Carregando dados atualizados...');
-      await new Promise(resolve => setTimeout(resolve, 800));
+      
+      // Usar a função forceRefresh para sincronizar os dados
+      await forceRefresh();
       
       setIsSyncing(false);
       setSyncMessage('');
@@ -2465,7 +2467,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     } finally {
       setIsAddingTask(false); // Reabilitar o botão
     }
-  }, [newTaskTitle, newTaskDescription, selectedCategory, tempDueDate, tempDueTime, repeatType, customDays, isEditing, editingTaskId, tasks, currentFamily, isOffline, newTaskPrivate, subtasksDraft]);
+  }, [newTaskTitle, newTaskDescription, selectedCategory, tempDueDate, tempDueTime, repeatType, customDays, isEditing, editingTaskId, tasks, currentFamily, isOffline, newTaskPrivate, subtasksDraft, forceRefresh]);
 
   const resetForm = useCallback(() => {
     setNewTaskTitle('');
