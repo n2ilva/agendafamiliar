@@ -408,6 +408,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   
   // Estado para dropdown de filtros
   const [filterDropdownVisible, setFilterDropdownVisible] = useState(false);
+  const [filterButtonLayout, setFilterButtonLayout] = useState({ top: 120, right: 16 });
+  const filterButtonRef = useRef<any>(null);
 
   // Estados principais
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -5167,8 +5169,20 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           
           {/* Botão de Filtro separado */}
           <Pressable 
+            ref={filterButtonRef}
             style={styles.filterButton}
-            onPress={() => setFilterDropdownVisible(!filterDropdownVisible)}
+            onPress={() => {
+              if (!filterDropdownVisible) {
+                // Calcular posição do botão antes de abrir
+                filterButtonRef.current?.measure((x: number, y: number, width: number, height: number, pageX: number, pageY: number) => {
+                  setFilterButtonLayout({
+                    top: pageY + height + 4, // 4px de espaçamento abaixo do botão
+                    right: Dimensions.get('window').width - (pageX + width)
+                  });
+                });
+              }
+              setFilterDropdownVisible(!filterDropdownVisible);
+            }}
             android_ripple={{ color: 'rgba(0, 122, 255, 0.1)', borderless: false }}
           >
             <Ionicons name="filter" size={18} color={THEME.primary} />
@@ -5246,7 +5260,13 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             pointerEvents={filterDropdownVisible ? 'auto' : 'none'}
           />
           
-          <View style={styles.filterDropdownMenuFloating} pointerEvents="auto">
+          <View style={[
+            styles.filterDropdownMenuFloating,
+            {
+              top: filterButtonLayout.top,
+              right: filterButtonLayout.right
+            }
+          ]} pointerEvents="auto">
             <ScrollView 
               style={{ maxHeight: 320 }} 
               showsVerticalScrollIndicator={false}
@@ -9568,8 +9588,7 @@ const styles = StyleSheet.create({
   },
   filterDropdownMenuFloating: {
     position: 'absolute',
-    top: 120, // Posicionar abaixo das tabs
-    right: 16,
+    // top e right serão definidos dinamicamente via inline style
     width: 240,
     backgroundColor: '#fff',
     borderRadius: 16,
