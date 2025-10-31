@@ -21,6 +21,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { GestureHandlerRootView, State, PanGestureHandler } from 'react-native-gesture-handler';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { Picker } from '@react-native-picker/picker';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { v4 as uuidv4 } from 'uuid';
@@ -544,6 +545,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   const [approvalModalVisible, setApprovalModalVisible] = useState(false);
   const [postponeModalVisible, setPostponeModalVisible] = useState(false);
   const [selectedTaskForPostpone, setSelectedTaskForPostpone] = useState<Task | null>(null);
+  const [postponeDays, setPostponeDays] = useState(1);
+  const [postponeTime, setPostponeTime] = useState(new Date());
 
   // Gerenciamento de pilha de modais: apenas o topo da pilha fica visível
   type ModalKey = 'task' | 'repeat' | 'category' | 'settings' | 'picker' | 'subtaskPicker' | 'family' | 'editMember';
@@ -3289,10 +3292,14 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
 
   const openPostponeModal = useCallback((task: Task) => {
     setSelectedTaskForPostpone(task);
+    setPostponeDays(1);
+    // Inicializar com o horário atual da tarefa ou horário atual
+    const initialTime = task.dueTime ? new Date(task.dueTime) : new Date();
+    setPostponeTime(initialTime);
     setPostponeModalVisible(true);
   }, []);
 
-  const postponeTask = useCallback(async (days: number) => {
+  const postponeTask = useCallback(async () => {
     if (!selectedTaskForPostpone) return;
     
     // Apenas admin pode adiar tarefas da família
@@ -3304,11 +3311,12 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     const task = selectedTaskForPostpone;
     const currentDueDate = task.dueDate ? new Date(task.dueDate) : new Date();
     const newDueDate = new Date(currentDueDate);
-    newDueDate.setDate(newDueDate.getDate() + days);
+    newDueDate.setDate(newDueDate.getDate() + postponeDays);
 
     const updatedTask: Task = {
       ...task,
       dueDate: newDueDate,
+      dueTime: postponeTime,
       updatedAt: new Date(),
       editedBy: user.id,
       editedByName: user.name || 'Usuário',
@@ -3331,7 +3339,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         } as any;
         await FirestoreService.saveTask(toSave);
         await LocalStorageService.saveTask(toSave);
-        console.log(`📅 Tarefa adiada por ${days} dia(s) no Firestore`);
+        console.log(`📅 Tarefa adiada por ${postponeDays} dia(s) no Firestore`);
       } else {
         await LocalStorageService.saveTask(updatedTask as any);
         
@@ -3340,17 +3348,17 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             ...updatedTask,
             familyId: (task as any).familyId
           });
-          console.log(`📅 Adiamento enfileirado (offline): +${days} dia(s)`);
+          console.log(`📅 Adiamento enfileirado (offline): +${postponeDays} dia(s)`);
         }
       }
 
-      Alert.alert('Sucesso', `Tarefa adiada por ${days} dia(s).`);
+      Alert.alert('Sucesso', `Tarefa adiada por ${postponeDays} dia(s).`);
     } catch (error) {
       console.error('Erro ao adiar tarefa:', error);
       setTasks(prev => prev.map(t => t.id === task.id ? task : t));
       Alert.alert('Erro', 'Não foi possível adiar a tarefa.');
     }
-  }, [selectedTaskForPostpone, user, isOffline]);
+  }, [selectedTaskForPostpone, user, isOffline, postponeDays, postponeTime]);
 
   const toggleTask = useCallback(async (taskId: string) => {
     const task = tasks.find(t => t.id === taskId);
@@ -7510,27 +7518,59 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
               {selectedTaskForPostpone?.title}
             </Text>
             
-            <View style={styles.postponeOptionsContainer}>
-              {[1, 2, 3, 7, 14, 30].map((days) => (
-                <Pressable
-                  key={days}
-                  style={styles.postponeOptionButton}
-                  onPress={() => postponeTask(days)}
+            {/* Seletor de Dias */}
+            <View style={styles.pickerSection}>
+              <Text style={styles.pickerLabel}>Adiar por quantos dias?</Text>
+              <View style={styles.pickerContainer}>
+                <Picker
+                  selectedValue={postponeDays}
+                  onValueChange={(value: number) => setPostponeDays(value)}
+                  style={styles.picker}
                 >
-                  <Ionicons name="calendar-outline" size={20} color={THEME.primary} />
-                  <Text style={styles.postponeOptionText}>
-                    {days === 1 ? 'Amanhã' : `${days} dias`}
-                  </Text>
-                </Pressable>
-              ))}
+                  {[1, 2, 3, 4, 5, 6, 7, 10, 14, 21, 30].map((day) => (
+                    <Picker.Item 
+                      key={day} 
+                      label={day === 1 ? '1 dia' : `${day} dias`} 
+                      value={day} 
+                    />
+                  ))}
+                </Picker>
+              </View>
             </View>
 
-            <Pressable
-              style={styles.cancelButton}
-              onPress={() => setPostponeModalVisible(false)}
-            >
-              <Text style={styles.cancelButtonText}>Cancelar</Text>
-            </Pressable>
+            {/* Seletor de Horário */}
+            <View style={styles.pickerSection}>
+              <Text style={styles.pickerLabel}>Novo horário</Text>
+              <DateTimePicker
+                value={postponeTime}
+                mode="time"
+                is24Hour={true}
+                display="spinner"
+                onChange={(event, selectedTime) => {
+                  if (selectedTime) {
+                    setPostponeTime(selectedTime);
+                  }
+                }}
+                style={styles.timePicker}
+              />
+            </View>
+
+            {/* Botões de Ação */}
+            <View style={styles.postponeButtonsContainer}>
+              <Pressable
+                style={styles.confirmButton}
+                onPress={postponeTask}
+              >
+                <Text style={styles.confirmButtonText}>Confirmar</Text>
+              </Pressable>
+
+              <Pressable
+                style={styles.cancelButton}
+                onPress={() => setPostponeModalVisible(false)}
+              >
+                <Text style={styles.cancelButtonText}>Cancelar</Text>
+              </Pressable>
+            </View>
           </View>
         </View>
       </Modal>
@@ -10155,7 +10195,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderRadius: 20,
     padding: 24,
-    width: '85%',
+    width: '90%',
     maxWidth: 400,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
@@ -10166,28 +10206,47 @@ const styles = StyleSheet.create({
   modalSubtitle: {
     fontSize: 14,
     color: THEME.textSecondary,
-    marginBottom: 20,
+    marginBottom: 24,
     textAlign: 'center',
   },
-  postponeOptionsContainer: {
-    gap: 12,
+  pickerSection: {
     marginBottom: 20,
   },
-  postponeOptionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
+  pickerLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: THEME.textPrimary,
+    marginBottom: 8,
+  },
+  pickerContainer: {
     backgroundColor: '#f8f9fa',
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#e5e7eb',
+    overflow: 'hidden',
   },
-  postponeOptionText: {
-    fontSize: 15,
-    fontWeight: '500',
-    color: THEME.textPrimary,
+  picker: {
+    height: 150,
+  },
+  timePicker: {
+    height: 150,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+  },
+  postponeButtonsContainer: {
+    gap: 12,
+    marginTop: 8,
+  },
+  confirmButton: {
+    backgroundColor: THEME.primary,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  confirmButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
   },
 });
 
