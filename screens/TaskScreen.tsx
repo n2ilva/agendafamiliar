@@ -2335,6 +2335,20 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           // private flag será adicionada durante a conversão remota via taskToRemoteTask
         };
 
+        // Ajustar visibilidade imediata na lista principal:
+        // - Se estiver em uma família e NÃO for privada: já marcar familyId para passar no filtro
+        // - Se for privada: marcar flag private=true e deixar sem familyId para aparecer como privada do criador
+        if (currentFamily) {
+          if (newTaskPrivate) {
+            (newTask as any).private = true;
+            // garantir que não tenha familyId para ser tratada como privada
+            (newTask as any).familyId = undefined;
+          } else {
+            (newTask as any).familyId = currentFamily.id;
+            (newTask as any).private = false;
+          }
+        }
+
         console.log('✨ Nova tarefa criada:', {
           id: newTask.id,
           title: newTask.title,
