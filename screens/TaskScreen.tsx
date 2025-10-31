@@ -396,6 +396,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   // Estado para IDs de tarefas pendentes de sincronização
   const [pendingSyncIds, setPendingSyncIds] = useState<string[]>([]);
   const [isAddingTask, setIsAddingTask] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState('');
   // Recorrência por intervalo (a cada X dias e duração em meses)
   const [intervalDays, setIntervalDays] = useState<number>(0);
   const [durationMonths, setDurationMonths] = useState<number>(0);
@@ -2442,9 +2444,24 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       
       console.log('✅ Modal fechado, tarefa deve estar visível na lista');
       
+      // Mostrar loading de sincronização
+      setIsSyncing(true);
+      setSyncMessage('Sincronizando tarefa...');
+      
+      // Simular processo de sincronização (aguardar um pouco para sincronização real)
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      setSyncMessage('Carregando dados atualizados...');
+      await new Promise(resolve => setTimeout(resolve, 800));
+      
+      setIsSyncing(false);
+      setSyncMessage('');
+      
     } catch (error) {
       console.error('Erro ao salvar tarefa:', error);
       Alert.alert('Erro', 'Não foi possível salvar a tarefa. Tente novamente.');
+      setIsSyncing(false);
+      setSyncMessage('');
     } finally {
       setIsAddingTask(false); // Reabilitar o botão
     }
@@ -7242,6 +7259,22 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           </View>
         </View>
       )}
+
+      {/* Modal de Loading de Sincronização */}
+      {isSyncing && (
+        <Modal
+          visible={isSyncing}
+          transparent
+          animationType="fade"
+        >
+          <View style={styles.syncLoadingOverlay}>
+            <View style={styles.syncLoadingContainer}>
+              <ActivityIndicator size="large" color={THEME.primary} />
+              <Text style={styles.syncLoadingText}>{syncMessage}</Text>
+            </View>
+          </View>
+        </Modal>
+      )}
       </SafeAreaView>
     </GestureHandlerRootView>
   );
@@ -9823,6 +9856,32 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#e0e0e0',
     backgroundColor: '#fff',
+  },
+  // Estilos do modal de loading de sincronização
+  syncLoadingOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  syncLoadingContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 32,
+    alignItems: 'center',
+    gap: 16,
+    minWidth: 200,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  syncLoadingText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    textAlign: 'center',
   },
 });
 
