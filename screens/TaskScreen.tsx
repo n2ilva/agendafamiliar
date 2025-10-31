@@ -8631,7 +8631,7 @@ const getStyles = (colors: any, activeTheme: 'light' | 'dark') => StyleSheet.cre
     alignItems: 'stretch',
   },
   modalContent: {
-    backgroundColor: THEME.background,
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 20,
     width: '95%',
@@ -8777,7 +8777,7 @@ const getStyles = (colors: any, activeTheme: 'light' | 'dark') => StyleSheet.cre
     alignItems: 'center',
   },
   cancelButton: {
-    backgroundColor: THEME.surface,
+    backgroundColor: colors.surfaceSecondary,
     marginRight: 8,
   },
   cancelButtonText: {
@@ -9343,8 +9343,8 @@ const getStyles = (colors: any, activeTheme: 'light' | 'dark') => StyleSheet.cre
     paddingVertical: 20,
     paddingHorizontal: 20,
     borderBottomWidth: 2,
-    borderBottomColor: THEME.border,
-    backgroundColor: THEME.surface,
+    borderBottomColor: colors.border,
+    backgroundColor: colors.surface,
   },
   closeModalButton: {
     paddingVertical: 12,
@@ -9408,7 +9408,7 @@ const getStyles = (colors: any, activeTheme: 'light' | 'dark') => StyleSheet.cre
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: THEME.surface,
+    backgroundColor: colors.surface,
     paddingHorizontal: 20,
     paddingVertical: 16,
     borderRadius: 10,

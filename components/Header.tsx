@@ -1332,11 +1332,11 @@ const getStyles = (colors: any) => StyleSheet.create({
     width: 50,
     height: 50,
     borderRadius: 25,
-  backgroundColor: THEME.background,
+    backgroundColor: colors.surface,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
-  borderColor: THEME.border,
+    borderColor: colors.border,
   },
   christmasHat: {
     position: 'absolute',
@@ -1372,12 +1372,12 @@ const getStyles = (colors: any) => StyleSheet.create({
   userName: {
     fontSize: 18,
     fontWeight: 'bold',
-  color: THEME.textPrimary,
+    color: colors.text,
     marginBottom: 4,
   },
   subtitle: {
     fontSize: 14,
-  color: THEME.textSecondary,
+    color: colors.textSecondary,
   },
   syncPill: {
     marginLeft: 8,
@@ -1494,7 +1494,7 @@ const getStyles = (colors: any) => StyleSheet.create({
     position: 'absolute',
     top: 60,
     right: 64,
-    backgroundColor: THEME.surface,
+    backgroundColor: colors.surface,
     borderRadius: 8,
     paddingVertical: 8,
     minWidth: 320,
@@ -1504,7 +1504,7 @@ const getStyles = (colors: any) => StyleSheet.create({
     shadowRadius: 3.84,
     elevation: 10,
     borderWidth: 1,
-    borderColor: THEME.border,
+    borderColor: colors.border,
   },
   calendarCenterOverlay: {
     flex: 1,
@@ -1513,7 +1513,7 @@ const getStyles = (colors: any) => StyleSheet.create({
     alignItems: 'center',
   },
   calendarModalCard: {
-    backgroundColor: THEME.surface,
+    backgroundColor: colors.surface,
     borderRadius: 12,
     paddingVertical: 8,
     width: '95%',
@@ -1525,7 +1525,7 @@ const getStyles = (colors: any) => StyleSheet.create({
     shadowRadius: 3.84,
     elevation: 10,
     borderWidth: 1,
-    borderColor: THEME.border,
+    borderColor: colors.border,
     overflow: 'hidden',
   },
   holidayListContainer: {
@@ -1542,11 +1542,11 @@ const getStyles = (colors: any) => StyleSheet.create({
   },
   holidayListItem: {
     fontSize: 12,
-    color: THEME.textPrimary,
+    color: colors.text,
   },
   holidayListEmpty: {
     fontSize: 12,
-    color: THEME.textSecondary,
+    color: colors.textSecondary,
     fontStyle: 'italic',
   },
   menuItem: {
@@ -1596,7 +1596,7 @@ const getStyles = (colors: any) => StyleSheet.create({
   },
   menuSeparator: {
     height: 1,
-  backgroundColor: THEME.border,
+    backgroundColor: colors.border,
     marginHorizontal: 16,
   },
   nameContainer: {
@@ -1617,7 +1617,7 @@ const getStyles = (colors: any) => StyleSheet.create({
   modalContent: {
     width: '95%',
     maxWidth: 500,
-    backgroundColor: THEME.surface,
+    backgroundColor: colors.surface,
     borderRadius: 10,
     padding: 20,
     alignItems: 'center',
@@ -1719,7 +1719,7 @@ const getStyles = (colors: any) => StyleSheet.create({
     marginBottom: 20,
   },
   roleOption: {
-    backgroundColor: THEME.surface,
+    backgroundColor: colors.surface,
     borderWidth: 2,
     borderColor: THEME.primary,
     borderRadius: 10,
