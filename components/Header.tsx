@@ -1023,7 +1023,7 @@ export const Header: React.FC<HeaderProps> = ({
               value={newName}
               onChangeText={setNewName}
               placeholder="Digite seu novo nome"
-              placeholderTextColor="#999"
+              placeholderTextColor={colors.textTertiary}
               autoFocus
             />
             <View style={styles.modalButtons}>
@@ -1562,7 +1562,7 @@ const getStyles = (colors: any) => StyleSheet.create({
   menuText: {
     fontSize: 15,
     fontWeight: '500',
-    color: THEME.textPrimary,
+    color: colors.textPrimary,
     flex: 1,
   },
   // Segmented control for theme mode
@@ -1635,6 +1635,7 @@ const getStyles = (colors: any) => StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     marginBottom: 15,
+    color: colors.textPrimary,
   },
   nameInput: {
     width: '100%',
@@ -1644,7 +1645,7 @@ const getStyles = (colors: any) => StyleSheet.create({
     padding: 10,
     marginBottom: 20,
     fontSize: 16,
-    color: THEME.textPrimary,
+    color: colors.textPrimary,
   },
   modalButtons: {
     flexDirection: 'row',

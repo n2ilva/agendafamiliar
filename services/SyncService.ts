@@ -402,7 +402,15 @@ class SyncService {
       }
 
       // Get user's family and download family data (local source-of-truth for family metadata)
-      const userFamily = await familyService.getUserFamily(currentUser.id);
+      let userFamily = await familyService.getUserFamily(currentUser.id);
+      // Fallback: se não conseguir pelo membership (ex.: Auth ainda não pronto), tentar pelo familyId salvo no usuário
+      if (!userFamily && (currentUser as any).familyId && typeof (currentUser as any).familyId === 'string' && !((currentUser as any).familyId as string).startsWith('local_')) {
+        try {
+          userFamily = await familyService.getFamilyById((currentUser as any).familyId as string);
+        } catch (e) {
+          console.warn('Fallback getFamilyById falhou:', e);
+        }
+      }
       if (userFamily) {
         await LocalStorageService.saveFamily(userFamily);
         for (const member of userFamily.members) {

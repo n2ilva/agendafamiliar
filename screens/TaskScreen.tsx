@@ -398,6 +398,10 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   const [pendingSyncIds, setPendingSyncIds] = useState<string[]>([]);
   const [isAddingTask, setIsAddingTask] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  // Garantir 1 disparo de sync no startup (com um retry curto) para captar o estado do Firebase Auth
+  const didStartupSyncRef = useRef(false);
+  // Garantir 1 refresh completo quando a família estiver definida e online
+  const didInitialFamilyRefreshRef = useRef(false);
   const [syncMessage, setSyncMessage] = useState('');
   // Recorrência por intervalo (a cada X dias e duração em meses)
   const [intervalDays, setIntervalDays] = useState<number>(0);
@@ -1130,6 +1134,28 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     };
   }, []);
 
+  // Disparo defensivo de sincronização no início do app
+  // Motivo: quando o app abre, podemos ter o usuário no AsyncStorage mas o Firebase Auth
+  // ainda não inicializou o currentUser. Isso faz com que as primeiras consultas remotas retornem vazio.
+  // Aqui garantimos um forceFullSync imediato e um retry curto (2s) para ocorrer
+  // logo após o Firebase Auth ficar pronto.
+  useEffect(() => {
+    if (didStartupSyncRef.current) return;
+    if (isOffline || !user?.id) return;
+
+    didStartupSyncRef.current = true;
+
+    // Tentativa imediata
+    SyncService.forceFullSync().catch(e => console.warn('Startup forceFullSync error:', e));
+
+    // Retry curto para captar o currentUser do Firebase já inicializado
+    const retry = setTimeout(() => {
+      SyncService.forceFullSync().catch(e => console.warn('Startup retry forceFullSync error:', e));
+    }, 2000);
+
+    return () => clearTimeout(retry);
+  }, [user?.id, isOffline]);
+
   // useEffect para carregar dados do cache quando fica offline
   useEffect(() => {
     if (isOffline) {
@@ -1175,6 +1201,31 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             }
           } else {
             console.log('👤 Usuário não possui família');
+            // Fallback: se temos familyId salvo e estamos online, tentar carregar diretamente pelo ID
+            if (user.familyId && !isOffline) {
+              try {
+                const fetchedFamily = await familyService.getFamilyById(user.familyId);
+                if (fetchedFamily) {
+                  setCurrentFamily(fetchedFamily);
+                  console.log('👨‍👩‍👧‍👦 Família carregada via fallback pelo ID:', fetchedFamily.name);
+                  // Carregar tarefas da família
+                  const familyTasks = await familyService.getFamilyTasks(fetchedFamily.id, user.id);
+                  let convertedTasks: Task[] = familyTasks.map(remoteTaskToTask as any);
+                  convertedTasks = convertedTasks.filter(t => {
+                    const isPrivate = (t as any).private === true;
+                    if (isPrivate && t.createdBy && t.createdBy !== user.id) return false;
+                    return true;
+                  });
+                  setTasks(convertedTasks);
+                  console.log(`📋 ${convertedTasks.length} tarefas da família (fallback) carregadas e convertidas`);
+                  // Disparar sync completo em background
+                  SyncService.forceFullSync().catch(e => console.warn('forceFullSync bg error:', e));
+                  return; // finalize o fluxo de sucesso do fallback
+                }
+              } catch (e) {
+                console.warn('Falha ao carregar família via fallback:', e);
+              }
+            }
             
             // Se não tem família, carregar tarefas do cache local
             const cachedTasks = await LocalStorageService.getTasks();
@@ -1211,6 +1262,15 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     
     loadUserFamily();
   }, [user?.id, isOffline]);
+
+  // Disparar um refresh completo uma única vez quando a família estiver definida e estivermos online
+  useEffect(() => {
+    if (didInitialFamilyRefreshRef.current) return;
+    if (isOffline) return;
+    if (!currentFamily?.id) return;
+    didInitialFamilyRefreshRef.current = true;
+    forceRefresh().catch(e => console.warn('Initial family forceRefresh error:', e));
+  }, [currentFamily?.id, isOffline]);
 
   // useEffect para carregar histórico da família
   useEffect(() => {
@@ -6861,15 +6921,15 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                   <Text style={{ fontSize: 16, fontWeight: '600', color: colors.textPrimary, marginBottom: 8 }}>
                    {adminRoleRequests.length > 0 ? `(${adminRoleRequests.length})` : ''}
                   </Text>
-                  {adminRoleRequests.length === 0 ? (
-                    <Text style={{ color: colors.textSecondary }}></Text>
+                    {adminRoleRequests.length === 0 ? (
+                    <Text style={{ color: colors.textPrimary }}></Text>
                   ) : (
                     <View style={{ gap: 10 }}>
                       {adminRoleRequests.map((req: any) => (
                         <View key={req.id} style={{ backgroundColor: colors.surface, borderRadius: 10, padding: 12, borderWidth: 1, borderColor: colors.border }}>
                           <Text style={{ fontSize: 15, fontWeight: '600', color: colors.textPrimary }}>{req.requesterName}</Text>
-                          <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2 }}>pediu para se tornar administrador</Text>
-                          <Text style={{ fontSize: 12, color: colors.textTertiary, marginTop: 6 }}>
+                          <Text style={{ fontSize: 13, color: colors.textPrimary, marginTop: 2 }}>pediu para se tornar administrador</Text>
+                          <Text style={{ fontSize: 12, color: colors.textPrimary, marginTop: 6 }}>
                             {req.requestedAt ? new Date(req.requestedAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}
                           </Text>
                           <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
@@ -9071,7 +9131,7 @@ const getStyles = (colors: any, activeTheme: 'light' | 'dark') => StyleSheet.cre
   },
   historySubtitle: {
     fontSize: 14,
-    color: colors.textSecondary,
+    color: colors.textPrimary,
     textAlign: 'center',
     marginBottom: 12,
     paddingHorizontal: 20,
@@ -9103,7 +9163,7 @@ const getStyles = (colors: any, activeTheme: 'light' | 'dark') => StyleSheet.cre
   },
   emptyHistorySubtext: {
     fontSize: 14,
-    color: colors.textSecondary,
+    color: colors.textPrimary,
     textAlign: 'center',
     paddingHorizontal: 40,
   },
@@ -9371,7 +9431,7 @@ const getStyles = (colors: any, activeTheme: 'light' | 'dark') => StyleSheet.cre
   },
   familySectionSubtitle: {
     fontSize: 15,
-    color: colors.textSecondary,
+    color: colors.textPrimary,
     marginBottom: 16,
     lineHeight: 22,
   },
@@ -9431,7 +9491,7 @@ const getStyles = (colors: any, activeTheme: 'light' | 'dark') => StyleSheet.cre
   },
   inviteCodeExpiry: {
     fontSize: 12,
-    color: colors.textSecondary,
+    color: colors.textPrimary,
     fontStyle: 'italic',
     marginTop: 5,
   },
@@ -9477,7 +9537,7 @@ const getStyles = (colors: any, activeTheme: 'light' | 'dark') => StyleSheet.cre
   },
   activeInviteExpiry: {
     fontSize: 12,
-    color: colors.textSecondary,
+    color: colors.textPrimary,
   },
   familyMember: {
     flexDirection: 'row',
@@ -9547,7 +9607,7 @@ const getStyles = (colors: any, activeTheme: 'light' | 'dark') => StyleSheet.cre
   },
   memberRoleText: {
     fontSize: 14,
-    color: colors.textSecondary,
+    color: colors.textPrimary,
   },
   memberRoleAdmin: {
     color: THEME.primary,
@@ -9555,7 +9615,7 @@ const getStyles = (colors: any, activeTheme: 'light' | 'dark') => StyleSheet.cre
   },
   memberEmail: {
     fontSize: 13,
-    color: colors.textSecondary,
+    color: colors.textPrimary,
     marginBottom: 6,
     lineHeight: 18,
   },
@@ -10135,7 +10195,7 @@ const getStyles = (colors: any, activeTheme: 'light' | 'dark') => StyleSheet.cre
   },
   createFamilySubtitle: {
     fontSize: 15,
-    color: colors.textSecondary,
+    color: colors.textPrimary,
     textAlign: 'center',
     marginBottom: 30,
     lineHeight: 22,

@@ -21,7 +21,10 @@
         "NSPhotoLibraryUsageDescription": "Este app precisa de acesso à galeria para selecionar fotos de perfil.",
         "NSPhotoLibraryAddUsageDescription": "Este app precisa de acesso para salvar fotos na galeria.",
         "UIStatusBarStyle": "UIStatusBarStyleDefault",
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIBackgroundModes": [
+          "fetch"
+        ]
       }
     },
     "android": {
