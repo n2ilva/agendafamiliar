@@ -425,7 +425,6 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState(new Date());
   const [activeTab, setActiveTab] = useState<'today' | 'upcoming'>('today');
-  const [unlockedTasks, setUnlockedTasks] = useState<Set<string>>(new Set());
   
   // Estado para funcionalidade de desfazer
   const [lastAction, setLastAction] = useState<{
@@ -3228,17 +3227,63 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     }
   }, [editingSubtaskId, editingSubtask, showSubtaskTimePicker]);
 
-  const toggleLockTask = useCallback((taskId: string) => {
-    setUnlockedTasks(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(taskId)) {
-        newSet.delete(taskId); // Bloquear novamente
+  const toggleLockTask = useCallback(async (taskId: string) => {
+    // Apenas admin pode bloquear/desbloquear
+    if (user.role !== 'admin') {
+      Alert.alert('Permissão negada', 'Apenas administradores podem bloquear/desbloquear tarefas.');
+      return;
+    }
+
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) return;
+
+    const isCurrentlyUnlocked = (task as any).unlocked === true;
+    const newUnlockedState = !isCurrentlyUnlocked;
+
+    const updatedTask: Task = {
+      ...task,
+      unlocked: newUnlockedState,
+      unlockedBy: newUnlockedState ? user.id : undefined,
+      unlockedAt: newUnlockedState ? new Date() : undefined,
+      updatedAt: new Date(),
+    } as Task;
+
+    // Atualizar localmente primeiro para feedback imediato
+    setTasks(prev => prev.map(t => t.id === taskId ? updatedTask : t));
+
+    // Sincronizar com Firebase
+    try {
+      const isFamilyTask = (task as any).familyId && !(task as any).private;
+      
+      if (isFamilyTask && !isOffline) {
+        // Tarefa da família online - atualizar no Firestore
+        const toSave = {
+          ...updatedTask,
+          familyId: (task as any).familyId
+        } as any;
+        await FirestoreService.saveTask(toSave);
+        await LocalStorageService.saveTask(toSave);
+        console.log(`🔓 Status de bloqueio atualizado no Firestore: ${newUnlockedState ? 'DESBLOQUEADO' : 'BLOQUEADO'}`);
       } else {
-        newSet.add(taskId); // Desbloquear
+        // Tarefa privada ou offline - salvar localmente
+        await LocalStorageService.saveTask(updatedTask as any);
+        
+        // Se for tarefa da família mas estiver offline, enfileirar
+        if (isFamilyTask) {
+          await SyncService.addOfflineOperation('update', 'tasks', {
+            ...updatedTask,
+            familyId: (task as any).familyId
+          });
+          console.log(`🔓 Status de bloqueio enfileirado (offline): ${newUnlockedState ? 'DESBLOQUEADO' : 'BLOQUEADO'}`);
+        }
       }
-      return newSet;
-    });
-  }, []);
+    } catch (error) {
+      console.error('Erro ao atualizar status de bloqueio:', error);
+      // Reverter em caso de erro
+      setTasks(prev => prev.map(t => t.id === taskId ? task : t));
+      Alert.alert('Erro', 'Não foi possível atualizar o status de bloqueio da tarefa.');
+    }
+  }, [user, tasks, isOffline]);
 
   const toggleTask = useCallback(async (taskId: string) => {
     const task = tasks.find(t => t.id === taskId);
@@ -4804,9 +4849,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     const canComplete = isRecurringTaskCompletable(item.dueDate, isRecurring);
     const isPendingRecurring = isRecurring && !canComplete && !item.completed;
     
-    // Verificar se está na aba Próximas e se a tarefa não está desbloqueada
+    // Verificar se está na aba Próximas e se a tarefa está desbloqueada
     const isUpcomingTab = activeTab === 'upcoming';
-    const isTaskUnlocked = unlockedTasks.has(item.id);
+    const isTaskUnlocked = (item as any).unlocked === true;
     const shouldDisableCheckbox = isUpcomingTab && !isTaskUnlocked && !item.completed;
     
     // Sanitizar valores para evitar "Unexpected text node: ." no web

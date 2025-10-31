@@ -138,6 +138,10 @@ export interface Task {
   editedAt?: Date | string;
   // Se true, a tarefa é privada ao usuário que a criou e não deve ser visível para outros membros da família
   private?: boolean;
+  // Se true, a tarefa foi desbloqueada pelo admin para finalização antecipada (apenas para tarefas futuras)
+  unlocked?: boolean;
+  unlockedBy?: string; // ID do admin que desbloqueou
+  unlockedAt?: Date | string; // Quando foi desbloqueada
 }
 
 export interface FamilyData {
