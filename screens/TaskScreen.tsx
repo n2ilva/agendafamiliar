@@ -7728,7 +7728,7 @@ const getStyles = (colors: any, activeTheme: 'light' | 'dark') => StyleSheet.cre
     width: '100%',
     height: '100%',
     opacity: activeTheme === 'dark' ? 0.15 : 0.2, // Menos opaca no dark para não escurecer demais
-    zIndex: 0, // Atrás de todo o conteúdo
+    zIndex: -1, // Atrás de todo o conteúdo
   },
   // Wrapper de página: mantém o layout atual no mobile; na web centraliza e limita largura
   pageContainer: {
@@ -7966,6 +7966,7 @@ const getStyles = (colors: any, activeTheme: 'light' | 'dark') => StyleSheet.cre
   },
   container: {
     flex: 1,
+    zIndex: 1, // Garante que o conteúdo fique acima do background
   },
   content: {
     flex: 1,
