@@ -815,6 +815,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     const repeatOption: 'nenhum' | 'diario' | 'semanal' | 'mensal' | 'intervalo' =
       remote.repeatOption === 'diario' ? 'diario' :
       remote.repeatOption === 'semanal' ? 'semanal' :
+      remote.repeatOption === 'mensal' ? 'mensal' :
       remote.repeatOption === 'intervalo' ? 'intervalo' : 'nenhum';
     const repeatDays: number[] | undefined = Array.isArray(remote.repeatDays) ? remote.repeatDays : [];
     const repeatIntervalDays: number | undefined = typeof remote.repeatIntervalDays === 'number' ? remote.repeatIntervalDays : undefined;
@@ -5541,7 +5542,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                 )}
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                   <TextInput
-                    style={[styles.input, { flex: 1 }]}
+                    style={[styles.input, { flex: 1, marginBottom: 0 }]}
                     placeholder="Adicionar subtarefa"
                     placeholderTextColor="#999"
                     value={newSubtaskTitle}
@@ -5563,7 +5564,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                       });
                       setNewSubtaskTitle('');
                     }}
-                    style={[styles.scheduleActionButton]}
+                    style={[styles.scheduleActionButton, { marginBottom: 0 }]}
                   >
                     <Ionicons name="add" size={18} color={THEME.primary} />
                   </Pressable>
