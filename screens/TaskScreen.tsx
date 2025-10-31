@@ -542,6 +542,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   // Estados de modais adicionais
   const [settingsModalVisible, setSettingsModalVisible] = useState(false);
   const [approvalModalVisible, setApprovalModalVisible] = useState(false);
+  const [postponeModalVisible, setPostponeModalVisible] = useState(false);
+  const [selectedTaskForPostpone, setSelectedTaskForPostpone] = useState<Task | null>(null);
 
   // Gerenciamento de pilha de modais: apenas o topo da pilha fica visível
   type ModalKey = 'task' | 'repeat' | 'category' | 'settings' | 'picker' | 'subtaskPicker' | 'family' | 'editMember';
@@ -3285,6 +3287,71 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     }
   }, [user, tasks, isOffline]);
 
+  const openPostponeModal = useCallback((task: Task) => {
+    setSelectedTaskForPostpone(task);
+    setPostponeModalVisible(true);
+  }, []);
+
+  const postponeTask = useCallback(async (days: number) => {
+    if (!selectedTaskForPostpone) return;
+    
+    // Apenas admin pode adiar tarefas da família
+    if (user.role !== 'admin' && (selectedTaskForPostpone as any).familyId) {
+      Alert.alert('Permissão negada', 'Apenas administradores podem adiar tarefas da família.');
+      return;
+    }
+
+    const task = selectedTaskForPostpone;
+    const currentDueDate = task.dueDate ? new Date(task.dueDate) : new Date();
+    const newDueDate = new Date(currentDueDate);
+    newDueDate.setDate(newDueDate.getDate() + days);
+
+    const updatedTask: Task = {
+      ...task,
+      dueDate: newDueDate,
+      updatedAt: new Date(),
+      editedBy: user.id,
+      editedByName: user.name || 'Usuário',
+      editedAt: new Date(),
+    } as Task;
+
+    // Atualizar localmente
+    setTasks(prev => prev.map(t => t.id === task.id ? updatedTask : t));
+    setPostponeModalVisible(false);
+    setSelectedTaskForPostpone(null);
+
+    // Sincronizar com Firebase
+    try {
+      const isFamilyTask = (task as any).familyId && !(task as any).private;
+      
+      if (isFamilyTask && !isOffline) {
+        const toSave = {
+          ...updatedTask,
+          familyId: (task as any).familyId
+        } as any;
+        await FirestoreService.saveTask(toSave);
+        await LocalStorageService.saveTask(toSave);
+        console.log(`📅 Tarefa adiada por ${days} dia(s) no Firestore`);
+      } else {
+        await LocalStorageService.saveTask(updatedTask as any);
+        
+        if (isFamilyTask) {
+          await SyncService.addOfflineOperation('update', 'tasks', {
+            ...updatedTask,
+            familyId: (task as any).familyId
+          });
+          console.log(`📅 Adiamento enfileirado (offline): +${days} dia(s)`);
+        }
+      }
+
+      Alert.alert('Sucesso', `Tarefa adiada por ${days} dia(s).`);
+    } catch (error) {
+      console.error('Erro ao adiar tarefa:', error);
+      setTasks(prev => prev.map(t => t.id === task.id ? task : t));
+      Alert.alert('Erro', 'Não foi possível adiar a tarefa.');
+    }
+  }, [selectedTaskForPostpone, user, isOffline]);
+
   const toggleTask = useCallback(async (taskId: string) => {
     const task = tasks.find(t => t.id === taskId);
     if (!task) return;
@@ -4953,18 +5020,33 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                 )}
               </Pressable>
               
-              {/* Ícone de Bloquear/Desbloquear no final da linha (apenas para admin na aba Próximas) */}
+              {/* Botões de ação rápida na aba Próximas (admin apenas) */}
               {isUpcomingTab && !item.completed && user.role === 'admin' && (
-                <Pressable
-                  onPress={() => toggleLockTask(item.id)}
-                  style={styles.unlockIconButton}
-                >
-                  <Ionicons 
-                    name={isTaskUnlocked ? "lock-open-outline" : "lock-closed-outline"} 
-                    size={22} 
-                    color={isTaskUnlocked ? THEME.primary : "#999"} 
-                  />
-                </Pressable>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  {/* Ícone de Bloquear/Desbloquear */}
+                  <Pressable
+                    onPress={() => toggleLockTask(item.id)}
+                    style={styles.unlockIconButton}
+                  >
+                    <Ionicons 
+                      name={isTaskUnlocked ? "lock-open-outline" : "lock-closed-outline"} 
+                      size={22} 
+                      color={isTaskUnlocked ? THEME.primary : "#999"} 
+                    />
+                  </Pressable>
+                  
+                  {/* Ícone de Adiar */}
+                  <Pressable
+                    onPress={() => openPostponeModal(item)}
+                    style={styles.unlockIconButton}
+                  >
+                    <Ionicons 
+                      name="calendar-outline" 
+                      size={22} 
+                      color="#999" 
+                    />
+                  </Pressable>
+                </View>
               )}
             </View>
           </View>
@@ -7413,6 +7495,46 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           </View>
         </Modal>
       )}
+
+      {/* Modal de Adiamento */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={postponeModalVisible}
+        onRequestClose={() => setPostponeModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.postponeModalContent}>
+            <Text style={styles.modalTitle}>Adiar Tarefa</Text>
+            <Text style={styles.modalSubtitle}>
+              {selectedTaskForPostpone?.title}
+            </Text>
+            
+            <View style={styles.postponeOptionsContainer}>
+              {[1, 2, 3, 7, 14, 30].map((days) => (
+                <Pressable
+                  key={days}
+                  style={styles.postponeOptionButton}
+                  onPress={() => postponeTask(days)}
+                >
+                  <Ionicons name="calendar-outline" size={20} color={THEME.primary} />
+                  <Text style={styles.postponeOptionText}>
+                    {days === 1 ? 'Amanhã' : `${days} dias`}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
+            <Pressable
+              style={styles.cancelButton}
+              onPress={() => setPostponeModalVisible(false)}
+            >
+              <Text style={styles.cancelButtonText}>Cancelar</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
       </SafeAreaView>
     </GestureHandlerRootView>
   );
@@ -10028,6 +10150,44 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#333',
     textAlign: 'center',
+  },
+  postponeModalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 24,
+    width: '85%',
+    maxWidth: 400,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: THEME.textSecondary,
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  postponeOptionsContainer: {
+    gap: 12,
+    marginBottom: 20,
+  },
+  postponeOptionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  postponeOptionText: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: THEME.textPrimary,
   },
 });
 
