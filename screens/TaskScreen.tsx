@@ -5397,6 +5397,13 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           }}
         />
         
+        {/* Árvore de Natal decorativa no background */}
+        <Image 
+          source={require('../assets/arvore_natal.png')} 
+          style={styles.christmasTree}
+          resizeMode="contain"
+        />
+        
         {/* Wrapper centralizado (apenas Web aplica largura 70%) */}
         <View style={[styles.pageContainer, Platform.OS === 'web' && styles.pageContainerWeb]}>
           <PanGestureHandler
@@ -7708,6 +7715,16 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
 };
 
 const getStyles = (colors: any, activeTheme: 'light' | 'dark') => StyleSheet.create({
+  // Árvore de Natal decorativa
+  christmasTree: {
+    position: 'absolute',
+    right: -150, // Metade da árvore saindo para fora da tela à direita
+    bottom: 0,
+    width: 300,
+    height: 400,
+    opacity: 0.3, // Semi-transparente para não atrapalhar a leitura
+    zIndex: 0, // Atrás de todo o conteúdo
+  },
   // Wrapper de página: mantém o layout atual no mobile; na web centraliza e limita largura
   pageContainer: {
     flex: 1,
