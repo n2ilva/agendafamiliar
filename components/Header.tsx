@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   ScrollView,
   Platform,
+  Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { THEME, getCurrentSeason } from '../utils/colors';
@@ -87,6 +88,8 @@ export const Header: React.FC<HeaderProps> = ({
   const [nameModalVisible, setNameModalVisible] = useState(false);
   const [profileModalVisible, setProfileModalVisible] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
+  const [menuButtonLayout, setMenuButtonLayout] = useState({ top: 60, right: 20 });
+  const menuButtonRef = React.useRef<any>(null);
   const [newName, setNewName] = useState(userName);
   const [selectedRole, setSelectedRole] = useState<UserRole>(userRole || 'admin');
   const [nameLoading, setNameLoading] = useState(false);
@@ -748,7 +751,22 @@ export const Header: React.FC<HeaderProps> = ({
           </Pressable>
 
           <View style={styles.menuContainer}>
-            <Pressable onPress={() => setMenuVisible(true)} style={styles.iconButton}>
+            <Pressable 
+              ref={menuButtonRef}
+              onPress={() => {
+                if (!menuVisible) {
+                  // Calcular posição do botão antes de abrir
+                  menuButtonRef.current?.measure((x: number, y: number, width: number, height: number, pageX: number, pageY: number) => {
+                    setMenuButtonLayout({
+                      top: pageY + height + 4, // 4px de espaçamento abaixo do botão
+                      right: Dimensions.get('window').width - (pageX + width)
+                    });
+                  });
+                }
+                setMenuVisible(true);
+              }} 
+              style={styles.iconButton}
+            >
               <Ionicons name="settings-outline" size={24} color={THEME.secondary} />
             </Pressable>
           </View>
@@ -765,44 +783,41 @@ export const Header: React.FC<HeaderProps> = ({
               <Pressable style={styles.fullscreenOverlay} onPress={() => setMenuVisible(false)} />
 
               {/* Dropdown alinhado ao canto superior direito */}
-              <View style={styles.dropdownMenuModal}>
+              <View 
+                style={[
+                  styles.dropdownMenuModal,
+                  menuButtonLayout && {
+                    top: menuButtonLayout.top,
+                    right: menuButtonLayout.right
+                  }
+                ]}
+              >
                 {userRole === 'admin' && onManageFamily && (
-                  <>
-                    <Pressable onPress={() => { setMenuVisible(false); onManageFamily(); }} style={styles.menuItem}>
-                      <Ionicons name="people-outline" size={18} color={THEME.accent} />
-                      <Text style={styles.menuText}>Gerenciar Família</Text>
-                    </Pressable>
-                    <View style={styles.menuSeparator} />
-                  </>
+                  <Pressable onPress={() => { setMenuVisible(false); onManageFamily(); }} style={styles.menuItem}>
+                    <Ionicons name="people-outline" size={18} color={THEME.accent} />
+                    <Text style={styles.menuText}>Gerenciar Família</Text>
+                  </Pressable>
                 )}
                 {onJoinFamilyByCode && (
-                  <>
-                    <Pressable onPress={openJoinFamily} style={styles.menuItem}>
-                      <Ionicons name="key-outline" size={18} color={THEME.highlight} />
-                      <Text style={styles.menuText}>Entrar em outra família</Text>
-                    </Pressable>
-                    <View style={styles.menuSeparator} />
-                  </>
+                  <Pressable onPress={openJoinFamily} style={styles.menuItem}>
+                    <Ionicons name="key-outline" size={18} color={THEME.highlight} />
+                    <Text style={styles.menuText}>Entrar em outra família</Text>
+                  </Pressable>
                 )}
                 <Pressable onPress={() => { setMenuVisible(false); onHistory(); }} style={styles.menuItem}>
                   <Ionicons name="time-outline" size={18} color={THEME.extra} />
                   <Text style={styles.menuText}>Histórico</Text>
                 </Pressable>
-                <View style={styles.menuSeparator} />
                 <Pressable onPress={() => { setMenuVisible(false); onInfo(); }} style={styles.menuItem}>
                   <Ionicons name="information-circle-outline" size={18} color={THEME.success} />
                   <Text style={styles.menuText}>Manual e Informações</Text>
                 </Pressable>
-                <View style={styles.menuSeparator} />
                 {/* Atualizar dados */}
                 {onRefresh && (
-                  <>
-                    <Pressable onPress={() => { setMenuVisible(false); onRefresh(); }} style={styles.menuItem}>
-                      <Ionicons name="refresh" size={18} color="#4CAF50" />
-                      <Text style={styles.menuText}>Atualizar Dados</Text>
-                    </Pressable>
-                    <View style={styles.menuSeparator} />
-                  </>
+                  <Pressable onPress={() => { setMenuVisible(false); onRefresh(); }} style={styles.menuItem}>
+                    <Ionicons name="refresh" size={18} color="#4CAF50" />
+                    <Text style={styles.menuText}>Atualizar Dados</Text>
+                  </Pressable>
                 )}
                 {/* Logout no final do menu */}
                 <Pressable onPress={() => { setMenuVisible(false); handleLogout(); }} style={styles.menuItem}>
@@ -1396,22 +1411,23 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e0e0e0',
   },
-  // Dropdown usado dentro do Modal (alinhado ao topo à direita)
+  // Dropdown usado dentro do Modal (posicionamento dinâmico calculado via measure())
   dropdownMenuModal: {
     position: 'absolute',
-    top: 60,
-    right: 20,
-  backgroundColor: THEME.surface,
-    borderRadius: 8,
-    paddingVertical: 8,
-    minWidth: 180,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 10,
+    // top e right são calculados dinamicamente
+    width: 240,
+    backgroundColor: '#fff',
+    borderRadius: 16,
     borderWidth: 1,
-  borderColor: THEME.border,
+    borderColor: '#e5e7eb',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 12,
+    maxHeight: 320,
+    zIndex: 1001,
+    overflow: 'hidden',
   },
   calendarDropdownModal: {
     position: 'absolute',
@@ -1476,12 +1492,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 14,
+    gap: 12,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#f3f4f6',
+    minHeight: 52,
   },
   menuText: {
-    marginLeft: 12,
-    fontSize: 16,
-  color: THEME.textPrimary,
+    fontSize: 15,
+    fontWeight: '500',
+    color: THEME.textPrimary,
+    flex: 1,
   },
   menuSeparator: {
     height: 1,
