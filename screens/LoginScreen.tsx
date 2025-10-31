@@ -235,7 +235,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
       >
         <View style={styles.content}>
           <View style={styles.header}>
-            <Image source={require('../assets/icon.png')} style={styles.logo} />
+            <Image source={require('../assets/icon_natal.jpeg')} style={styles.logo} />
             <Text style={styles.title}>Bem-vindo ao</Text>
             <Text style={styles.appName}>Agenda Familiar</Text>
           </View>

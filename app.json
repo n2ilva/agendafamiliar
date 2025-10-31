@@ -4,7 +4,7 @@
     "slug": "task-app",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icons/android/icon-xxxhdpi.png",
+    "icon": "./assets/icon_natal.jpeg",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "scheme": "taskapp",
@@ -26,7 +26,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/icons/android/icon-xxxhdpi.png",
+        "foregroundImage": "./assets/icon_natal.jpeg",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
