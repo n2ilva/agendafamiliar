@@ -7966,7 +7966,6 @@ const getStyles = (colors: any, activeTheme: 'light' | 'dark') => StyleSheet.cre
   },
   container: {
     flex: 1,
-    backgroundColor: colors.surfaceSecondary,
   },
   content: {
     flex: 1,
