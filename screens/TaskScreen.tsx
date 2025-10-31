@@ -5248,7 +5248,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           
           <View style={styles.filterDropdownMenuFloating} pointerEvents="auto">
             <ScrollView 
-              style={{ maxHeight: 280 }} 
+              style={{ maxHeight: 320 }} 
               showsVerticalScrollIndicator={false}
               bounces={false}
             >
@@ -5264,11 +5264,20 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                     setFilterDropdownVisible(false);
                   }}
                 >
-                  <Ionicons 
-                    name={category.icon as any} 
-                    size={16} 
-                    color={filterCategory === category.id ? THEME.primary : category.color} 
-                  />
+                  <View style={{ 
+                    width: 32, 
+                    height: 32, 
+                    borderRadius: 8,
+                    backgroundColor: filterCategory === category.id ? `${THEME.primary}15` : category.bgColor,
+                    justifyContent: 'center',
+                    alignItems: 'center'
+                  }}>
+                    <Ionicons 
+                      name={category.icon as any} 
+                      size={18} 
+                      color={filterCategory === category.id ? THEME.primary : category.color} 
+                    />
+                  </View>
                   <Text style={[
                     styles.filterDropdownItemText,
                     filterCategory === category.id && styles.filterDropdownItemTextActive
@@ -5277,7 +5286,16 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                   </Text>
                   
                   {filterCategory === category.id && (
-                    <Ionicons name="checkmark" size={16} color={THEME.primary} />
+                    <View style={{
+                      width: 24,
+                      height: 24,
+                      borderRadius: 12,
+                      backgroundColor: `${THEME.primary}15`,
+                      justifyContent: 'center',
+                      alignItems: 'center'
+                    }}>
+                      <Ionicons name="checkmark" size={16} color={THEME.primary} />
+                    </View>
                   )}
                   
                   {!category.isDefault && (
@@ -5289,7 +5307,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                       }}
                       hitSlop={8}
                     >
-                      <Ionicons name="trash-outline" size={16} color="#999" />
+                      <Ionicons name="trash-outline" size={14} color="#9ca3af" />
                     </Pressable>
                   )}
                 </Pressable>
@@ -9552,45 +9570,50 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 120, // Posicionar abaixo das tabs
     right: 16,
-    width: 220,
+    width: 240,
     backgroundColor: '#fff',
-    borderRadius: 12,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: '#e5e7eb',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 8,
-    maxHeight: 280, // Reduzir um pouco para garantir que cabe na tela
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 12,
+    maxHeight: 320,
     zIndex: 1001,
+    overflow: 'hidden',
   },
   filterDropdownItem: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    paddingVertical: 14,
+    gap: 12,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#f3f4f6',
+    minHeight: 52,
   },
   filterDropdownItemActive: {
-    backgroundColor: '#f8f9ff',
+    backgroundColor: '#f0f4ff',
   },
   filterDropdownItemText: {
     fontSize: 15,
-    color: '#333',
-    marginLeft: 12,
+    color: '#374151',
     flex: 1,
+    fontWeight: '400',
   },
   filterDropdownItemTextActive: {
     color: THEME.primary,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   deleteCategoryButton: {
-    padding: 8,
-    marginLeft: 8,
+    padding: 6,
+    marginLeft: 4,
     justifyContent: 'center',
     alignItems: 'center',
+    borderRadius: 6,
+    backgroundColor: '#f9fafb',
   },
   filterDropdownSeparator: {
     height: 1,
