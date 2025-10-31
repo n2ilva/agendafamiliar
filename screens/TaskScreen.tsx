@@ -9366,7 +9366,7 @@ const getStyles = (colors: any, activeTheme: 'light' | 'dark') => StyleSheet.cre
   familySectionTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: colors.text,
+    color: colors.textPrimary,
     marginBottom: 12,
   },
   familySectionSubtitle: {
@@ -9401,7 +9401,7 @@ const getStyles = (colors: any, activeTheme: 'light' | 'dark') => StyleSheet.cre
   inviteCodeLabel: {
     fontSize: 15,
     fontWeight: '600',
-    color: colors.text,
+    color: colors.textPrimary,
     marginBottom: 8,
   },
   inviteCodeBox: {
@@ -9536,7 +9536,7 @@ const getStyles = (colors: any, activeTheme: 'light' | 'dark') => StyleSheet.cre
   memberName: {
     fontSize: 17,
     fontWeight: '600',
-    color: colors.text,
+    color: colors.textPrimary,
     marginBottom: 4,
   },
   memberRole: {
@@ -10104,7 +10104,7 @@ const getStyles = (colors: any, activeTheme: 'light' | 'dark') => StyleSheet.cre
   },
   manualParagraph: {
     fontSize: 14,
-    color: colors.text,
+    color: colors.textPrimary,
     marginBottom: 12,
     lineHeight: 20,
   },
@@ -10117,7 +10117,7 @@ const getStyles = (colors: any, activeTheme: 'light' | 'dark') => StyleSheet.cre
   },
   manualListItem: {
     fontSize: 14,
-    color: colors.text,
+    color: colors.textPrimary,
     marginBottom: 6,
     lineHeight: 20,
   },
@@ -10129,7 +10129,7 @@ const getStyles = (colors: any, activeTheme: 'light' | 'dark') => StyleSheet.cre
   createFamilyTitle: {
     fontSize: 22,
     fontWeight: 'bold',
-    color: colors.text,
+    color: colors.textPrimary,
     textAlign: 'center',
     marginBottom: 8,
   },

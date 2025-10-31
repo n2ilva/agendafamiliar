@@ -1372,7 +1372,7 @@ const getStyles = (colors: any) => StyleSheet.create({
   userName: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: colors.text,
+    color: colors.textPrimary,
     marginBottom: 4,
   },
   subtitle: {
@@ -1542,7 +1542,7 @@ const getStyles = (colors: any) => StyleSheet.create({
   },
   holidayListItem: {
     fontSize: 12,
-    color: colors.text,
+    color: colors.textPrimary,
   },
   holidayListEmpty: {
     fontSize: 12,
