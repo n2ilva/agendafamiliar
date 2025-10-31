@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable, Image, TextInput, ActivityIndicator, Platform, ScrollView, Modal, KeyboardAvoidingView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { THEME } from '../utils/colors';
+import { useTheme } from '../contexts/ThemeContext';
 import LocalAuthService from '../services/LocalAuthService';
 import FirebaseAuthService from '../services/FirebaseAuthService';
 import ConnectivityService from '../services/ConnectivityService';
@@ -13,6 +14,9 @@ interface LoginScreenProps {
 }
 
 export const LoginScreen: React.FC<LoginScreenProps> = () => {
+  const { colors } = useTheme();
+  const styles = useMemo(() => getStyles(colors), [colors]);
+  
   const [email, setEmail] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [name, setName] = useState<string>('');
@@ -188,15 +192,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
     setResetLoading(false);
   };
 
-  const validateInviteCode = (code: string) => {
-    // Em um app real, isso validaria o código com o servidor
-    // Por agora, vamos simular códigos válidos (6 caracteres alfanuméricos)
-    const codePattern = /^[A-Z0-9]{6}$/;
-    const validCodes = ['ABC123', 'DEF456', 'GHI789', 'XYZ789', 'QWE123']; // Códigos de exemplo
-    
-    const upperCode = code.toUpperCase();
-    return codePattern.test(upperCode) && validCodes.includes(upperCode);
-  };
+  // Removido código não utilizado: validação de código de convite
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
@@ -433,10 +429,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: THEME.background,
+    backgroundColor: colors.background,
   },
   scrollContainer: {
     flex: 1,
@@ -460,12 +456,12 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 22,
-    color: THEME.textSecondary,
+    color: colors.textSecondary,
   },
   appName: {
     fontSize: 32,
     fontWeight: 'bold',
-    color: THEME.textPrimary,
+    color: colors.textPrimary,
   },
   buttonContainer: {
     width: '100%',
@@ -478,7 +474,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     marginBottom: 15,
     width: '100%',
-    shadowColor: '#000',
+    shadowColor: colors.shadowColor,
     shadowOffset: {
       width: 0,
       height: 2,
@@ -504,7 +500,7 @@ const styles = StyleSheet.create({
   },
   footerText: {
     fontSize: 14,
-    color: '#999',
+    color: colors.textTertiary,
     textAlign: 'center',
   },
   infoNote: {

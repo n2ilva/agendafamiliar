@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { THEME } from '../utils/colors';
+import { useTheme } from '../contexts/ThemeContext';
 import { familyService } from '../services/LocalFamilyService';
 import { UserRole } from '../types/FamilyTypes';
 import Alert from '../utils/Alert';
@@ -27,6 +28,9 @@ interface Props {
 type SetupStep = 'choose' | 'create-family' | 'join-family';
 
 export default function FamilySetupScreen({ onFamilySetup, onLogout, userEmail, userName, userId }: Props) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => getStyles(colors), [colors]);
+  
   const [currentStep, setCurrentStep] = useState<SetupStep>('choose');
   const [familyName, setFamilyName] = useState('');
   const [familyCode, setFamilyCode] = useState('');
@@ -283,7 +287,7 @@ export default function FamilySetupScreen({ onFamilySetup, onLogout, userEmail, 
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#f8f9fa' }} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.inputBackground }} edges={['top', 'left', 'right']}>
       <KeyboardAvoidingView
         style={styles.keyboardContainer}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -301,10 +305,10 @@ export default function FamilySetupScreen({ onFamilySetup, onLogout, userEmail, 
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   keyboardContainer: {
     flex: 1,
-    backgroundColor: THEME.background,
+    backgroundColor: colors.background,
   },
   scrollContainer: {
     flexGrow: 1,
@@ -359,10 +363,6 @@ const styles = StyleSheet.create({
     width: '100%',
     gap: 20,
   },
-    // No web, remover espaçamentos extras entre "cards" de opção
-    optionsContainerWeb: {
-      gap: 12,
-    },
     roleOption: {
       backgroundColor: THEME.surface,
       padding: 20,

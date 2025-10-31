@@ -13,13 +13,14 @@ import {
   Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { THEME, getCurrentSeason } from '../utils/colors';
+import { THEME } from '../utils/colors';
 import * as ImagePicker from 'expo-image-picker';
 import { UserRole } from '../types/FamilyTypes';
 import LocalAuthService from '../services/LocalAuthService';
 import Alert from '../utils/Alert';
 import { Calendar, LocaleConfig } from 'react-native-calendars';
 import { getBrazilHolidays } from '../utils/Holidays';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface HeaderProps {
   userName: string;
@@ -102,7 +103,13 @@ export const Header: React.FC<HeaderProps> = ({
   const [codeError, setCodeError] = useState<string | null>(null);
   const [calendarVisible, setCalendarVisible] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(new Date());
-
+  
+  // Hook do tema
+  const { themeMode, setThemeMode, colors } = useTheme();
+  
+  // Estilos dinâmicos
+  const styles = useMemo(() => getStyles(colors), [colors]);
+  
   // Locale PT-BR para calendário
   useEffect(() => {
     LocaleConfig.locales['pt-br'] = {
@@ -669,7 +676,20 @@ export const Header: React.FC<HeaderProps> = ({
     <>
       <View style={{ width: '100%' }}>
         <View style={[
-          styles.container,
+          {
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            paddingHorizontal: 20,
+            paddingVertical: 15,
+            backgroundColor: colors.surface,
+            shadowColor: colors.shadowColor,
+            shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: 0.05,
+            shadowRadius: 2,
+            elevation: 3,
+            zIndex: 1000,
+          },
           syncStatus?.hasError 
             ? styles.containerError 
             : syncStatus?.isOnline 
@@ -692,12 +712,12 @@ export const Header: React.FC<HeaderProps> = ({
           
           <Pressable onPress={() => setNameModalVisible(true)} style={styles.userInfo}>
             <View style={styles.nameContainer}>
-              <Text style={styles.userName}>{userName}</Text>
-              <Ionicons name="pencil" size={16} color="#aaa" style={styles.editNameIcon} />
+              <Text style={[styles.userName, { color: colors.textPrimary }]}>{userName}</Text>
+              <Ionicons name="pencil" size={16} color={colors.textTertiary} style={styles.editNameIcon} />
             </View>
             {familyName ? (
               <View style={styles.subtitleRow}>
-                <Text style={styles.subtitle}>{familyName}</Text>
+                <Text style={[styles.subtitle, { color: colors.textSecondary }]}>{familyName}</Text>
                 {userRole === 'dependente' && isSyncingPermissions ? (
                   <View style={styles.syncPill} accessibilityLabel="Sincronizando permissões">
                     <ActivityIndicator size="small" color="#fff" style={{ marginRight: 6 }} />
@@ -706,7 +726,7 @@ export const Header: React.FC<HeaderProps> = ({
                 ) : null}
               </View>
             ) : (
-              <Text style={styles.subtitle}>Família não configurada</Text>
+              <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Família não configurada</Text>
             )}
           </Pressable>
         </View>
@@ -792,38 +812,81 @@ export const Header: React.FC<HeaderProps> = ({
                   }
                 ]}
               >
-                {userRole === 'admin' && onManageFamily && (
-                  <Pressable onPress={() => { setMenuVisible(false); onManageFamily(); }} style={styles.menuItem}>
-                    <Ionicons name="people-outline" size={18} color={THEME.accent} />
-                    <Text style={styles.menuText}>Gerenciar Família</Text>
+                <ScrollView 
+                  style={styles.menuScrollView}
+                  showsVerticalScrollIndicator={false}
+                  bounces={false}
+                >
+                  {userRole === 'admin' && onManageFamily && (
+                    <Pressable onPress={() => { setMenuVisible(false); onManageFamily(); }} style={styles.menuItem}>
+                      <Ionicons name="people-outline" size={18} color={THEME.accent} />
+                      <Text style={styles.menuText}>Gerenciar Família</Text>
+                    </Pressable>
+                  )}
+                  {onJoinFamilyByCode && (
+                    <Pressable onPress={openJoinFamily} style={styles.menuItem}>
+                      <Ionicons name="key-outline" size={18} color={THEME.highlight} />
+                      <Text style={styles.menuText}>Entrar em outra família</Text>
+                    </Pressable>
+                  )}
+                  <Pressable onPress={() => { setMenuVisible(false); onHistory(); }} style={styles.menuItem}>
+                    <Ionicons name="time-outline" size={18} color={THEME.extra} />
+                    <Text style={styles.menuText}>Histórico</Text>
                   </Pressable>
-                )}
-                {onJoinFamilyByCode && (
-                  <Pressable onPress={openJoinFamily} style={styles.menuItem}>
-                    <Ionicons name="key-outline" size={18} color={THEME.highlight} />
-                    <Text style={styles.menuText}>Entrar em outra família</Text>
+                  <Pressable onPress={() => { setMenuVisible(false); onInfo(); }} style={styles.menuItem}>
+                    <Ionicons name="information-circle-outline" size={18} color={THEME.success} />
+                    <Text style={styles.menuText}>Manual e Informações</Text>
                   </Pressable>
-                )}
-                <Pressable onPress={() => { setMenuVisible(false); onHistory(); }} style={styles.menuItem}>
-                  <Ionicons name="time-outline" size={18} color={THEME.extra} />
-                  <Text style={styles.menuText}>Histórico</Text>
-                </Pressable>
-                <Pressable onPress={() => { setMenuVisible(false); onInfo(); }} style={styles.menuItem}>
-                  <Ionicons name="information-circle-outline" size={18} color={THEME.success} />
-                  <Text style={styles.menuText}>Manual e Informações</Text>
-                </Pressable>
-                {/* Atualizar dados */}
-                {onRefresh && (
-                  <Pressable onPress={() => { setMenuVisible(false); onRefresh(); }} style={styles.menuItem}>
-                    <Ionicons name="refresh" size={18} color="#4CAF50" />
-                    <Text style={styles.menuText}>Atualizar Dados</Text>
+                  {/* Atualizar dados */}
+                  {onRefresh && (
+                    <Pressable onPress={() => { setMenuVisible(false); onRefresh(); }} style={styles.menuItem}>
+                      <Ionicons name="refresh" size={18} color="#4CAF50" />
+                      <Text style={styles.menuText}>Atualizar Dados</Text>
+                    </Pressable>
+                  )}
+                  
+                  {/* Tema - chave seletora de 3 posições */}
+                  <View style={styles.menuItem}>
+                    <View style={styles.segmentedControl}>
+                      <Pressable
+                        accessibilityRole="button"
+                        onPress={() => setThemeMode('light')}
+                        style={[
+                          styles.segment,
+                          themeMode === 'light' && styles.segmentActive
+                        ]}
+                      >
+                        <Text numberOfLines={1} style={[styles.segmentText, themeMode === 'light' && styles.segmentTextActive]}>Claro</Text>
+                      </Pressable>
+                      <Pressable
+                        accessibilityRole="button"
+                        onPress={() => setThemeMode('auto')}
+                        style={[
+                          styles.segment,
+                          themeMode === 'auto' && styles.segmentActive
+                        ]}
+                      >
+                        <Text numberOfLines={1} style={[styles.segmentText, themeMode === 'auto' && styles.segmentTextActive]}>Auto</Text>
+                      </Pressable>
+                      <Pressable
+                        accessibilityRole="button"
+                        onPress={() => setThemeMode('dark')}
+                        style={[
+                          styles.segment,
+                          themeMode === 'dark' && styles.segmentActive
+                        ]}
+                      >
+                        <Text numberOfLines={1} style={[styles.segmentText, themeMode === 'dark' && styles.segmentTextActive]}>Escuro</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                  
+                  {/* Logout no final do menu */}
+                  <Pressable onPress={() => { setMenuVisible(false); handleLogout(); }} style={styles.menuItem}>
+                    <Ionicons name="log-out-outline" size={18} color={THEME.danger} />
+                    <Text style={[styles.menuText, { color: THEME.danger }]}>Sair</Text>
                   </Pressable>
-                )}
-                {/* Logout no final do menu */}
-                <Pressable onPress={() => { setMenuVisible(false); handleLogout(); }} style={styles.menuItem}>
-                  <Ionicons name="log-out-outline" size={18} color={THEME.danger} />
-                  <Text style={[styles.menuText, { color: THEME.danger }]}>Sair</Text>
-                </Pressable>
+                </ScrollView>
               </View>
             </View>
           </Modal>
@@ -1220,14 +1283,14 @@ export const Header: React.FC<HeaderProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   container: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingVertical: 15,
-  backgroundColor: THEME.surface,
+  backgroundColor: colors.surface,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -1395,7 +1458,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 40,
     right: 0,
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 8,
     paddingVertical: 8,
     minWidth: 150,
@@ -1409,14 +1472,14 @@ const styles = StyleSheet.create({
     elevation: 10,
     zIndex: 9999,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: colors.border,
   },
   // Dropdown usado dentro do Modal (posicionamento dinâmico calculado via measure())
   dropdownMenuModal: {
     position: 'absolute',
     // top e right são calculados dinamicamente
     width: 240,
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: '#e5e7eb',
@@ -1425,9 +1488,12 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.12,
     shadowRadius: 16,
     elevation: 12,
-    maxHeight: 320,
+    maxHeight: 400,
     zIndex: 1001,
     overflow: 'hidden',
+  },
+  menuScrollView: {
+    maxHeight: 400,
   },
   calendarDropdownModal: {
     position: 'absolute',
@@ -1503,6 +1569,35 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: THEME.textPrimary,
     flex: 1,
+  },
+  // Segmented control for theme mode
+  segmentedControl: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.surfaceSecondary,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+    width: '100%',
+  },
+  segment: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  segmentActive: {
+    backgroundColor: THEME.primary,
+  },
+  segmentText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  segmentTextActive: {
+    color: '#fff',
   },
   menuSeparator: {
     height: 1,
@@ -1831,12 +1926,12 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   legendContainer: {
-    backgroundColor: '#f8f9fa',
+    backgroundColor: colors.inputBackground,
     borderRadius: 8,
     padding: 10,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: colors.border,
   },
   legendTitle: {
     fontSize: 13,

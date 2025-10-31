@@ -3,6 +3,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { TaskScreen } from './screens/TaskScreen';
 import { LoginScreen } from './screens/LoginScreen';
 import FamilySetupScreen from './screens/FamilySetupScreen';
+import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 
 import { ActivityIndicator, View, StyleSheet, Text, Image, StatusBar, Platform } from 'react-native';
 import { FamilyUser, UserRole } from './types/FamilyTypes';
@@ -352,23 +353,68 @@ export default function App() {
   };
 
   return (
-    <View style={{ flex: 1 }}>
+    <ThemeProvider>
+      <AppContent
+        user={user}
+        loading={loading}
+        familyConfigured={familyConfigured}
+        handleLogout={handleLogout}
+        handleUserNameChange={handleUserNameChange}
+        handleUserImageChange={handleUserImageChange}
+        handleUserProfileIconChange={handleUserProfileIconChange}
+        handleUserRoleChange={handleUserRoleChange}
+        handleFamilySetup={handleFamilySetup}
+      />
+    </ThemeProvider>
+  );
+}
+
+// Componente interno que tem acesso ao tema
+const AppContent: React.FC<{
+  user: FamilyUser | null;
+  loading: boolean;
+  familyConfigured: boolean;
+  handleLogout: () => Promise<void>;
+  handleUserNameChange: (newName: string) => void;
+  handleUserImageChange: (newImageUrl: string) => void;
+  handleUserProfileIconChange: (newProfileIcon: string) => void;
+  handleUserRoleChange: (newRole: UserRole, opts?: { silent?: boolean }) => void;
+  handleFamilySetup: (familyId: string) => void;
+}> = ({
+  user,
+  loading,
+  familyConfigured,
+  handleLogout,
+  handleUserNameChange,
+  handleUserImageChange,
+  handleUserProfileIconChange,
+  handleUserRoleChange,
+  handleFamilySetup,
+}) => {
+  const { colors, activeTheme } = useTheme();
+
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
       <StatusBar 
-        barStyle="dark-content" 
-        backgroundColor="#f5f5f5" 
+        barStyle={colors.statusBarStyle}
+        backgroundColor={colors.background} 
         translucent={false}
       />
+      {/* Sincronizar StatusBar e (opcionalmente) NavigationBar no Android quando o tema mudar */}
+      {Platform.OS === 'android' && (
+        <SyncSystemBarsAndroid backgroundColor={colors.background} theme={activeTheme} />
+      )}
     <SafeAreaProvider>
       {loading ? (
-        <View style={styles.loadingContainer}>
+        <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
           <View style={styles.loadingIconContainer}>
-            <ActivityIndicator size="large" color="#007AFF" />
+            <ActivityIndicator size="large" color={colors.primary} />
             <Image 
               source={require('./assets/chapeu_natal.png')} 
               style={styles.loadingChristmasHat}
             />
           </View>
-          <Text style={{ marginTop: 10, color: '#666' }}>Carregando...</Text>
+          <Text style={{ marginTop: 10, color: colors.textSecondary }}>Carregando...</Text>
         </View>
       ) : user ? (
         familyConfigured ? (
@@ -388,7 +434,7 @@ export default function App() {
             {console.log('🏗️ Renderizando FamilySetupScreen', { user: user.name })}
             <FamilySetupScreen
               onFamilySetup={handleFamilySetup}
-              onLogout={handleLogout}
+              onLogout={() => { handleLogout(); }}
               userEmail={user.email || ''}
               userName={user.name}
               userId={user.id}
@@ -404,7 +450,33 @@ export default function App() {
     </SafeAreaProvider>
     </View>
   );
-}
+};
+
+// Componente auxiliar para sincronizar System Bars no Android
+const SyncSystemBarsAndroid: React.FC<{ backgroundColor: string; theme: 'light' | 'dark' }> = ({ backgroundColor, theme }) => {
+  useEffect(() => {
+    try {
+      StatusBar.setBarStyle(theme === 'dark' ? 'light-content' : 'dark-content', true);
+      StatusBar.setBackgroundColor(backgroundColor, true);
+    } catch {}
+
+    // Tentar ajustar a barra de navegação se o módulo estiver disponível
+    (async () => {
+      try {
+        const req: any = (eval as any)('require');
+        const NavigationBar: any = req ? req('expo-navigation-bar') : null;
+        if (NavigationBar && NavigationBar.setBackgroundColorAsync && NavigationBar.setButtonStyleAsync) {
+          await NavigationBar.setBackgroundColorAsync(backgroundColor);
+          await NavigationBar.setButtonStyleAsync(theme === 'dark' ? 'light' : 'dark');
+        }
+      } catch {
+        // Módulo não disponível; ignorar silenciosamente
+      }
+    })();
+  }, [backgroundColor, theme]);
+
+  return null;
+};
 
 const styles = StyleSheet.create({
   loadingContainer: {

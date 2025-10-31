@@ -17,24 +17,18 @@ import {
   KeyboardAvoidingView,
   Image,
   Animated,
+  Vibration,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { GestureHandlerRootView, State, PanGestureHandler } from 'react-native-gesture-handler';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { Picker } from '@react-native-picker/picker';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { v4 as uuidv4 } from 'uuid';
 import { 
-  AVAILABLE_COLORS as PALETTE_COLORS, 
-  DEFAULT_CATEGORY_COLOR_MAP,
-  THEME,
-  THEME_BUTTON_STYLES,
-  THEME_TEXT_STYLES,
-  getThemeButtonStyle,
-  getThemeTextStyle,
-  getCurrentSeason
+  THEME
 } from '../utils/colors';
+import { useTheme } from '../contexts/ThemeContext';
 import { Family, FamilyUser, UserRole, TaskApproval, ApprovalNotification, TaskStatus, Task } from '../types/FamilyTypes';
 import ConnectivityService, { ConnectivityState } from '../services/ConnectivityService';
 import { SyncStatus } from '../services/SyncService';
@@ -386,6 +380,12 @@ interface TaskScreenProps {
 }
 
 export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNameChange, onUserImageChange, onUserProfileIconChange, onUserRoleChange }) => {
+  // Hook do tema
+  const { colors, activeTheme } = useTheme();
+  
+  // Estilos dinâmicos baseados no tema
+  const styles = useMemo(() => getStyles(colors, activeTheme), [colors, activeTheme]);
+  
   const [isRefreshing, setIsRefreshing] = useState(false);
   // Gating de boot inicial: evita UI "travando" enquanto sincroniza
   const [isBootstrapping, setIsBootstrapping] = useState(true);
@@ -545,8 +545,11 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   const [approvalModalVisible, setApprovalModalVisible] = useState(false);
   const [postponeModalVisible, setPostponeModalVisible] = useState(false);
   const [selectedTaskForPostpone, setSelectedTaskForPostpone] = useState<Task | null>(null);
-  const [postponeDays, setPostponeDays] = useState(1);
+  const [postponeDate, setPostponeDate] = useState(new Date());
   const [postponeTime, setPostponeTime] = useState(new Date());
+  const [showPostponeDatePicker, setShowPostponeDatePicker] = useState(false);
+  const [showPostponeTimePicker, setShowPostponeTimePicker] = useState(false);
+
 
   // Gerenciamento de pilha de modais: apenas o topo da pilha fica visível
   type ModalKey = 'task' | 'repeat' | 'category' | 'settings' | 'picker' | 'subtaskPicker' | 'family' | 'editMember';
@@ -1725,11 +1728,19 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   const pickerSubtaskDateValueRef = useRef<Date>(new Date());
   const pickerSubtaskTimeValueRef = useRef<Date>(new Date());
   
+  // Refs para modal de adiamento - mesma estratégia
+  const pickerPostponeDateValueRef = useRef<Date>(new Date());
+  const pickerPostponeTimeValueRef = useRef<Date>(new Date());
+  const originalPostponeDateRef = useRef<Date | null>(null);
+  const originalPostponeTimeRef = useRef<Date | null>(null);
+  
   // Valores estáveis usando APENAS refs - nunca recalcula durante re-renders
   const stableDatePickerValue = pickerDateValueRef.current;
   const stableTimePickerValue = pickerTimeValueRef.current;
   const stableSubtaskDatePickerValue = pickerSubtaskDateValueRef.current;
   const stableSubtaskTimePickerValue = pickerSubtaskTimeValueRef.current;
+  const stablePostponeDatePickerValue = pickerPostponeDateValueRef.current;
+  const stablePostponeTimePickerValue = pickerPostponeTimeValueRef.current;
   
   // Refs para inputs web (date/time nativos HTML5) - usando any para compatibilidade com React Native Web
   const webDateInputRef = useRef<any>(null);
@@ -3292,9 +3303,17 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
 
   const openPostponeModal = useCallback((task: Task) => {
     setSelectedTaskForPostpone(task);
-    setPostponeDays(1);
-    // Inicializar com o horário atual da tarefa ou horário atual
+    // Inicializar com a data e horário atuais da tarefa
+    const initialDate = task.dueDate ? new Date(task.dueDate) : new Date();
     const initialTime = task.dueTime ? new Date(task.dueTime) : new Date();
+    
+    // Atualizar refs
+    pickerPostponeDateValueRef.current = initialDate;
+    pickerPostponeTimeValueRef.current = initialTime;
+  originalPostponeDateRef.current = new Date(initialDate);
+  originalPostponeTimeRef.current = new Date(initialTime);
+    
+    setPostponeDate(initialDate);
     setPostponeTime(initialTime);
     setPostponeModalVisible(true);
   }, []);
@@ -3309,14 +3328,18 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     }
 
     const task = selectedTaskForPostpone;
-    const currentDueDate = task.dueDate ? new Date(task.dueDate) : new Date();
-    const newDueDate = new Date(currentDueDate);
-    newDueDate.setDate(newDueDate.getDate() + postponeDays);
+
+    // Normalizar fuso: alinhar dueDate ao início do dia local e dueTime ao horário na mesma data
+    const normalizedDate = new Date(postponeDate);
+    normalizedDate.setHours(0, 0, 0, 0);
+    const normalizedTime = new Date(normalizedDate);
+    const pt = new Date(postponeTime);
+    normalizedTime.setHours(pt.getHours(), pt.getMinutes(), 0, 0);
 
     const updatedTask: Task = {
       ...task,
-      dueDate: newDueDate,
-      dueTime: postponeTime,
+      dueDate: normalizedDate,
+      dueTime: normalizedTime,
       updatedAt: new Date(),
       editedBy: user.id,
       editedByName: user.name || 'Usuário',
@@ -3339,7 +3362,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         } as any;
         await FirestoreService.saveTask(toSave);
         await LocalStorageService.saveTask(toSave);
-        console.log(`📅 Tarefa adiada por ${postponeDays} dia(s) no Firestore`);
+        console.log(`📅 Data e horário da tarefa atualizados no Firestore`);
       } else {
         await LocalStorageService.saveTask(updatedTask as any);
         
@@ -3348,17 +3371,88 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             ...updatedTask,
             familyId: (task as any).familyId
           });
-          console.log(`📅 Adiamento enfileirado (offline): +${postponeDays} dia(s)`);
+          console.log(`📅 Atualização de data/horário enfileirada (offline)`);
         }
       }
 
-      Alert.alert('Sucesso', `Tarefa adiada por ${postponeDays} dia(s).`);
+      Alert.alert('Sucesso', 'Data e horário da tarefa atualizados.');
     } catch (error) {
-      console.error('Erro ao adiar tarefa:', error);
+      console.error('Erro ao atualizar data/horário da tarefa:', error);
       setTasks(prev => prev.map(t => t.id === task.id ? task : t));
-      Alert.alert('Erro', 'Não foi possível adiar a tarefa.');
+      Alert.alert('Erro', 'Não foi possível atualizar a tarefa.');
     }
-  }, [selectedTaskForPostpone, user, isOffline, postponeDays, postponeTime]);
+  }, [selectedTaskForPostpone, user, isOffline, postponeDate, postponeTime]);
+
+  // Handler para mudança de data no modal de adiamento - USA APENAS REFS
+  const onPostponeDateChange = useCallback((event: any, date?: Date) => {
+    if (Platform.OS === 'android') {
+      setShowPostponeDatePicker(false);
+      
+      if (event?.type === 'set' && date) {
+        pickerPostponeDateValueRef.current = date;
+        setPostponeDate(date);
+      }
+    } else if (Platform.OS === 'ios') {
+      if (date && showPostponeDatePicker) {
+        pickerPostponeDateValueRef.current = date;
+        setPostponeDate(date);
+      }
+    }
+  }, [showPostponeDatePicker]);
+
+  // Handler para mudança de hora no modal de adiamento - USA APENAS REFS
+  const onPostponeTimeChange = useCallback((event: any, time?: Date) => {
+    if (Platform.OS === 'android') {
+      setShowPostponeTimePicker(false);
+      
+      if (event?.type === 'set' && time) {
+        const base = postponeDate || pickerPostponeDateValueRef.current;
+        const merged = new Date(base);
+        merged.setHours(time.getHours(), time.getMinutes(), 0, 0);
+        pickerPostponeTimeValueRef.current = merged;
+        setPostponeTime(merged);
+      }
+    } else if (Platform.OS === 'ios') {
+      if (time && showPostponeTimePicker) {
+        const base = postponeDate || pickerPostponeDateValueRef.current;
+        const merged = new Date(base);
+        merged.setHours(time.getHours(), time.getMinutes(), 0, 0);
+        pickerPostponeTimeValueRef.current = merged;
+        setPostponeTime(merged);
+      }
+    }
+  }, [showPostponeTimePicker, postponeDate]);
+
+  // Utilidades para comparar e validar alterações de adiamento
+  const hasPostponeChanged = useMemo(() => {
+    const origD = originalPostponeDateRef.current;
+    const origT = originalPostponeTimeRef.current;
+    if (!origD || !origT) return true; // se não tivermos base, permitir confirmar
+
+    const d1 = new Date(origD); d1.setHours(0,0,0,0);
+    const d2 = new Date(postponeDate); d2.setHours(0,0,0,0);
+
+    const sameDate = d1.getTime() === d2.getTime();
+
+    const hm1 = { h: new Date(origT).getHours(), m: new Date(origT).getMinutes() };
+    const hm2 = { h: new Date(postponeTime).getHours(), m: new Date(postponeTime).getMinutes() };
+    const sameTime = hm1.h === hm2.h && hm1.m === hm2.m;
+
+    return !(sameDate && sameTime);
+  }, [postponeDate, postponeTime]);
+
+  const combinedPostponeDateTime = useMemo(() => {
+    // Combina a data selecionada com a hora selecionada em horário local
+    const base = new Date(postponeDate);
+    const merged = new Date(base);
+    const t = new Date(postponeTime);
+    merged.setHours(t.getHours(), t.getMinutes(), 0, 0);
+    return merged;
+  }, [postponeDate, postponeTime]);
+
+  const postponeIsPast = useMemo(() => {
+    return combinedPostponeDateTime.getTime() < new Date().getTime();
+  }, [combinedPostponeDateTime]);
 
   const toggleTask = useCallback(async (taskId: string) => {
     const task = tasks.find(t => t.id === taskId);
@@ -4968,27 +5062,11 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
               />
             )}
           </View>
-          
-          {/* Lado direito do header: Indicador privado */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            {/* Indicador de tarefa privada (direita) */}
+          {/* Lado direito do header: cadeado (se privado) + botão de expandir */}
+          <View style={styles.categoryHeaderRight}>
             {((item as any).private === true) && item.createdBy === user.id && (
-              <View style={styles.privateIndicatorRight}>
-                <Ionicons name="lock-closed" size={12} color={THEME.textSecondary} />
-                <Text style={styles.privateIndicatorRightText}>Privado</Text>
-              </View>
+              <Ionicons name="lock-closed" size={14} color={THEME.textSecondary} />
             )}
-          </View>
-          {/* Indicador de tarefa vencida */}
-          {isOverdue && (
-            <View style={styles.overdueIndicator}>
-              <Ionicons name="warning" size={14} color={THEME.danger} />
-              <Text style={styles.overdueLabel}>VENCIDA</Text>
-            </View>
-          )}
-          
-          {/* Botão de Colapsar/Expandir - movido para o final do header */}
-          <View style={styles.collapseButtonContainer}>
             <Ionicons 
               name={collapsedCards.has(item.id) ? "chevron-down-outline" : "chevron-up-outline"} 
               size={16} 
@@ -5028,22 +5106,24 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                 )}
               </Pressable>
               
-              {/* Botões de ação rápida na aba Próximas (admin apenas) */}
-              {isUpcomingTab && !item.completed && user.role === 'admin' && (
+              {/* Botões de ação rápida (admin apenas) */}
+              {!item.completed && user.role === 'admin' && (
                 <View style={{ flexDirection: 'row', gap: 8 }}>
-                  {/* Ícone de Bloquear/Desbloquear */}
-                  <Pressable
-                    onPress={() => toggleLockTask(item.id)}
-                    style={styles.unlockIconButton}
-                  >
-                    <Ionicons 
-                      name={isTaskUnlocked ? "lock-open-outline" : "lock-closed-outline"} 
-                      size={22} 
-                      color={isTaskUnlocked ? THEME.primary : "#999"} 
-                    />
-                  </Pressable>
+                  {/* Ícone de Bloquear/Desbloquear - apenas na aba Próximas */}
+                  {isUpcomingTab && (
+                    <Pressable
+                      onPress={() => toggleLockTask(item.id)}
+                      style={styles.unlockIconButton}
+                    >
+                      <Ionicons 
+                        name={isTaskUnlocked ? "lock-open-outline" : "lock-closed-outline"} 
+                        size={22} 
+                        color={isTaskUnlocked ? THEME.primary : "#999"} 
+                      />
+                    </Pressable>
+                  )}
                   
-                  {/* Ícone de Adiar */}
+                  {/* Ícone de Adiar - visível em todas as abas */}
                   <Pressable
                     onPress={() => openPostponeModal(item)}
                     style={styles.unlockIconButton}
@@ -5072,6 +5152,14 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
               <Text style={[styles.scheduleText, isOverdue && styles.overdueText]}>
                 {item.dueDate ? `${formatDate(item.dueDate)} ` : ''}{formatTime(item.dueTime)}
               </Text>
+            </View>
+          )}
+
+          {/* Indicador de tarefa vencida na mesma linha dos chips de data */}
+          {isOverdue && (
+            <View style={styles.overdueIndicator}>
+              <Ionicons name="warning" size={14} color={THEME.danger} />
+              <Text style={styles.overdueLabel}>VENCIDA</Text>
             </View>
           )}
 
@@ -5205,6 +5293,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             </View>
           </>
         )}
+
       </View>
     );
   };
@@ -6759,18 +6848,18 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
               <>
                 {/* Seção: Solicitações para virar Admin */}
                 <View style={{ paddingHorizontal: 4, marginBottom: 12 }}>
-                  <Text style={{ fontSize: 16, fontWeight: '600', color: '#333', marginBottom: 8 }}>
+                  <Text style={{ fontSize: 16, fontWeight: '600', color: colors.textPrimary, marginBottom: 8 }}>
                    {adminRoleRequests.length > 0 ? `(${adminRoleRequests.length})` : ''}
                   </Text>
                   {adminRoleRequests.length === 0 ? (
-                    <Text style={{ color: '#666' }}></Text>
+                    <Text style={{ color: colors.textSecondary }}></Text>
                   ) : (
                     <View style={{ gap: 10 }}>
                       {adminRoleRequests.map((req: any) => (
-                        <View key={req.id} style={{ backgroundColor: '#fff', borderRadius: 10, padding: 12, borderWidth: 1, borderColor: '#eee' }}>
-                          <Text style={{ fontSize: 15, fontWeight: '600', color: '#333' }}>{req.requesterName}</Text>
-                          <Text style={{ fontSize: 13, color: '#666', marginTop: 2 }}>pediu para se tornar administrador</Text>
-                          <Text style={{ fontSize: 12, color: '#999', marginTop: 6 }}>
+                        <View key={req.id} style={{ backgroundColor: colors.surface, borderRadius: 10, padding: 12, borderWidth: 1, borderColor: colors.border }}>
+                          <Text style={{ fontSize: 15, fontWeight: '600', color: colors.textPrimary }}>{req.requesterName}</Text>
+                          <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2 }}>pediu para se tornar administrador</Text>
+                          <Text style={{ fontSize: 12, color: colors.textTertiary, marginTop: 6 }}>
                             {req.requestedAt ? new Date(req.requestedAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}
                           </Text>
                           <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
@@ -7517,58 +7606,96 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             <Text style={styles.modalSubtitle}>
               {selectedTaskForPostpone?.title}
             </Text>
-            
-            {/* Seletor de Dias */}
-            <View style={styles.pickerSection}>
-              <Text style={styles.pickerLabel}>Adiar por quantos dias?</Text>
-              <View style={styles.pickerContainer}>
-                <Picker
-                  selectedValue={postponeDays}
-                  onValueChange={(value: number) => setPostponeDays(value)}
-                  style={styles.picker}
-                >
-                  {[1, 2, 3, 4, 5, 6, 7, 10, 14, 21, 30].map((day) => (
-                    <Picker.Item 
-                      key={day} 
-                      label={day === 1 ? '1 dia' : `${day} dias`} 
-                      value={day} 
-                    />
-                  ))}
-                </Picker>
-              </View>
-            </View>
 
-            {/* Seletor de Horário */}
-            <View style={styles.pickerSection}>
-              <Text style={styles.pickerLabel}>Novo horário</Text>
-              <DateTimePicker
-                value={postponeTime}
-                mode="time"
-                is24Hour={true}
-                display="spinner"
-                onChange={(event, selectedTime) => {
-                  if (selectedTime) {
-                    setPostponeTime(selectedTime);
-                  }
+            {/* Agendamento - igual subtarefas: dois botões lado a lado */}
+            <Text style={[styles.pickerLabel, { marginTop: 8 }]}>Agendamento</Text>
+            <View style={[
+              styles.dateTimeContainer,
+              Platform.OS === 'web' && styles.dateTimeContainerWeb
+            ]}>
+              {/* Botão de Data */}
+              <Pressable 
+                style={[
+                  styles.dateTimeButton,
+                  Platform.OS === 'web' && styles.dateTimeButtonWeb
+                ]}
+                onPress={() => {
+                  if (Platform.OS === 'android') Vibration.vibrate(10);
+                  const initialValue = postponeDate || new Date();
+                  pickerPostponeDateValueRef.current = initialValue;
+                  setShowPostponeDatePicker(true);
                 }}
-                style={styles.timePicker}
-              />
-            </View>
-
-            {/* Botões de Ação */}
-            <View style={styles.postponeButtonsContainer}>
-              <Pressable
-                style={styles.confirmButton}
-                onPress={postponeTask}
               >
-                <Text style={styles.confirmButtonText}>Confirmar</Text>
+                <Ionicons name="calendar-outline" size={16} color="#666" />
+                <Text style={styles.dateTimeButtonText}>
+                  {postponeDate ? formatDate(postponeDate) : 'Selecionar data'}
+                </Text>
               </Pressable>
 
+              {/* Botão de Hora */}
+              <Pressable 
+                style={[
+                  styles.dateTimeButton,
+                  Platform.OS === 'web' && styles.dateTimeButtonWeb
+                ]}
+                onPress={() => {
+                  if (Platform.OS === 'android') Vibration.vibrate(10);
+                  const base = postponeDate || new Date();
+                  const initialValue = postponeTime || base;
+                  pickerPostponeTimeValueRef.current = initialValue;
+                  setShowPostponeTimePicker(true);
+                }}
+              >
+                <Ionicons name="time-outline" size={16} color="#666" />
+                <Text style={styles.dateTimeButtonText}>
+                  {postponeTime ? formatTime(postponeTime) : 'Selecionar horário'}
+                </Text>
+              </Pressable>
+            </View>
+
+            {/* DateTimePicker para Data */}
+            {showPostponeDatePicker && (
+              <DateTimePicker
+                value={stablePostponeDatePickerValue}
+                mode="date"
+                display="default"
+                onChange={onPostponeDateChange}
+              />
+            )}
+
+            {/* DateTimePicker para Horário */}
+            {showPostponeTimePicker && (
+              <DateTimePicker
+                value={stablePostponeTimePickerValue}
+                mode="time"
+                is24Hour={true}
+                display="default"
+                onChange={onPostponeTimeChange}
+              />
+            )}
+
+            {/* Aviso sutil se data/hora estiver no passado */}
+            {postponeIsPast && (
+              <Text style={styles.postponeWarningText}>
+                A nova data/horário está no passado.
+              </Text>
+            )}
+
+            {/* Botões de Ação - mesmo estilo dos outros modais */}
+            <View style={styles.modalButtons}>
               <Pressable
-                style={styles.cancelButton}
+                style={[styles.button, styles.cancelButton]}
                 onPress={() => setPostponeModalVisible(false)}
               >
                 <Text style={styles.cancelButtonText}>Cancelar</Text>
+              </Pressable>
+
+              <Pressable
+                style={[styles.button, styles.addButton, !hasPostponeChanged && styles.buttonDisabled]}
+                disabled={!hasPostponeChanged}
+                onPress={postponeTask}
+              >
+                <Text style={styles.addButtonText}>Confirmar</Text>
               </Pressable>
             </View>
           </View>
@@ -7580,7 +7707,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any, activeTheme: 'light' | 'dark') => StyleSheet.create({
   // Wrapper de página: mantém o layout atual no mobile; na web centraliza e limita largura
   pageContainer: {
     flex: 1,
@@ -7602,13 +7729,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   familyCard: {
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.surface,
     borderRadius: 0,
     borderTopWidth: 1,
     borderBottomWidth: 1,
     borderLeftWidth: 0,
     borderRightWidth: 0,
-    borderColor: '#e0e0e0',
+    borderColor: colors.border,
     padding: 20,
     marginBottom: 12,
     width: '100%',
@@ -7627,7 +7754,7 @@ const styles = StyleSheet.create({
     borderRightWidth: 1,
     marginHorizontal: 0,
     marginBottom: 16,
-    shadowColor: '#000',
+    shadowColor: colors.shadowColor,
     shadowOpacity: 0.06,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
@@ -7664,12 +7791,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-start',
     marginTop: 12,
-    backgroundColor: '#f4f7fb',
+    backgroundColor: colors.inputBackground,
     paddingVertical: 14,
     paddingHorizontal: 16,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#d6e2f2',
+    borderColor: colors.border,
   },
   familyCardBadge: {
     backgroundColor: THEME.primary + '20',
@@ -7683,7 +7810,7 @@ const styles = StyleSheet.create({
   familyMemberCard: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
     borderWidth: 2,
@@ -7817,7 +7944,7 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
-    backgroundColor: '#f8f9fa',
+    backgroundColor: colors.surfaceSecondary,
   },
   content: {
     flex: 1,
@@ -7843,7 +7970,7 @@ const styles = StyleSheet.create({
     marginRight: 8,
     borderRadius: 20,
     borderWidth: 1,
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     minWidth: 80,
   },
   categoryFilterActive: {
@@ -7866,7 +7993,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1,
     borderColor: THEME.primary,
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderStyle: 'dashed',
     minWidth: 80,
   },
@@ -7901,7 +8028,7 @@ const styles = StyleSheet.create({
     width: 50,
     height: 50,
     borderRadius: 25,
-    backgroundColor: '#f8f9fa',
+    backgroundColor: colors.surfaceSecondary,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
@@ -7931,7 +8058,7 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   colorSelectorActive: {
-    borderColor: '#333',
+    borderColor: colors.textPrimary,
   },
   categoryPreview: {
     marginBottom: 20,
@@ -7939,7 +8066,7 @@ const styles = StyleSheet.create({
   previewLabel: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#333',
+    color: colors.textPrimary,
     marginBottom: 8,
   },
   privateToggleContainer: {
@@ -7955,7 +8082,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#ccc',
-    backgroundColor: '#fff'
+    backgroundColor: colors.surface
   },
   privateToggleButtonCompact: {
     flexDirection: 'row',
@@ -7965,7 +8092,7 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     borderWidth: 1,
     borderColor: '#ccc',
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     gap: 4,
   },
   privateToggleButtonActive: {
@@ -7974,11 +8101,11 @@ const styles = StyleSheet.create({
   },
   privateToggleText: {
     marginRight: 8,
-    color: '#333'
+    color: colors.textPrimary
   },
   privateToggleTextCompact: {
     fontSize: 13,
-    color: '#333',
+    color: colors.textPrimary,
     fontWeight: '500',
   },
   privateToggleTextActive: {
@@ -8015,13 +8142,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 10, // Reduzir padding
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: colors.border,
     borderRadius: 8,
-    backgroundColor: '#f8f9fa',
+    backgroundColor: colors.surfaceSecondary,
   },
   dateTimeButtonText: {
     fontSize: 13, // Reduzir tamanho da fonte
-    color: '#666',
+    color: colors.textSecondary,
     marginLeft: 6,
     flex: 1,
   },
@@ -8052,8 +8179,8 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
-    backgroundColor: '#f8f9fa',
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceSecondary,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -8067,7 +8194,7 @@ const styles = StyleSheet.create({
   customDaysLabel: {
     fontSize: 13, // Reduzir tamanho da fonte
     fontWeight: '600',
-    color: '#333',
+    color: colors.textPrimary,
     marginBottom: 6, // Reduzir margem
   },
   customDaysSelector: {
@@ -8079,8 +8206,8 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
-    backgroundColor: '#f8f9fa',
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceSecondary,
   },
   chipButtonActive: {
     backgroundColor: THEME.primaryBg,
@@ -8088,7 +8215,7 @@ const styles = StyleSheet.create({
   },
   chipText: {
     fontSize: 12,
-    color: '#666',
+    color: colors.textSecondary,
     fontWeight: '600',
   },
   chipTextActive: {
@@ -8098,11 +8225,11 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#f8f9fa',
+    backgroundColor: colors.surfaceSecondary,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: colors.border,
   },
   dayButtonActive: {
     backgroundColor: THEME.primary,
@@ -8110,7 +8237,7 @@ const styles = StyleSheet.create({
   },
   dayButtonText: {
     fontSize: 12,
-    color: '#666',
+    color: colors.textSecondary,
     fontWeight: '600',
   },
   dayButtonTextActive: {
@@ -8121,11 +8248,11 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 16,
     borderRadius: 8,
-    backgroundColor: '#f8f9fa',
+    backgroundColor: colors.surfaceSecondary,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: colors.border,
   },
   toggleButtonActive: {
     backgroundColor: THEME.primary,
@@ -8133,7 +8260,7 @@ const styles = StyleSheet.create({
   },
   toggleButtonText: {
     fontSize: 14,
-    color: '#666',
+    color: colors.textSecondary,
     fontWeight: '600',
   },
   toggleButtonTextActive: {
@@ -8144,7 +8271,7 @@ const styles = StyleSheet.create({
   },
   summaryText: {
     fontSize: 13, // Reduzir tamanho da fonte
-    color: '#666',
+    color: colors.textSecondary,
     textAlign: 'center',
   },
   emptyContainer: {
@@ -8156,13 +8283,13 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 16, // Reduzir tamanho da fonte
     fontWeight: 'bold',
-    color: '#666',
+    color: colors.textSecondary,
     marginTop: 16, // Reduzir margem superior
     marginBottom: 6, // Reduzir margem inferior
   },
   emptySubtext: {
     fontSize: 13, // Reduzir tamanho da fonte
-    color: '#999',
+    color: colors.textTertiary,
     textAlign: 'center',
     lineHeight: 18, // Reduzir line height
   },
@@ -8177,7 +8304,7 @@ const styles = StyleSheet.create({
     width: '95%',
     maxWidth: 500,
     borderRadius: 12,
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     padding: 16,
     maxHeight: '75%',
   },
@@ -8198,7 +8325,7 @@ const styles = StyleSheet.create({
     alignItems: 'stretch',
   },
   taskItem: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 12, // Reduzir border radius
     marginHorizontal: 0, // ocupar 100% do container
     marginBottom: 12, // Reduzir margem inferior
@@ -8212,14 +8339,14 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 4,
     borderWidth: 1,
-    borderColor: '#f0f0f0',
+    borderColor: colors.border,
     overflow: 'hidden',
     alignSelf: 'stretch',
     width: '100%',
   },
   taskCompleted: {
     opacity: 0.6,
-    backgroundColor: '#f8f9fa',
+    backgroundColor: colors.surfaceSecondary,
   },
   // Category Header - New Styles
   categoryHeader: {
@@ -8228,10 +8355,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0,0,0,0.05)',
+    borderBottomWidth: activeTheme === 'dark' ? 0 : 1,
+    borderBottomColor: activeTheme === 'dark' ? 'transparent' : 'rgba(0,0,0,0.05)',
   },
   categoryHeaderContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  categoryHeaderRight: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
@@ -8247,7 +8379,7 @@ const styles = StyleSheet.create({
   privateIndicatorRightText: {
     marginLeft: 4,
     fontSize: 10,
-    color: '#666',
+    color: colors.textSecondary,
     fontWeight: '700'
   },
   privateIndicator: {
@@ -8262,7 +8394,7 @@ const styles = StyleSheet.create({
   privateIndicatorText: {
     marginLeft: 4,
     fontSize: 10,
-    color: '#666',
+    color: colors.textSecondary,
     fontWeight: '700'
   },
   categoryHeaderText: {
@@ -8288,8 +8420,8 @@ const styles = StyleSheet.create({
     height: 24,
     borderRadius: 12,
     borderWidth: 2,
-    borderColor: THEME.primary,
-    backgroundColor: '#fff',
+    borderColor: activeTheme === 'dark' ? '#fff' : THEME.primary,
+    backgroundColor: activeTheme === 'dark' ? 'transparent' : colors.surface,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -8298,8 +8430,8 @@ const styles = StyleSheet.create({
     borderColor: THEME.primary,
   },
   checkboxDisabled: {
-    backgroundColor: '#f5f5f5',
-    borderColor: '#ccc',
+    backgroundColor: activeTheme === 'dark' ? 'transparent' : colors.background,
+    borderColor: activeTheme === 'dark' ? '#555' : '#ccc',
   },
   unlockIconButton: {
     padding: 8,
@@ -8311,23 +8443,23 @@ const styles = StyleSheet.create({
   taskTitle: {
     fontSize: 16, // Reduzir tamanho da fonte
     fontWeight: '600',
-    color: '#1a1a1a',
+    color: colors.textPrimary,
     lineHeight: 22, // Reduzir line height
     marginBottom: 3, // Reduzir margem
   },
   taskTitleCompleted: {
     textDecorationLine: 'line-through',
-    color: '#999',
+    color: colors.textTertiary,
   },
   taskDescription: {
     fontSize: 13, // Reduzir tamanho da fonte
-    color: '#666',
+    color: activeTheme === 'dark' ? '#fff' : colors.textSecondary,
     lineHeight: 18, // Reduzir line height
     marginTop: 3, // Reduzir margem
   },
   taskDescriptionCompleted: {
     textDecorationLine: 'line-through',
-    color: '#999',
+    color: colors.textTertiary,
   },
   categoryBadge: {
     flexDirection: 'row',
@@ -8350,23 +8482,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12, // Reduzir padding horizontal
     paddingBottom: 12, // Reduzir padding inferior
     gap: 6, // Reduzir gap
-    borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
+    borderTopWidth: activeTheme === 'dark' ? 0 : 1,
+    borderTopColor: activeTheme === 'dark' ? 'transparent' : '#f0f0f0',
     paddingTop: 8, // Reduzir padding superior
   },
   scheduleItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f8f9fa',
+    backgroundColor: colors.surfaceSecondary,
     paddingHorizontal: 8, // Reduzir padding horizontal
     paddingVertical: 4, // Reduzir padding vertical
     borderRadius: 10, // Reduzir border radius
-    borderWidth: 1,
-    borderColor: '#e9ecef',
+    borderWidth: activeTheme === 'dark' ? 0 : 1,
+    borderColor: activeTheme === 'dark' ? 'transparent' : '#e9ecef',
   },
   scheduleText: {
     fontSize: 11, // Reduzir tamanho da fonte
-    color: '#495057',
+    color: activeTheme === 'dark' ? '#fff' : '#495057',
     marginLeft: 3, // Reduzir margem
     fontWeight: '600',
   },
@@ -8379,7 +8511,7 @@ const styles = StyleSheet.create({
   },
   subtaskScheduleText: {
     fontSize: 10,
-    color: '#999',
+    color: activeTheme === 'dark' ? '#fff' : colors.textTertiary,
     marginLeft: 4,
     fontStyle: 'italic',
   },
@@ -8400,7 +8532,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   scheduleActionButton: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: '#e9ecef',
     borderRadius: 6,
@@ -8434,12 +8566,12 @@ const styles = StyleSheet.create({
   overdueIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff5f5',
+    backgroundColor: activeTheme === 'dark' ? 'rgba(220,53,69,0.15)' : '#fff5f5',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#fecaca',
+    borderColor: activeTheme === 'dark' ? 'rgba(220,53,69,0.4)' : '#fecaca',
   },
   overdueLabel: {
     fontSize: 10,
@@ -8559,12 +8691,12 @@ const styles = StyleSheet.create({
   },
   input: {
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: colors.border,
     borderRadius: 8,
     padding: 10, // Reduzir padding
     fontSize: 15, // Reduzir tamanho da fonte
     marginBottom: 12, // Reduzir margem
-    backgroundColor: '#f8f9fa',
+    backgroundColor: colors.surfaceSecondary,
     width: '99%', // Garantir que ocupe toda a largura disponível
     alignSelf: 'stretch', // Garantir que se estenda corretamente
   },
@@ -8578,7 +8710,7 @@ const styles = StyleSheet.create({
   categoryLabel: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#333',
+    color: colors.textPrimary,
     marginBottom: 10,
   },
   categorySelectorContainer: {
@@ -8645,7 +8777,7 @@ const styles = StyleSheet.create({
   },
   // Date Picker Styles
   datePickerModal: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 20,
     padding: 20,
     margin: 20,
@@ -8661,7 +8793,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textAlign: 'center',
     marginBottom: 20,
-    color: '#333',
+    color: colors.textPrimary,
   },
   dateInputsContainer: {
     flexDirection: 'row',
@@ -8671,7 +8803,7 @@ const styles = StyleSheet.create({
   },
   dateInput: {
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: colors.border,
     borderRadius: 8,
     padding: 12,
     textAlign: 'center',
@@ -8682,7 +8814,7 @@ const styles = StyleSheet.create({
   dateSeparator: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#666',
+    color: colors.textSecondary,
     marginHorizontal: 5,
   },
   datePickerActions: {
@@ -8694,11 +8826,11 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 8,
     alignItems: 'center',
-    backgroundColor: '#f8f9fa',
+    backgroundColor: colors.surfaceSecondary,
     marginRight: 8,
   },
   datePickerCancelText: {
-    color: '#666',
+    color: colors.textSecondary,
     fontSize: 16,
     fontWeight: '600',
   },
@@ -8717,7 +8849,7 @@ const styles = StyleSheet.create({
   },
   // Time Picker Styles
   timePickerModal: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 20,
     padding: 20,
     margin: 20,
@@ -8733,7 +8865,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textAlign: 'center',
     marginBottom: 20,
-    color: '#333',
+    color: colors.textPrimary,
   },
   timeInputsContainer: {
     flexDirection: 'row',
@@ -8743,7 +8875,7 @@ const styles = StyleSheet.create({
   },
   timeInput: {
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: colors.border,
     borderRadius: 8,
     padding: 12,
     textAlign: 'center',
@@ -8754,7 +8886,7 @@ const styles = StyleSheet.create({
   timeSeparator: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#666',
+    color: colors.textSecondary,
     marginHorizontal: 10,
   },
   timePickerActions: {
@@ -8766,11 +8898,11 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 8,
     alignItems: 'center',
-    backgroundColor: '#f8f9fa',
+    backgroundColor: colors.surfaceSecondary,
     marginRight: 8,
   },
   timePickerCancelText: {
-    color: '#666',
+    color: colors.textSecondary,
     fontSize: 16,
     fontWeight: '600',
   },
@@ -8802,7 +8934,7 @@ const styles = StyleSheet.create({
   /*
   tabContainer: {
     flexDirection: 'row',
-    backgroundColor: '#f8f9fa',
+    backgroundColor: colors.surfaceSecondary,
     borderRadius: 12,
     padding: 4,
     marginHorizontal: 20,
@@ -8824,7 +8956,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   activeTab: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
@@ -8834,7 +8966,7 @@ const styles = StyleSheet.create({
   tabText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#666',
+    color: colors.textSecondary,
     marginLeft: 6,
     marginRight: 8,
   },
@@ -8853,7 +8985,7 @@ const styles = StyleSheet.create({
   taskCountText: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#666',
+    color: colors.textSecondary,
   },
   activeTaskCountText: {
     color: '#fff',
@@ -8888,7 +9020,7 @@ const styles = StyleSheet.create({
   simpleTabText: {
     fontSize: 15, // Reduzir tamanho da fonte
     fontWeight: '500',
-    color: '#666',
+    color: colors.textSecondary,
   },
   activeSimpleTabText: {
     color: THEME.primary,
@@ -8901,7 +9033,7 @@ const styles = StyleSheet.create({
     maxHeight: '75%',
     minHeight: 320,
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 16,
     shadowColor: '#000',
@@ -8917,7 +9049,7 @@ const styles = StyleSheet.create({
   },
   historySubtitle: {
     fontSize: 14,
-    color: '#666',
+    color: colors.textSecondary,
     textAlign: 'center',
     marginBottom: 12,
     paddingHorizontal: 20,
@@ -8943,13 +9075,13 @@ const styles = StyleSheet.create({
   emptyHistoryText: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#333',
+    color: colors.textPrimary,
     marginTop: 16,
     marginBottom: 8,
   },
   emptyHistorySubtext: {
     fontSize: 14,
-    color: '#666',
+    color: colors.textSecondary,
     textAlign: 'center',
     paddingHorizontal: 40,
   },
@@ -8959,7 +9091,7 @@ const styles = StyleSheet.create({
     width: '95%',
     alignSelf: 'center',
     marginVertical: 4,
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
@@ -8971,7 +9103,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#f8f9fa',
+    backgroundColor: colors.surfaceSecondary,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
@@ -8982,7 +9114,7 @@ const styles = StyleSheet.create({
   },
   historyText: {
     fontSize: 15,
-    color: '#333',
+    color: colors.textPrimary,
     marginBottom: 4,
   },
   historyAction: {
@@ -8991,19 +9123,20 @@ const styles = StyleSheet.create({
   },
   historyDetails: {
     fontSize: 13,
-    color: '#666',
+    color: colors.textSecondary,
     marginBottom: 4,
     fontStyle: 'italic',
   },
   historyTime: {
     fontSize: 12,
-    color: '#999',
+    color: colors.textTertiary,
   },
   // Overdue Task Styles
   taskOverdue: {
-    backgroundColor: '#fff5f5',
+    // Manter o fundo do card conforme o tema; no dark permanecer escuro
+    backgroundColor: activeTheme === 'dark' ? colors.surface : '#fff5f5',
     borderWidth: 2,
-    borderColor: '#fecaca',
+    borderColor: activeTheme === 'dark' ? 'rgba(220,53,69,0.4)' : '#fecaca',
   },
   pendingRecurringIndicator: {
     flexDirection: 'row',
@@ -9056,20 +9189,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 8,
     paddingVertical: 4,
-    backgroundColor: '#fff3cd',
+    backgroundColor: activeTheme === 'dark' ? 'rgba(255,193,7,0.15)' : '#fff3cd',
     borderRadius: 12,
     marginHorizontal: 12,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: '#ff9800',
+    borderColor: activeTheme === 'dark' ? 'rgba(255,152,0,0.4)' : '#ff9800',
   },
   approvalStatusApproved: {
-    backgroundColor: '#d4edda',
-    borderColor: '#4CAF50',
+    backgroundColor: activeTheme === 'dark' ? 'rgba(76,175,80,0.15)' : '#d4edda',
+    borderColor: activeTheme === 'dark' ? 'rgba(76,175,80,0.4)' : '#4CAF50',
   },
   approvalStatusRejected: {
-    backgroundColor: '#f8d7da',
-    borderColor: '#e74c3c',
+    backgroundColor: activeTheme === 'dark' ? 'rgba(231,76,60,0.15)' : '#f8d7da',
+    borderColor: activeTheme === 'dark' ? 'rgba(231,76,60,0.4)' : '#e74c3c',
   },
   approvalStatusText: {
     fontSize: 12,
@@ -9085,7 +9218,7 @@ const styles = StyleSheet.create({
   },
   noNotificationsText: {
     textAlign: 'center',
-    color: '#666',
+    color: colors.textSecondary,
     fontStyle: 'italic',
     marginVertical: 20,
   },
@@ -9094,27 +9227,27 @@ const styles = StyleSheet.create({
     marginVertical: 10,
   },
   notificationItem: {
-    backgroundColor: '#f8f9fa',
+    backgroundColor: colors.surfaceSecondary,
     borderRadius: 10,
     padding: 15,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: colors.border,
   },
   notificationTitle: {
     fontSize: 14,
-    color: '#666',
+    color: colors.textSecondary,
     marginBottom: 5,
   },
   notificationTaskTitle: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#333',
+    color: colors.textPrimary,
     marginBottom: 5,
   },
   notificationTime: {
     fontSize: 12,
-    color: '#999',
+    color: colors.textTertiary,
     marginBottom: 10,
   },
   approvalActions: {
@@ -9406,7 +9539,7 @@ const styles = StyleSheet.create({
   },
   memberJoinDate: {
     fontSize: 12,
-    color: '#999',
+    color: colors.textTertiary,
   },
   removeMemberButton: {
     paddingVertical: 12,
@@ -9518,7 +9651,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 3,
-    borderColor: '#e0e0e0',
+    borderColor: colors.border,
     marginBottom: 12,
   },
   editMemberAvatarImage: {
@@ -9532,12 +9665,12 @@ const styles = StyleSheet.create({
   editMemberName: {
     fontSize: 22,
     fontWeight: 'bold',
-    color: '#333',
+    color: colors.textPrimary,
     marginBottom: 6,
   },
   editMemberJoinDate: {
     fontSize: 14,
-    color: '#666',
+    color: colors.textSecondary,
   },
   editSection: {
     paddingHorizontal: 20,
@@ -9548,12 +9681,12 @@ const styles = StyleSheet.create({
   editSectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#333',
+    color: colors.textPrimary,
     marginBottom: 8,
   },
   editSectionDescription: {
     fontSize: 14,
-    color: '#666',
+    color: colors.textSecondary,
     marginBottom: 16,
     lineHeight: 20,
   },
@@ -9565,10 +9698,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: 16,
-    backgroundColor: '#f8f9fa',
+    backgroundColor: colors.surfaceSecondary,
     borderRadius: 10,
     borderWidth: 2,
-    borderColor: '#e0e0e0',
+    borderColor: colors.border,
   },
   permissionEditItemActive: {
     backgroundColor: '#e6f3ff',
@@ -9582,7 +9715,7 @@ const styles = StyleSheet.create({
   permissionEditLabel: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#333',
+    color: colors.textPrimary,
   },
   permissionEditLabelActive: {
     color: THEME.primary,
@@ -9602,7 +9735,7 @@ const styles = StyleSheet.create({
   },
   permissionsNote: {
     fontSize: 12,
-    color: '#999',
+    color: colors.textTertiary,
     marginTop: 12,
     fontStyle: 'italic',
     lineHeight: 16,
@@ -9648,16 +9781,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#f8f9fa',
+    backgroundColor: colors.surfaceSecondary,
     padding: 16,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: colors.border,
   },
   currentFamilyName: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#333',
+    color: colors.textPrimary,
     flex: 1,
   },
   editFamilyNameIconButton: {
@@ -9708,7 +9841,7 @@ const styles = StyleSheet.create({
   },
   // Estilos para indicador de conectividade
   connectivityIndicator: {
-    backgroundColor: '#f8f9fa',
+    backgroundColor: colors.surfaceSecondary,
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
     paddingHorizontal: 16,
@@ -9729,13 +9862,13 @@ const styles = StyleSheet.create({
   },
   // Estilos para informações de autoria
   authorshipInfo: {
-    backgroundColor: '#f8f9fa',
+    backgroundColor: colors.surfaceSecondary,
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderBottomLeftRadius: 16,
     borderBottomRightRadius: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
+    borderTopWidth: activeTheme === 'dark' ? 0 : 1,
+    borderTopColor: activeTheme === 'dark' ? 'transparent' : '#f0f0f0',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -9748,13 +9881,13 @@ const styles = StyleSheet.create({
   },
   authorshipText: {
     fontSize: 11,
-    color: '#666',
+    color: activeTheme === 'dark' ? '#fff' : colors.textSecondary,
     fontWeight: '500',
     flex: 1,
   },
   historyAuthor: {
     fontSize: 11,
-    color: '#666',
+    color: colors.textSecondary,
     fontStyle: 'italic',
     marginTop: 2,
   },
@@ -9764,7 +9897,7 @@ const styles = StyleSheet.create({
   },
   // Estilos para botão de filtro e rodapé
   filterButton: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: THEME.primary,
     borderRadius: 6,
@@ -9801,7 +9934,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     paddingHorizontal: 20,
     paddingTop: 12,
     paddingBottom: 12, // Reduzido já que SafeAreaView cuida do bottom
@@ -9840,7 +9973,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     // top e right serão definidos dinamicamente via inline style
     width: 240,
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: '#e5e7eb',
@@ -9908,14 +10041,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 16,
     paddingHorizontal: 20,
-    backgroundColor: '#f8f9fa',
+    backgroundColor: colors.surfaceSecondary,
     marginBottom: 2,
     borderRadius: 8,
   },
   settingsOptionText: {
     flex: 1,
     fontSize: 16,
-    color: '#333',
+    color: colors.textPrimary,
     marginLeft: 15,
     fontWeight: '500',
   },
@@ -9974,13 +10107,13 @@ const styles = StyleSheet.create({
   createFamilyTitle: {
     fontSize: 22,
     fontWeight: 'bold',
-    color: '#333',
+    color: colors.textPrimary,
     textAlign: 'center',
     marginBottom: 8,
   },
   createFamilySubtitle: {
     fontSize: 15,
-    color: '#666',
+    color: colors.textSecondary,
     textAlign: 'center',
     marginBottom: 30,
     lineHeight: 22,
@@ -9990,14 +10123,14 @@ const styles = StyleSheet.create({
     marginBottom: 25,
   },
   createFamilyInput: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderWidth: 2,
-    borderColor: '#e0e0e0',
+    borderColor: colors.border,
     borderRadius: 10,
     paddingVertical: 16,
     paddingHorizontal: 18,
     fontSize: 17,
-    color: '#333',
+    color: colors.textPrimary,
   },
   createFamilyButton: {
     flexDirection: 'row',
@@ -10043,7 +10176,7 @@ const styles = StyleSheet.create({
   createFamilyNoteText: {
     flex: 1,
     fontSize: 15,
-    color: '#666',
+    color: colors.textSecondary,
     lineHeight: 22,
   },
   // ===== Permissões de Membros =====
@@ -10056,7 +10189,7 @@ const styles = StyleSheet.create({
   permissionsTitle: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#333',
+    color: colors.textPrimary,
     marginBottom: 6
   },
   permissionsRow: {
@@ -10070,7 +10203,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     borderColor: '#bbb',
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     marginRight: 8,
     marginBottom: 8
   },
@@ -10088,7 +10221,7 @@ const styles = StyleSheet.create({
   },
   permissionsHint: {
     fontSize: 10,
-    color: '#666',
+    color: colors.textSecondary,
     marginTop: 2
   },
   // Banner unificado de sincronização no modal de família
@@ -10118,7 +10251,7 @@ const styles = StyleSheet.create({
     elevation: 9999,
   },
   iosPickerContainer: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderTopLeftRadius: 12,
     borderTopRightRadius: 12,
     paddingBottom: Platform.OS === 'ios' ? 20 : 0,
@@ -10144,16 +10277,16 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   iosDateTimePicker: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     height: 200,
   },
   // iOS inline picker dentro do container do modal de tarefa
   iosInlinePickerBox: {
     marginTop: 12,
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: colors.border,
     overflow: 'hidden',
   },
   iosInlinePickerActions: {
@@ -10163,7 +10296,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderTopWidth: 1,
     borderTopColor: '#e0e0e0',
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
   },
   // Estilos do modal de loading de sincronização
   syncLoadingOverlay: {
@@ -10173,7 +10306,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   syncLoadingContainer: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 32,
     alignItems: 'center',
@@ -10188,11 +10321,11 @@ const styles = StyleSheet.create({
   syncLoadingText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#333',
+    color: colors.textPrimary,
     textAlign: 'center',
   },
   postponeModalContent: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 20,
     padding: 24,
     width: '90%',
@@ -10218,35 +10351,13 @@ const styles = StyleSheet.create({
     color: THEME.textPrimary,
     marginBottom: 8,
   },
-  pickerContainer: {
-    backgroundColor: '#f8f9fa',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    overflow: 'hidden',
-  },
-  picker: {
-    height: 150,
-  },
-  timePicker: {
-    height: 150,
-    backgroundColor: '#f8f9fa',
-    borderRadius: 12,
-  },
-  postponeButtonsContainer: {
-    gap: 12,
-    marginTop: 8,
-  },
-  confirmButton: {
-    backgroundColor: THEME.primary,
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  confirmButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#fff',
+  
+  postponeWarningText: {
+    marginTop: 6,
+    marginBottom: 2,
+    color: '#b45309', // amber-700
+    fontSize: 12,
+    textAlign: 'center',
   },
 });
 

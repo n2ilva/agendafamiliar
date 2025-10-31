@@ -67,6 +67,40 @@ function sortTasksByUpdatedAt(tasks: any[]): any[] {
   });
 }
 
+// Remove recursivamente qualquer valor undefined de objetos/arrays
+function deepSanitize<T = any>(value: T): T {
+  // Deixa passar falsy válidos (0, '', null, false) e FieldValue de Firestore
+  if (value === undefined) return undefined as any;
+  if (value === null) return value;
+
+  if (Array.isArray(value)) {
+    const arr = (value as any[])
+      .map(v => deepSanitize(v))
+      .filter(v => v !== undefined);
+    return arr as any;
+  }
+
+  if (typeof value === 'object') {
+    // Preservar Date, Timestamp e FieldValue (serverTimestamp etc.)
+    if (value instanceof Date) return value;
+    const asAny: any = value;
+    if (asAny && typeof asAny.toDate === 'function' && typeof asAny.toMillis === 'function') return value; // Timestamp
+    if (asAny && typeof asAny._methodName === 'string') return value; // FieldValue
+
+    const obj = value as Record<string, any>;
+    const out: Record<string, any> = {};
+    Object.keys(obj).forEach(k => {
+      const v = deepSanitize(obj[k]);
+      if (v !== undefined) {
+        out[k] = v;
+      }
+    });
+    return out as any;
+  }
+
+  return value;
+}
+
 export const FirestoreService = {
   async checkIsFamilyAdmin(familyId: string | null | undefined, userId?: string): Promise<boolean> {
     console.log('[checkIsFamilyAdmin] Verificando admin:', { familyId, userId });
@@ -131,22 +165,25 @@ export const FirestoreService = {
   async saveTask(task: RemoteTask & Record<string, any>) {
     const db = firebaseFirestore() as any;
 
-    const taskToSave: any = {
+    const taskToSaveBase: any = {
       ...task,
       familyId: ensureFamilyId(task.familyId ?? null),
       updatedAt: serverTimestamp()
     };
 
     if (!task.id) {
-      taskToSave.createdAt = task.createdAt || serverTimestamp();
-    } else if (!taskToSave.createdAt) {
-      taskToSave.createdAt = task.createdAt || serverTimestamp();
+      taskToSaveBase.createdAt = task.createdAt || serverTimestamp();
+    } else if (!taskToSaveBase.createdAt) {
+      taskToSaveBase.createdAt = task.createdAt || serverTimestamp();
     }
 
-    if (taskToSave.private === true && taskToSave.familyId !== null) {
-      console.error('❌ Tarefa privada com familyId não nulo detectada:', taskToSave);
+    if (taskToSaveBase.private === true && taskToSaveBase.familyId !== null) {
+      console.error('❌ Tarefa privada com familyId não nulo detectada:', taskToSaveBase);
       throw new Error('Tarefas privadas devem ter familyId = null');
     }
+
+    // Sanitiza valores undefined (inclui repeatIntervalDays, repeatDurationMonths, campos opcionais de subtarefas, etc.)
+    const taskToSave = deepSanitize(taskToSaveBase);
 
     try {
       if (task.id) {
