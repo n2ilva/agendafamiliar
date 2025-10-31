@@ -57,6 +57,7 @@ export enum RepeatType {
   DAILY = 'daily',
   WEEKENDS = 'weekends',
   CUSTOM = 'custom',
+  MONTHLY = 'monthly',
   INTERVAL = 'interval'
 }
 
@@ -193,6 +194,9 @@ const repeatConfigToOption = (repeat?: RepeatConfig): { repeatOption: 'nenhum' |
   if (repeat.type === RepeatType.CUSTOM) {
     return { repeatOption: 'semanal', repeatDays: repeat.days || [] };
   }
+  if (repeat.type === RepeatType.MONTHLY) {
+    return { repeatOption: 'mensal' };
+  }
   if (repeat.type === RepeatType.INTERVAL) {
     return { repeatOption: 'intervalo', repeatIntervalDays: repeat.intervalDays, repeatDurationMonths: repeat.durationMonths };
   }
@@ -209,6 +213,9 @@ const optionToRepeatConfig = (repeatOption?: string, repeatDays?: number[], opts
   }
   if (repeatOption === 'semanal') {
     return { type: RepeatType.CUSTOM, days: repeatDays || [] };
+  }
+  if (repeatOption === 'mensal') {
+    return { type: RepeatType.MONTHLY };
   }
   if (repeatOption === 'intervalo') {
     return { type: RepeatType.INTERVAL, intervalDays: opts?.repeatIntervalDays || 1, durationMonths: opts?.repeatDurationMonths || 0 };
@@ -833,7 +840,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       repeatStartDate: repeatStartDate,
       // Estrutura compatível usada internamente
       repeat: {
-        type: repeatOption === 'diario' ? RepeatType.DAILY : repeatOption === 'semanal' ? RepeatType.CUSTOM : repeatOption === 'intervalo' ? RepeatType.INTERVAL : RepeatType.NONE,
+        type: repeatOption === 'diario' ? RepeatType.DAILY : repeatOption === 'mensal' ? RepeatType.MONTHLY : repeatOption === 'semanal' ? RepeatType.CUSTOM : repeatOption === 'intervalo' ? RepeatType.INTERVAL : RepeatType.NONE,
         days: repeatDays || [],
         intervalDays: repeatIntervalDays,
         durationMonths: repeatDurationMonths
@@ -1877,6 +1884,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   const getRepeatLabel = (): string => {
     if (repeatType === RepeatType.NONE) return 'Não repetir';
     if (repeatType === RepeatType.DAILY) return 'Repetir diariamente';
+    if (repeatType === RepeatType.MONTHLY) return 'Repetir mensalmente';
     if (repeatType === RepeatType.CUSTOM) {
       if (customDays.length === 0) return 'Repetir semanalmente';
       const dayNames = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -1900,6 +1908,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     if (rt === RepeatType.DAILY) return today;
+    if (rt === RepeatType.MONTHLY) return today;
     if (rt === RepeatType.WEEKENDS) {
       const dow = today.getDay(); // 0=Dom,6=Sáb
       if (dow === 6 || dow === 0) return today;
@@ -2035,7 +2044,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         // Log dos valores de repetição ao editar tarefa
         console.log('🔄 Valores de repetição ao editar tarefa:', {
           repeatType,
-          repeatOption: (repeatType === RepeatType.DAILY ? 'diario' : repeatType === RepeatType.CUSTOM ? 'semanal' : repeatType === RepeatType.INTERVAL ? 'intervalo' : 'nenhum'),
+          repeatOption: (repeatType === RepeatType.DAILY ? 'diario' : repeatType === RepeatType.MONTHLY ? 'mensal' : repeatType === RepeatType.CUSTOM ? 'semanal' : repeatType === RepeatType.INTERVAL ? 'intervalo' : 'nenhum'),
           customDays,
           intervalDays,
           durationMonths
@@ -2055,7 +2064,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                 dueDate: finalDueDate,
                 dueTime: finalDueTime,
                 // Persistir recorrência (formato plano)
-                repeatOption: (repeatType === RepeatType.DAILY ? 'diario' : repeatType === RepeatType.CUSTOM ? 'semanal' : repeatType === RepeatType.INTERVAL ? 'intervalo' : 'nenhum') as Task['repeatOption'],
+                repeatOption: (repeatType === RepeatType.DAILY ? 'diario' : repeatType === RepeatType.MONTHLY ? 'mensal' : repeatType === RepeatType.CUSTOM ? 'semanal' : repeatType === RepeatType.INTERVAL ? 'intervalo' : 'nenhum') as Task['repeatOption'],
                 repeatDays: repeatType === RepeatType.CUSTOM ? customDays : undefined,
                 repeatIntervalDays: repeatType === RepeatType.INTERVAL ? intervalDays || 1 : undefined,
                 repeatDurationMonths: repeatType === RepeatType.INTERVAL ? durationMonths || 0 : undefined,
@@ -2291,7 +2300,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         // Log dos valores de repetição
         console.log('🔄 Valores de repetição ao criar tarefa:', {
           repeatType,
-          repeatOption: (repeatType === RepeatType.DAILY ? 'diario' : repeatType === RepeatType.CUSTOM ? 'semanal' : repeatType === RepeatType.INTERVAL ? 'intervalo' : 'nenhum'),
+          repeatOption: (repeatType === RepeatType.DAILY ? 'diario' : repeatType === RepeatType.MONTHLY ? 'mensal' : repeatType === RepeatType.CUSTOM ? 'semanal' : repeatType === RepeatType.INTERVAL ? 'intervalo' : 'nenhum'),
           customDays,
           intervalDays,
           durationMonths
@@ -2306,7 +2315,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           category: selectedCategory,
           dueDate: finalDueDate,
           dueTime: finalDueTime,
-          repeatOption: (repeatType === RepeatType.DAILY ? 'diario' : repeatType === RepeatType.CUSTOM ? 'semanal' : repeatType === RepeatType.INTERVAL ? 'intervalo' : 'nenhum') as Task['repeatOption'],
+          repeatOption: (repeatType === RepeatType.DAILY ? 'diario' : repeatType === RepeatType.MONTHLY ? 'mensal' : repeatType === RepeatType.CUSTOM ? 'semanal' : repeatType === RepeatType.INTERVAL ? 'intervalo' : 'nenhum') as Task['repeatOption'],
           repeatDays: repeatType === RepeatType.CUSTOM ? customDays : undefined,
           repeatIntervalDays: repeatType === RepeatType.INTERVAL ? intervalDays || 1 : undefined,
           repeatDurationMonths: repeatType === RepeatType.INTERVAL ? durationMonths || 0 : undefined,
@@ -3001,6 +3010,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     switch (repeat.type) {
       case RepeatType.DAILY:
         return 'Todos os dias';
+      case RepeatType.MONTHLY:
+        return 'A cada mês';
       case RepeatType.WEEKENDS:
         return 'Fins de semana';
       case RepeatType.CUSTOM:
@@ -5249,20 +5260,6 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                   )}
                 </Pressable>
               ))}
-              
-              <View style={styles.filterDropdownSeparator} />
-              
-              <Pressable
-                style={styles.filterDropdownItem}
-                onPress={() => {
-                  setCategoryModalVisible(true);
-                  openManagedModal('category');
-                  setFilterDropdownVisible(false);
-                }}
-              >
-                <Ionicons name="add-circle-outline" size={16} color={THEME.primary} />
-                <Text style={styles.filterDropdownItemText}>Nova Categoria</Text>
-              </Pressable>
             </ScrollView>
           </View>
         </>
@@ -5358,6 +5355,18 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                         </Text>
                       </Pressable>
                     ))}
+                    
+                    {/* Botão Nova Categoria no final da lista */}
+                    <Pressable
+                      style={styles.addCategoryButton}
+                      onPress={() => {
+                        setCategoryModalVisible(true);
+                        openManagedModal('category');
+                      }}
+                    >
+                      <Ionicons name="add-circle" size={16} color={THEME.primary} />
+                      <Text style={styles.addCategoryText}>Nova</Text>
+                    </Pressable>
                   </ScrollView>
                 </View>
 
@@ -5707,6 +5716,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                   {[
                     { type: RepeatType.NONE, icon: 'ban-outline' },
                     { type: RepeatType.DAILY, icon: 'repeat-outline' },
+                    { type: RepeatType.MONTHLY, icon: 'calendar-number-outline' },
                     { type: RepeatType.CUSTOM, icon: 'calendar-outline' },
                     { type: RepeatType.INTERVAL, icon: 'time-outline' }
                   ].map((option) => (
@@ -8228,13 +8238,13 @@ const styles = StyleSheet.create({
   },
   
   categoryLabel: {
-    fontSize: 15, // Reduzir tamanho da fonte
+    fontSize: 15,
     fontWeight: '600',
     color: '#333',
-    marginBottom: 10, // Reduzir margem
+    marginBottom: 10,
   },
   categorySelectorContainer: {
-    marginBottom: 16, // Reduzir margem
+    marginBottom: 16,
   },
   categorySelectorScrollView: {
     flexGrow: 0,
