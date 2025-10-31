@@ -117,13 +117,13 @@ export const Header: React.FC<HeaderProps> = ({
     const holidays = getBrazilHolidays(year);
     const map: any = {};
     
-    // Marcar feriados com borda circular dourada
+    // Marcar feriados com borda circular azul
     holidays.forEach((h: { date: string; name: string }) => {
       map[h.date] = {
         customStyles: {
           container: {
             borderWidth: 2,
-            borderColor: '#FFD700',
+            borderColor: '#2196F3',
             borderRadius: 20,
           },
           text: {
@@ -191,14 +191,14 @@ export const Header: React.FC<HeaderProps> = ({
         
         const taskYmd = `${dateObj.getFullYear()}-${String(dateObj.getMonth()+1).padStart(2,'0')}-${String(dateObj.getDate()).padStart(2,'0')}`;
         if (map[taskYmd]) {
-          // Dia já tem feriado, adicionar borda dupla (gradiente visual)
+          // Dia já tem feriado, adicionar borda com mesma espessura
           map[taskYmd] = {
             customStyles: {
               container: {
-                borderWidth: 3,
+                borderWidth: 2,
                 borderColor: taskColor,
                 borderRadius: 20,
-                backgroundColor: 'rgba(255, 215, 0, 0.1)',
+                backgroundColor: 'rgba(33, 150, 243, 0.1)',
               },
               text: {
                 color: THEME.textPrimary,
@@ -859,6 +859,27 @@ export const Header: React.FC<HeaderProps> = ({
               showsVerticalScrollIndicator={true}
             >
               <View style={styles.holidayListContainer}>
+                {/* Legenda de cores */}
+                <View style={styles.legendContainer}>
+                  <Text style={styles.legendTitle}>Legenda:</Text>
+                  <View style={styles.legendRow}>
+                    <View style={[styles.legendDot, { backgroundColor: '#4CAF50' }]} />
+                    <Text style={styles.legendText}>Tarefa futura ou completada no prazo</Text>
+                  </View>
+                  <View style={styles.legendRow}>
+                    <View style={[styles.legendDot, { backgroundColor: '#FF9800' }]} />
+                    <Text style={styles.legendText}>Tarefa completada com atraso</Text>
+                  </View>
+                  <View style={styles.legendRow}>
+                    <View style={[styles.legendDot, { backgroundColor: THEME.danger }]} />
+                    <Text style={styles.legendText}>Tarefa vencida não completada</Text>
+                  </View>
+                  <View style={styles.legendRow}>
+                    <View style={[styles.legendDot, { backgroundColor: '#2196F3' }]} />
+                    <Text style={styles.legendText}>Feriado</Text>
+                  </View>
+                </View>
+                
                 {monthHolidays.length > 0 && (
                   <View style={{ marginBottom: 12 }}>
                     <Text style={styles.sectionTitle}>🎉 Feriados</Text>
@@ -867,7 +888,7 @@ export const Header: React.FC<HeaderProps> = ({
                       const ddmm = `${d}/${m}`;
                       return (
                         <View key={h.date} style={styles.eventCard}>
-                          <View style={[styles.eventIndicator, { backgroundColor: '#FFD700' }]} />
+                          <View style={[styles.eventIndicator, { backgroundColor: '#2196F3' }]} />
                           <View style={styles.eventContent}>
                             <Text style={styles.eventDate}>{ddmm}</Text>
                             <Text style={styles.eventTitle}>{h.name}</Text>
@@ -1787,5 +1808,35 @@ const styles = StyleSheet.create({
   overdueText: {
     color: THEME.danger,
     fontWeight: '500',
+  },
+  legendContainer: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  legendTitle: {
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: THEME.textPrimary,
+    marginBottom: 8,
+  },
+  legendRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  legendDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginRight: 8,
+  },
+  legendText: {
+    fontSize: 11,
+    color: THEME.textSecondary,
+    flex: 1,
   },
 });
