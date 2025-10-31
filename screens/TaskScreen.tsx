@@ -5397,11 +5397,14 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           }}
         />
         
-        {/* Árvore de Natal decorativa no background */}
+        {/* Árvore de Natal decorativa no background - ocupa tela toda */}
         <Image 
-          source={require('../assets/arvore_natal.png')} 
+          source={activeTheme === 'dark' 
+            ? require('../assets/arvore_dark.png')
+            : require('../assets/arvore_claro.png')
+          } 
           style={styles.christmasTree}
-          resizeMode="contain"
+          resizeMode="cover"
         />
         
         {/* Wrapper centralizado (apenas Web aplica largura 70%) */}
@@ -7715,14 +7718,16 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
 };
 
 const getStyles = (colors: any, activeTheme: 'light' | 'dark') => StyleSheet.create({
-  // Árvore de Natal decorativa
+  // Árvore de Natal decorativa - ocupa tela toda
   christmasTree: {
     position: 'absolute',
-    right: -150, // Metade da árvore saindo para fora da tela à direita
+    top: 0,
+    left: 0,
+    right: 0,
     bottom: 0,
-    width: 300,
-    height: 400,
-    opacity: 0.3, // Semi-transparente para não atrapalhar a leitura
+    width: '100%',
+    height: '100%',
+    opacity: activeTheme === 'dark' ? 0.15 : 0.2, // Menos opaca no dark para não escurecer demais
     zIndex: 0, // Atrás de todo o conteúdo
   },
   // Wrapper de página: mantém o layout atual no mobile; na web centraliza e limita largura
