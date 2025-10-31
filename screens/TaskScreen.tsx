@@ -4876,32 +4876,44 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         {/* Conteúdo Principal da Tarefa */}
         <View style={styles.taskCardHeader}>
           <View style={styles.taskMainContent}>
-            <Pressable
-              onPress={() => toggleTask(item.id)}
-              style={styles.checkboxContainer}
-              disabled={isPendingRecurring || shouldDisableCheckbox}
-            >
-              <View style={[
-                styles.checkbox,
-                item.completed && styles.checkboxCompleted,
-                (isPendingRecurring || shouldDisableCheckbox) && styles.checkboxDisabled
-              ]}>
-                {item.completed && (
-                  <Ionicons name="checkmark" size={18} color="#fff" />
-                )}
-              </View>
-              <Text style={styles.taskTitle}>
-                {sanitizedTitle || 'Sem título'}
-              </Text>
-              {sanitizedDescription && (
-                <Text style={[
-                  styles.taskDescription,
-                  item.completed && styles.taskDescriptionCompleted
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start', flex: 1 }}>
+              <Pressable
+                onPress={() => toggleTask(item.id)}
+                style={[styles.checkboxContainer, { flex: 1 }]}
+                disabled={isPendingRecurring || shouldDisableCheckbox}
+              >
+                <View style={[
+                  styles.checkbox,
+                  item.completed && styles.checkboxCompleted,
+                  (isPendingRecurring || shouldDisableCheckbox) && styles.checkboxDisabled
                 ]}>
-                  {sanitizedDescription}
+                  {item.completed && (
+                    <Ionicons name="checkmark" size={18} color="#fff" />
+                  )}
+                </View>
+                <Text style={styles.taskTitle}>
+                  {sanitizedTitle || 'Sem título'}
                 </Text>
+                {sanitizedDescription && (
+                  <Text style={[
+                    styles.taskDescription,
+                    item.completed && styles.taskDescriptionCompleted
+                  ]}>
+                    {sanitizedDescription}
+                  </Text>
+                )}
+              </Pressable>
+              
+              {/* Ícone de Desbloquear no final da linha (apenas para admin) */}
+              {shouldDisableCheckbox && user.role === 'admin' && (
+                <Pressable
+                  onPress={() => unlockTask(item.id)}
+                  style={styles.unlockIconButton}
+                >
+                  <Ionicons name="lock-closed-outline" size={22} color="#999" />
+                </Pressable>
               )}
-            </Pressable>
+            </View>
           </View>
         </View>
 
@@ -5049,17 +5061,6 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
               )}
             </View>
           </>
-        )}
-        
-        {/* Botão de Desbloquear no final do card (apenas para admin na aba Próximas) */}
-        {shouldDisableCheckbox && user.role === 'admin' && (
-          <Pressable
-            onPress={() => unlockTask(item.id)}
-            style={styles.unlockButton}
-          >
-            <Ionicons name="lock-open-outline" size={16} color={THEME.primary} />
-            <Text style={styles.unlockButtonText}>Desbloquear para Finalizar</Text>
-          </Pressable>
         )}
       </View>
     );
@@ -8085,22 +8086,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#f5f5f5',
     borderColor: '#ccc',
   },
-  unlockButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    backgroundColor: '#EFF6FF',
-    borderTopWidth: 1,
-    borderTopColor: '#e5e7eb',
-    marginTop: 8,
-  },
-  unlockButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: THEME.primary,
+  unlockIconButton: {
+    padding: 8,
+    marginLeft: 8,
   },
   taskTextContent: {
     flex: 1,
