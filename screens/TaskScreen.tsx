@@ -9366,12 +9366,12 @@ const getStyles = (colors: any, activeTheme: 'light' | 'dark') => StyleSheet.cre
   familySectionTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: THEME.textPrimary,
+    color: colors.text,
     marginBottom: 12,
   },
   familySectionSubtitle: {
     fontSize: 15,
-    color: THEME.textSecondary,
+    color: colors.textSecondary,
     marginBottom: 16,
     lineHeight: 22,
   },
@@ -9401,7 +9401,7 @@ const getStyles = (colors: any, activeTheme: 'light' | 'dark') => StyleSheet.cre
   inviteCodeLabel: {
     fontSize: 15,
     fontWeight: '600',
-    color: THEME.textPrimary,
+    color: colors.text,
     marginBottom: 8,
   },
   inviteCodeBox: {
@@ -9431,7 +9431,7 @@ const getStyles = (colors: any, activeTheme: 'light' | 'dark') => StyleSheet.cre
   },
   inviteCodeExpiry: {
     fontSize: 12,
-    color: THEME.textSecondary,
+    color: colors.textSecondary,
     fontStyle: 'italic',
     marginTop: 5,
   },
@@ -9463,12 +9463,12 @@ const getStyles = (colors: any, activeTheme: 'light' | 'dark') => StyleSheet.cre
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: THEME.background,
+    backgroundColor: colors.surfaceSecondary,
     padding: 10,
     borderRadius: 6,
     marginBottom: 5,
     borderWidth: 1,
-    borderColor: THEME.border,
+    borderColor: colors.border,
   },
   activeInviteCode: {
     fontSize: 16,
@@ -9477,18 +9477,18 @@ const getStyles = (colors: any, activeTheme: 'light' | 'dark') => StyleSheet.cre
   },
   activeInviteExpiry: {
     fontSize: 12,
-    color: THEME.textSecondary,
+    color: colors.textSecondary,
   },
   familyMember: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: THEME.background,
+    backgroundColor: colors.surfaceSecondary,
     paddingVertical: 16,
     paddingHorizontal: 16,
     borderRadius: 10,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: THEME.border,
+    borderColor: colors.border,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -9515,11 +9515,11 @@ const getStyles = (colors: any, activeTheme: 'light' | 'dark') => StyleSheet.cre
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: THEME.surface,
+    backgroundColor: colors.surface,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
-    borderColor: THEME.border,
+    borderColor: colors.border,
   },
   memberAvatarImage: {
     width: 52,
@@ -9536,7 +9536,7 @@ const getStyles = (colors: any, activeTheme: 'light' | 'dark') => StyleSheet.cre
   memberName: {
     fontSize: 17,
     fontWeight: '600',
-    color: THEME.textPrimary,
+    color: colors.text,
     marginBottom: 4,
   },
   memberRole: {
@@ -9547,7 +9547,7 @@ const getStyles = (colors: any, activeTheme: 'light' | 'dark') => StyleSheet.cre
   },
   memberRoleText: {
     fontSize: 14,
-    color: THEME.textSecondary,
+    color: colors.textSecondary,
   },
   memberRoleAdmin: {
     color: THEME.primary,
@@ -9555,7 +9555,7 @@ const getStyles = (colors: any, activeTheme: 'light' | 'dark') => StyleSheet.cre
   },
   memberEmail: {
     fontSize: 13,
-    color: THEME.textSecondary,
+    color: colors.textSecondary,
     marginBottom: 6,
     lineHeight: 18,
   },
@@ -10104,7 +10104,7 @@ const getStyles = (colors: any, activeTheme: 'light' | 'dark') => StyleSheet.cre
   },
   manualParagraph: {
     fontSize: 14,
-    color: '#444',
+    color: colors.text,
     marginBottom: 12,
     lineHeight: 20,
   },
@@ -10117,7 +10117,7 @@ const getStyles = (colors: any, activeTheme: 'light' | 'dark') => StyleSheet.cre
   },
   manualListItem: {
     fontSize: 14,
-    color: '#555',
+    color: colors.text,
     marginBottom: 6,
     lineHeight: 20,
   },
@@ -10129,7 +10129,7 @@ const getStyles = (colors: any, activeTheme: 'light' | 'dark') => StyleSheet.cre
   createFamilyTitle: {
     fontSize: 22,
     fontWeight: 'bold',
-    color: colors.textPrimary,
+    color: colors.text,
     textAlign: 'center',
     marginBottom: 8,
   },
