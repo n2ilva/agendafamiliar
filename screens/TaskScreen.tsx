@@ -3228,10 +3228,14 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     }
   }, [editingSubtaskId, editingSubtask, showSubtaskTimePicker]);
 
-  const unlockTask = useCallback((taskId: string) => {
+  const toggleLockTask = useCallback((taskId: string) => {
     setUnlockedTasks(prev => {
       const newSet = new Set(prev);
-      newSet.add(taskId);
+      if (newSet.has(taskId)) {
+        newSet.delete(taskId); // Bloquear novamente
+      } else {
+        newSet.add(taskId); // Desbloquear
+      }
       return newSet;
     });
   }, []);
@@ -4904,13 +4908,17 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                 )}
               </Pressable>
               
-              {/* Ícone de Desbloquear no final da linha (apenas para admin) */}
-              {shouldDisableCheckbox && user.role === 'admin' && (
+              {/* Ícone de Bloquear/Desbloquear no final da linha (apenas para admin na aba Próximas) */}
+              {isUpcomingTab && !item.completed && user.role === 'admin' && (
                 <Pressable
-                  onPress={() => unlockTask(item.id)}
+                  onPress={() => toggleLockTask(item.id)}
                   style={styles.unlockIconButton}
                 >
-                  <Ionicons name="lock-closed-outline" size={22} color="#999" />
+                  <Ionicons 
+                    name={isTaskUnlocked ? "lock-open-outline" : "lock-closed-outline"} 
+                    size={22} 
+                    color={isTaskUnlocked ? THEME.primary : "#999"} 
+                  />
                 </Pressable>
               )}
             </View>
