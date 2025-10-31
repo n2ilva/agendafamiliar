@@ -1,5 +1,5 @@
 import { Family, FamilyUser, Task } from '../types/FamilyTypes';
-import { firebaseFirestore } from '../config/firebase';
+import { firebaseFirestore, firebaseAuth } from '../config/firebase';
 import { 
   collection, 
   collectionGroup,
@@ -211,7 +211,7 @@ class LocalFamilyService {
     }, (err: any) => {
       // Erros de permissão são esperados se o usuário ainda não é membro ou perdeu acesso
       if (err?.code === 'permission-denied') {
-        console.warn('[subscribeToFamilyMembers] Permissão negada - usuário não é membro da família ou acesso foi revogado');
+        console.log('[subscribeToFamilyMembers] Permissão negada - usuário não é membro ou acesso revogado (esperado)');
         callback([]); // Retorna lista vazia em vez de deixar o listener quebrado
       } else {
         console.warn('[subscribeToFamilyMembers] onSnapshot error:', err);
@@ -223,6 +223,14 @@ class LocalFamilyService {
   async getUserFamily(userId: string): Promise<Family | null> {
     try {
       console.log('🔍 Buscando família do usuário:', userId);
+      
+      // Guard: verifica se há autenticação do Firebase antes de tentar query
+      const auth = firebaseAuth() as any;
+      if (!auth || !auth.currentUser) {
+        console.log('⚠️ getUserFamily: sem usuário autenticado no Firebase, retornando null');
+        return null;
+      }
+      
       const db = this.getFirestore();
       
       // Usar collectionGroup para buscar em todas as subcoleções "members"
