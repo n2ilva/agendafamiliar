@@ -683,11 +683,6 @@ export const Header: React.FC<HeaderProps> = ({
             paddingHorizontal: 20,
             paddingVertical: 15,
             backgroundColor: colors.surface,
-            shadowColor: colors.shadowColor,
-            shadowOffset: { width: 0, height: 1 },
-            shadowOpacity: 0.05,
-            shadowRadius: 2,
-            elevation: 3,
             zIndex: 1000,
           },
           syncStatus?.hasError 
