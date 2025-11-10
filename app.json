@@ -1,0 +1,63 @@
+{
+  "expo": {
+    "name": "Agenda Familiar",
+    "slug": "task-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon_natal.jpeg",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "scheme": "taskapp",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.n2ilva.taskapp",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Este app precisa de acesso à câmera para tirar fotos de perfil.",
+        "NSPhotoLibraryUsageDescription": "Este app precisa de acesso à galeria para selecionar fotos de perfil.",
+        "NSPhotoLibraryAddUsageDescription": "Este app precisa de acesso para salvar fotos na galeria.",
+        "UIStatusBarStyle": "UIStatusBarStyleDefault",
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIBackgroundModes": [
+          "fetch"
+        ]
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon_natal.jpeg",
+        "backgroundColor": "#ffffff"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "statusBar": {
+        "barStyle": "dark-content",
+        "backgroundColor": "#f5f5f5"
+      },
+      "permissions": [
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE",
+        "WAKE_LOCK",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "CAMERA"
+      ],
+      "package": "com.n2ilva.taskapp"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "81e5447d-98d1-493b-8999-0655322c9a18"
+      }
+    },
+    "plugins": [
+      "expo-font"
+    ]
+  }
+}

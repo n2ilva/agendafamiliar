@@ -1,0 +1,314 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() { return request.auth != null; }
+    // Usar uid padrão do Firebase Auth; fallback para token.sub se necessário
+    function authId() { 
+      return request.auth != null 
+        ? (request.auth.uid != null ? request.auth.uid : request.auth.token.sub) 
+        : null; 
+    }
+
+    function isMemberOf(familyId) {
+      return familyId != null && familyId != '' && authId() != null && exists(/databases/$(database)/documents/families/$(familyId)/members/$(authId()));
+    }
+
+    // Suporte a múltiplos administradores:
+    // Considera admin se (a) authId é adminId legacy OU (b) documento do membro tem role == 'admin'
+    function isFamilyAdmin(familyId) {
+      let userId = authId();
+      return familyId != null && familyId != '' && userId != null
+        && exists(/databases/$(database)/documents/families/$(familyId))
+        && (
+          get(/databases/$(database)/documents/families/$(familyId)).data.adminId == userId
+          || (
+            exists(/databases/$(database)/documents/families/$(familyId)/members/$(userId))
+            && get(/databases/$(database)/documents/families/$(familyId)/members/$(userId)).data.role == 'admin'
+          )
+        );
+    }
+
+    function validTaskPayload(data) {
+      return data.userId is string
+        && data.title is string
+        && (data.familyId == null || data.familyId is string);
+    }
+
+    // Verifica se o usuário (authId) possui determinada permissão (create/edit/delete)
+    // Armazenada em families/{familyId}/members/{userId}.permissions.{perm} == true
+    function hasFamilyPermission(familyId, perm) {
+      let userId = authId();
+      return familyId != null && userId != null
+        && exists(/databases/$(database)/documents/families/$(familyId)/members/$(userId))
+        && get(/databases/$(database)/documents/families/$(familyId)/members/$(userId)).data.permissions != null
+        && get(/databases/$(database)/documents/families/$(familyId)/members/$(userId)).data.permissions.keys().hasAny([perm])
+        && get(/databases/$(database)/documents/families/$(familyId)/members/$(userId)).data.permissions[perm] == true;
+    }
+
+    function validApprovalPayload(data) {
+      return data.userId is string
+        && data.taskId is string
+        && (data.familyId == null || data.familyId is string)
+        && data.userId == authId();
+    }
+
+    // Aprovação de promoção a administrador
+    function validAdminRoleApprovalPayload(data) {
+      return data.type == 'admin_role_request'
+        && data.requesterId is string
+        && data.requesterId == authId()
+        && data.familyId is string;
+    }
+
+    function validHistoryPayload(data) {
+      return data.userId is string
+        && data.action is string
+        && (data.familyId == null || data.familyId is string)
+        && data.userId == authId();
+    }
+
+    // Users
+    match /users/{userId} {
+      allow read: if isAuthenticated() && userId == authId();
+      allow create: if isAuthenticated() && request.resource.data.id == authId();
+      allow update, delete: if isAuthenticated() && userId == authId();
+    }
+
+    // Collection Group Query para members
+    // Permite buscar membros em todas as famílias, mas apenas o próprio usuário
+    match /{path=**}/members/{memberId} {
+      allow read: if isAuthenticated() && resource.data.id == authId();
+    }
+
+    // Families
+    match /families/{familyId} {
+      // Permitir get (leitura direta) apenas para membros
+      allow get: if isAuthenticated() && isMemberOf(familyId);
+      
+      // Consultas à coleção de famílias (list) somente para membros.
+      // A entrada via código utiliza a coleção "inviteCodes" (abaixo) em vez de consultar famílias diretamente.
+      allow list: if isAuthenticated() && isMemberOf(familyId);
+      
+      allow create: if isAuthenticated() && request.resource.data.adminId == authId();
+      
+      // Permitir update se:
+      // 1. Admin da família (pode atualizar tudo)
+      // 2. Membro atualizando APENAS campo 'categories' (para adicionar/remover categorias)
+      allow update: if isAuthenticated() && (
+        isFamilyAdmin(familyId)
+        || (
+          isMemberOf(familyId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['categories'])
+        )
+      );
+      
+      allow delete: if isAuthenticated() && isFamilyAdmin(familyId);
+
+      match /members/{memberId} {
+        // Permite ler o próprio membro ou qualquer membro se já for membro da família
+        allow read: if isAuthenticated() && (memberId == authId() || isMemberOf(familyId));
+        
+        // Permite listar (query) membros se o usuário for membro da família
+        allow list: if isAuthenticated() && isMemberOf(familyId);
+
+        // Permite criar o próprio documento de membro em três casos:
+        // 1) Já é membro (idempotente)
+        // 2) Admin da família
+        // 3) Possui um inviteCode válido que corresponda ao da família e não esteja expirado
+        allow create: if isAuthenticated() && memberId == authId() && (
+          isMemberOf(familyId)
+          || get(/databases/$(database)/documents/families/$(familyId)).data.adminId == authId()
+          || (
+            request.resource.data.inviteCode is string
+            && request.resource.data.inviteCode == get(/databases/$(database)/documents/families/$(familyId)).data.inviteCode
+            && get(/databases/$(database)/documents/families/$(familyId)).data.inviteCodeExpiry >= request.time
+          )
+        );
+        
+        // Atualização de membros:
+        //  - Admin pode atualizar qualquer membro (inclusive role/permissions)
+        //  - Próprio membro pode atualizar apenas se NÃO tocar em role ou permissions
+        allow update: if isAuthenticated() && (
+          isFamilyAdmin(familyId)
+          || (
+            memberId == authId() &&
+            // Autoatualização (não-admin): role e permissions devem permanecer idênticos
+            request.resource.data.role == resource.data.role && (
+              (
+                resource.data.permissions == null && request.resource.data.permissions == null
+              ) || (
+                resource.data.permissions != null && request.resource.data.permissions != null &&
+                request.resource.data.permissions == resource.data.permissions
+              )
+            )
+          )
+        );
+        allow delete: if isAuthenticated() && (memberId == authId() || isFamilyAdmin(familyId));
+      }
+    }
+
+    // Tasks
+    match /tasks/{taskId} {
+      allow create: if isAuthenticated()
+        && validTaskPayload(request.resource.data)
+        && (
+          // Tarefa pessoal/privada (sem família) – autor pode criar
+          request.resource.data.familyId == null
+          // Tarefa da família pública: requer ser membro E ter permissão create OU ser admin
+          || (
+            request.resource.data.familyId != null
+            && isMemberOf(request.resource.data.familyId)
+            && (
+              isFamilyAdmin(request.resource.data.familyId)
+              || hasFamilyPermission(request.resource.data.familyId, 'create')
+            )
+          )
+        )
+        && (request.resource.data.private != true || request.resource.data.familyId == null);
+
+      // Permite ler (get) tarefas individuais
+      allow get: if isAuthenticated() && (
+        // 1. Tarefas de família (públicas): qualquer membro pode ler
+        (
+          resource.data.familyId != null
+          && resource.data.private != true
+          && isMemberOf(resource.data.familyId)
+        )
+        // 2. Tarefas privadas (com ou sem familyId): apenas o criador pode ler
+        || (
+          resource.data.private == true
+          && resource.data.createdBy == authId()
+        )
+        // 3. Tarefas pessoais sem familyId: autor pode ler
+        || (
+          resource.data.familyId == null
+          && (
+            resource.data.createdBy == authId()
+            || resource.data.userId == authId()
+          )
+        )
+      );
+
+      // Permite listar (list/query) tarefas - necessário para onSnapshot
+      allow list: if isAuthenticated();
+
+      // Dependente: pode criar, mas não pode editar/finalizar/excluir tarefas da família.
+      // Somente admin pode atualizar tarefas da família. Para tarefas privadas, o próprio autor pode atualizar.
+      allow update: if isAuthenticated()
+        && validTaskPayload(request.resource.data)
+        && (
+          // Tarefa privada / pessoal (sem familyId): autor pode editar
+          (resource.data.familyId == null && (resource.data.userId == authId() || resource.data.createdBy == authId()))
+          // Tarefa da família: admin OU membro com permissão edit
+          || (resource.data.familyId != null && isMemberOf(resource.data.familyId) && (
+            isFamilyAdmin(resource.data.familyId) || hasFamilyPermission(resource.data.familyId, 'edit')
+          ))
+        )
+        && (request.resource.data.private != true || request.resource.data.familyId == null);
+
+      // Exclusão: somente admin em tarefas da família; em tarefas privadas, o autor pode excluir
+      allow delete: if isAuthenticated() && authId() != null && (
+        // Tarefa pessoal/privada sem família: autor pode excluir (userId OU createdBy)
+        (
+          (resource.data.familyId == null || resource.data.familyId == '') 
+          && (resource.data.userId == authId() || resource.data.createdBy == authId())
+        )
+        // Tarefa de família: admin OU membro com permissão delete
+        || (
+          resource.data.familyId != null && resource.data.familyId != '' && (
+            isFamilyAdmin(resource.data.familyId) || hasFamilyPermission(resource.data.familyId, 'delete')
+          )
+        )
+      );
+    }
+
+    // Approvals
+    match /approvals/{approvalId} {
+      // Criação permitida para dois formatos:
+      //  - Aprovação de tarefa (validApprovalPayload)
+      //  - Solicitação de promoção a admin (validAdminRoleApprovalPayload)
+      allow create: if isAuthenticated()
+        && (
+          validApprovalPayload(request.resource.data)
+          || validAdminRoleApprovalPayload(request.resource.data)
+        )
+        && (
+          request.resource.data.familyId == null
+          || isMemberOf(request.resource.data.familyId)
+        );
+
+      allow get: if isAuthenticated() && (
+        // Task approval: autor ou membros da família podem ler
+        (resource.data.userId != null && (resource.data.familyId == null && resource.data.userId == authId() || isMemberOf(resource.data.familyId)))
+        // Admin role request: solicitante ou membros da família podem ler
+        || (resource.data.type == 'admin_role_request' && (resource.data.requesterId == authId() || isMemberOf(resource.data.familyId)))
+      );
+
+      // Permite listar approvals da família - necessário para onSnapshot
+      allow list: if isAuthenticated() && isMemberOf(resource.data.familyId);
+
+      // Atualização/remoção: admin da família, autor (task) ou solicitante (role)
+      allow update, delete: if isAuthenticated() && (
+        isFamilyAdmin(resource.data.familyId)
+        || resource.data.userId == authId()
+        || resource.data.requesterId == authId()
+      );
+    }
+
+    // History
+    match /history/{hId} {
+      allow create: if isAuthenticated() && validHistoryPayload(request.resource.data)
+        && (
+          request.resource.data.familyId == null
+          || isMemberOf(request.resource.data.familyId)
+        );
+      allow list: if isAuthenticated() && (
+        (resource.data.familyId == null && resource.data.userId == authId())
+        || isMemberOf(resource.data.familyId)
+      );
+      allow get: if isAuthenticated() && (
+        (resource.data.familyId == null && resource.data.userId == authId())
+        || isMemberOf(resource.data.familyId)
+      );
+    }
+
+    // Categories
+    match /categories/{categoryId} {
+      allow read: if isAuthenticated() && (
+        (resource.data.familyId == null && resource.data.createdBy == authId())
+        || isMemberOf(resource.data.familyId)
+      );
+      allow create: if isAuthenticated() && (
+        request.resource.data.createdBy == authId()
+        && (
+          request.resource.data.familyId == null
+          || isMemberOf(request.resource.data.familyId)
+        )
+      );
+      allow update, delete: if isAuthenticated() && (
+        resource.data.createdBy == authId()
+        || isFamilyAdmin(resource.data.familyId)
+      );
+    }
+
+    // Mapeamento público de códigos de convite -> família
+    // Permite que usuários autenticados validem um código e encontrem a família sem expor dados sensíveis da família
+    match /inviteCodes/{code} {
+      allow get: if isAuthenticated();
+      // Permitir criação por qualquer usuário autenticado (ao criar família)
+      allow create: if isAuthenticated();
+      // Permitir atualização apenas por admin da família associada
+      allow update: if isAuthenticated() && isFamilyAdmin(resource.data.familyId);
+      // Permitir exclusão apenas por admin da família associada
+      allow delete: if isAuthenticated() && isFamilyAdmin(resource.data.familyId);
+      // Não permitir list para evitar enumeração de códigos
+      allow list: if false;
+    }
+
+    // Default fallback
+    match /{document=**} { allow read, write: if false; }
+  }
+}
