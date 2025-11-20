@@ -742,7 +742,7 @@ export const Header: React.FC<HeaderProps> = ({
                     ) : (
                       <>
                         <Ionicons name="cloud-upload-outline" size={14} color="#fff" style={{ marginRight: 6 }} />
-                        <Text style={styles.syncPillText}>{syncStatus.pendingOperations} pendente{(syncStatus.pendingOperations ?? 0) !== 1 ? 's' : ''}</Text>
+                        <Text style={styles.syncPillText}>{syncStatus?.pendingOperations} pendente{(syncStatus?.pendingOperations ?? 0) !== 1 ? 's' : ''}</Text>
                       </>
                     )}
                   </View>

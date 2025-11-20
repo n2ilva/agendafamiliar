@@ -231,7 +231,7 @@ class SyncService {
         modifiedTaskIds = userTasks
           .filter(task => {
             const taskUpdated = safeToDate((task as any).updatedAt || (task as any).createdAt);
-            return taskUpdated.getTime() > lastSyncTime;
+            return (taskUpdated?.getTime() ?? 0) > lastSyncTime;
           })
           .map(task => task.id);
       } catch (e) {
@@ -269,7 +269,7 @@ class SyncService {
           const modifiedFamilyTaskIds = familyTasks
             .filter(task => {
               const taskUpdated = safeToDate((task as any).updatedAt || (task as any).createdAt);
-              return taskUpdated.getTime() > lastSyncTime;
+              return (taskUpdated?.getTime() ?? 0) > lastSyncTime;
             })
             .map(task => task.id);
 

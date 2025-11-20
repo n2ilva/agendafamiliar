@@ -457,7 +457,7 @@ class LocalStorageService {
       return Object.entries(data.tasks)
         .filter(([_, task]) => {
           const taskUpdated = safeToDate((task as any).updatedAt || (task as any).createdAt || new Date());
-          return taskUpdated.getTime() > sinceTimestamp;
+          return (taskUpdated?.getTime() ?? 0) > sinceTimestamp;
         })
         .map(([id, _]) => id);
     } catch (error) {
