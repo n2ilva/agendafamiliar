@@ -384,15 +384,15 @@ class LocalStorageService {
   static async compactCache(): Promise<void> {
     try {
       const data = await this.getOfflineData();
-      const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
+      const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
       const initialSize = JSON.stringify(data).length;
 
-      // Remover tarefas concluídas há mais de 30 dias
+      // Remover tarefas concluídas há mais de 7 dias
       const tasksToKeep: Record<string, Task> = {};
       let tasksRemoved = 0;
       for (const [id, task] of Object.entries(data.tasks)) {
         const taskDate = safeToDate((task as any).completedAt || (task as any).editedAt || (task as any).createdAt);
-        const isOldAndCompleted = (task as any).completed && taskDate && taskDate.getTime() < thirtyDaysAgo;
+        const isOldAndCompleted = (task as any).completed && taskDate && taskDate.getTime() < sevenDaysAgo;
         
         if (!isOldAndCompleted) {
           tasksToKeep[id] = task;

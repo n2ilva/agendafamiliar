@@ -244,7 +244,23 @@ class SyncService {
         const offlineData = await LocalStorageService.getOfflineData();
         
         const userTasks = await FirestoreService.getTasksByUser(uid);
-        const tasksToUpdate = userTasks.filter(t => modifiedTaskIds.includes(t.id));
+        
+        // Filtrar para não sincronizar tarefas completadas há mais de 7 dias
+        const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
+        const tasksToUpdate = userTasks.filter(t => {
+          if (!modifiedTaskIds.includes(t.id)) return false;
+          
+          // Se a tarefa está concluída, verificar se é recente
+          if ((t as any).completed) {
+            const completedDate = safeToDate((t as any).completedAt || (t as any).updatedAt || (t as any).createdAt);
+            if (completedDate && completedDate.getTime() < sevenDaysAgo) {
+              console.log(`⏭️  Pulando tarefa concluída antiga: ${t.title}`);
+              return false;
+            }
+          }
+          
+          return true;
+        });
         
         // Salvar em batch para melhor performance
         await LocalStorageService.saveBatchTasks(
@@ -256,7 +272,7 @@ class SyncService {
           })
         );
 
-        console.log(`✅ ${modifiedTaskIds.length} tarefas atualizadas no cache local`);
+        console.log(`✅ ${tasksToUpdate.length} tarefas atualizadas no cache local`);
       } else {
         console.log(`✓ Nenhuma tarefa nova ou modificada desde a última sincronização`);
       }
@@ -276,7 +292,23 @@ class SyncService {
           if (modifiedFamilyTaskIds.length > 0) {
             console.log(`👨‍👩‍👧‍👦 ${modifiedFamilyTaskIds.length} tarefas da família modificadas - fazendo download`);
             
-            const tasksToUpdate = familyTasks.filter(t => modifiedFamilyTaskIds.includes(t.id));
+            // Filtrar para não sincronizar tarefas completadas há mais de 7 dias
+            const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
+            const tasksToUpdate = familyTasks.filter(t => {
+              if (!modifiedFamilyTaskIds.includes(t.id)) return false;
+              
+              // Se a tarefa está concluída, verificar se é recente
+              if ((t as any).completed) {
+                const completedDate = safeToDate((t as any).completedAt || (t as any).updatedAt || (t as any).createdAt);
+                if (completedDate && completedDate.getTime() < sevenDaysAgo) {
+                  console.log(`⏭️  Pulando tarefa da família concluída antiga: ${t.title}`);
+                  return false;
+                }
+              }
+              
+              return true;
+            });
+            
             await LocalStorageService.saveBatchTasks(
               tasksToUpdate.map(task => {
                 const fixed: any = { ...task };
@@ -286,7 +318,7 @@ class SyncService {
               })
             );
 
-            console.log(`✅ ${modifiedFamilyTaskIds.length} tarefas da família atualizadas no cache`);
+            console.log(`✅ ${tasksToUpdate.length} tarefas da família atualizadas no cache`);
           }
         } catch (e) {
           console.warn('Erro ao sincronizar tarefas da família incrementalmente:', e);
@@ -442,8 +474,8 @@ class SyncService {
   // 6. Atualizar timestamp da última sincronização
   await LocalStorageService.updateLastSync();
 
-  // 7. Compactar cache (a cada 10 sincronizações - aprox 5 minutos)
-  if (Math.random() < 0.1) {
+  // 7. Compactar cache (a cada 2 sincronizações - aprox 1 minuto)
+  if (Math.random() < 0.5) {
     try {
       await LocalStorageService.compactCache();
     } catch (e) {
