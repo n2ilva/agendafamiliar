@@ -45,6 +45,8 @@ interface HeaderProps {
   syncStatus?: {
     hasError?: boolean;
     isOnline?: boolean;
+    pendingOperations?: number;
+    isSyncing?: boolean;
   };
   isSyncingPermissions?: boolean;
   showUndoButton?: boolean;
@@ -110,6 +112,14 @@ export const Header: React.FC<HeaderProps> = ({
   // Estilos dinâmicos
   const styles = useMemo(() => getStyles(colors), [colors]);
   
+  // Sincronizar profileIconLocal quando o prop muda
+  useEffect(() => {
+    if (userProfileIcon !== undefined && userProfileIcon !== profileIconLocal) {
+      setProfileIconLocal(userProfileIcon);
+      setSelectedIcon(userProfileIcon);
+    }
+  }, [userProfileIcon]);
+
   // Locale PT-BR para calendário
   useEffect(() => {
     LocaleConfig.locales['pt-br'] = {
@@ -623,21 +633,18 @@ export const Header: React.FC<HeaderProps> = ({
 
     setIconLoading(true);
     try {
-      const result = await LocalAuthService.setProfileIcon(selectedIcon);
-      if (result.success) {
-        setProfileIconLocal(selectedIcon);
-        setUserImageLocal(null);
-        setIconPickerVisible(false);
-        // Notificar o componente pai sobre a mudança do ícone
-        if (onUserProfileIconChange) {
-          onUserProfileIconChange(selectedIcon);
-        }
-        Alert.alert('Sucesso', 'Ícone de perfil atualizado.');
-      } else {
-        Alert.alert('Erro', result.error || 'Não foi possível definir o ícone.');
+      // Atualizar estado local imediatamente
+      setProfileIconLocal(selectedIcon);
+      setUserImageLocal(null);
+      setIconPickerVisible(false);
+      
+      // Notificar o componente pai que cuidará da sincronização com Firebase
+      if (onUserProfileIconChange) {
+        onUserProfileIconChange(selectedIcon);
       }
+      Alert.alert('Sucesso', 'Ícone de perfil atualizado.');
     } catch (e) {
-      Alert.alert('Erro', 'Erro ao definir ícone.');
+      Alert.alert('Erro', 'Erro ao atualizar ícone.');
     } finally {
       setIconLoading(false);
     }
@@ -720,6 +727,24 @@ export const Header: React.FC<HeaderProps> = ({
                   <View style={styles.syncPill} accessibilityLabel="Sincronizando permissões">
                     <ActivityIndicator size="small" color="#fff" style={{ marginRight: 6 }} />
                     <Text style={styles.syncPillText}>Sincronizando permissões…</Text>
+                  </View>
+                ) : null}
+                {syncStatus?.isSyncing || (syncStatus?.pendingOperations ?? 0) > 0 ? (
+                  <View 
+                    style={[styles.syncPill, { backgroundColor: syncStatus?.isSyncing ? THEME.primary : '#f59e0b' }]} 
+                    accessibilityLabel={syncStatus?.isSyncing ? "Sincronizando alterações" : `${syncStatus?.pendingOperations} alterações pendentes`}
+                  >
+                    {syncStatus?.isSyncing ? (
+                      <>
+                        <ActivityIndicator size="small" color="#fff" style={{ marginRight: 6 }} />
+                        <Text style={styles.syncPillText}>Sincronizando…</Text>
+                      </>
+                    ) : (
+                      <>
+                        <Ionicons name="cloud-upload-outline" size={14} color="#fff" style={{ marginRight: 6 }} />
+                        <Text style={styles.syncPillText}>{syncStatus.pendingOperations} pendente{(syncStatus.pendingOperations ?? 0) !== 1 ? 's' : ''}</Text>
+                      </>
+                    )}
                   </View>
                 ) : null}
               </View>

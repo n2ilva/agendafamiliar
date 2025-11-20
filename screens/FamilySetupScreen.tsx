@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -17,7 +17,8 @@ import { familyService } from '../services/LocalFamilyService';
 import { UserRole } from '../types/FamilyTypes';
 import Alert from '../utils/Alert';
 
-interface Props {
+// ============= TIPOS =============
+interface FamilySetupScreenProps {
   onFamilySetup: (familyId: string) => void;
   onLogout: () => void;
   userEmail: string;
@@ -27,20 +28,67 @@ interface Props {
 
 type SetupStep = 'choose' | 'create-family' | 'join-family';
 
-export default function FamilySetupScreen({ onFamilySetup, onLogout, userEmail, userName, userId }: Props) {
+interface SetupState {
+  currentStep: SetupStep;
+  familyName: string;
+  familyCode: string;
+  isLoading: boolean;
+  lastInviteCode: string | null;
+}
+
+// ============= VALIDAÇÃO =============
+const validateFamilyName = (name: string): string | null => {
+  if (!name.trim()) {
+    return 'Por favor, insira o nome da família';
+  }
+  return null;
+};
+
+const validateFamilyCode = (code: string): string | null => {
+  if (!code.trim()) {
+    return 'Por favor, insira o código da família';
+  }
+  return null;
+};
+
+export default function FamilySetupScreen({ 
+  onFamilySetup, 
+  onLogout, 
+  userEmail, 
+  userName, 
+  userId 
+}: FamilySetupScreenProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
   
-  const [currentStep, setCurrentStep] = useState<SetupStep>('choose');
-  const [familyName, setFamilyName] = useState('');
-  const [familyCode, setFamilyCode] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [lastInviteCode, setLastInviteCode] = useState<string | null>(null);
+  const [state, setState] = useState<SetupState>({
+    currentStep: 'choose',
+    familyName: '',
+    familyCode: '',
+    isLoading: false,
+    lastInviteCode: null,
+  });
 
-  // Validação do código da família: apenas caracteres alfanuméricos válidos (evitando ambiguidade)
-  // Formato: 6 caracteres (A-Z, 2-9, sem 0, 1, I, O para evitar confusão)
-  const handleCodeChange = (text: string) => {
-    // Remove caracteres inválidos e limita a 6 caracteres
+  // ============= NAVEGAÇÃO =============
+  const goTo = useCallback((option: 'create' | 'join') => {
+    setState(prev => ({
+      ...prev,
+      currentStep: option === 'create' ? 'create-family' : 'join-family'
+    }));
+  }, []);
+
+  const goBack = useCallback(() => {
+    setState(prev => ({
+      ...prev,
+      currentStep: 'choose',
+      familyName: '',
+      familyCode: '',
+      lastInviteCode: null,
+    }));
+  }, []);
+
+  // ============= PROCESSAMENTO DE CÓDIGO =============
+  const handleCodeChange = useCallback((text: string) => {
     const validChars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
     const filtered = text
       .toUpperCase()
@@ -49,24 +97,20 @@ export default function FamilySetupScreen({ onFamilySetup, onLogout, userEmail, 
       .slice(0, 6)
       .join('');
     
-    setFamilyCode(filtered);
-  };
+    setState(prev => ({ ...prev, familyCode: filtered }));
+  }, []);
 
-  const goTo = (option: 'create' | 'join') => {
-    setCurrentStep(option === 'create' ? 'create-family' : 'join-family');
-  };
-
-  const handleCreateFamily = async () => {
-    if (!familyName.trim()) {
-      Alert.alert('Erro', 'Por favor, insira o nome da família');
+  // ============= CRIAR FAMÍLIA =============
+  const handleCreateFamily = useCallback(async () => {
+    const error = validateFamilyName(state.familyName);
+    if (error) {
+      Alert.alert('Erro', error);
       return;
     }
 
-    setIsLoading(true);
+    setState(prev => ({ ...prev, isLoading: true }));
     try {
-      console.log('🏠 Criando nova família...');
-      
-      const newFamily = await familyService.createFamily(familyName.trim(), {
+      const newFamily = await familyService.createFamily(state.familyName.trim(), {
         id: userId,
         email: userEmail,
         name: userName,
@@ -75,40 +119,35 @@ export default function FamilySetupScreen({ onFamilySetup, onLogout, userEmail, 
         joinedAt: new Date(),
       });
 
-      // armazenar o código para exibição no componente (apenas para debug/manual testing)
-      setLastInviteCode(newFamily.inviteCode || null);
+      setState(prev => ({ ...prev, lastInviteCode: newFamily.inviteCode || null }));
 
       Alert.alert(
         'Família Criada!',
-        `Família "${familyName}" criada com sucesso!\n\nCódigo da família: ${newFamily.inviteCode}\n\nCompartilhe este código com os membros da família.`,
-        [
-          {
-            text: 'OK',
-            onPress: () => {
-              console.log('✅ Família criada e usuário adicionado como admin');
-              onFamilySetup(newFamily.id);
-            }
-          }
-        ]
+        `Família "${state.familyName}" criada com sucesso!\n\nCódigo: ${newFamily.inviteCode}`,
+        [{
+          text: 'OK',
+          onPress: () => onFamilySetup(newFamily.id)
+        }]
       );
     } catch (error) {
       console.error('❌ Erro ao criar família:', error);
       Alert.alert('Erro', 'Não foi possível criar a família. Tente novamente.');
     } finally {
-      setIsLoading(false);
+      setState(prev => ({ ...prev, isLoading: false }));
     }
-  };
+  }, [state.familyName, userId, userEmail, userName, onFamilySetup]);
 
-  const handleJoin = async () => {
-    if (!familyCode.trim()) {
-      Alert.alert('Erro', 'Por favor, insira o código da família');
+  // ============= ENTRAR EM FAMÍLIA =============
+  const handleJoinFamily = useCallback(async () => {
+    const error = validateFamilyCode(state.familyCode);
+    if (error) {
+      Alert.alert('Erro', error);
       return;
     }
 
-    setIsLoading(true);
+    setState(prev => ({ ...prev, isLoading: true }));
     try {
-      console.log('� Entrando na família como dependente...');
-      await familyService.joinFamily(familyCode.trim(), {
+      await familyService.joinFamily(state.familyCode.trim(), {
         id: userId,
         email: userEmail,
         name: userName,
@@ -118,34 +157,33 @@ export default function FamilySetupScreen({ onFamilySetup, onLogout, userEmail, 
       });
 
       const joinedFamily = await familyService.getUserFamily(userId);
-
-      Alert.alert('Sucesso!', 'Você entrou na família.', [
-        {
-          text: 'OK',
-          onPress: () => onFamilySetup(joinedFamily?.id || '')
-        }
-      ]);
+      
+      Alert.alert('Sucesso!', 'Você entrou na família.', [{
+        text: 'OK',
+        onPress: () => onFamilySetup(joinedFamily?.id || '')
+      }]);
     } catch (error) {
-      console.error('❌ Erro ao entrar na família:', error);
-      Alert.alert('Erro', 'Código da família inválido ou família não encontrada.');
+      console.error('❌ Erro ao entrar:', error);
+      Alert.alert('Erro', 'Código inválido ou família não encontrada.');
     } finally {
-      setIsLoading(false);
+      setState(prev => ({ ...prev, isLoading: false }));
     }
-  };
+  }, [state.familyCode, userId, userEmail, userName, onFamilySetup]);
 
-  const renderChoose = () => (
+  // ============= RENDERIZAÇÃO: ESCOLHA =============
+  const ChooseStep = () => (
     <View style={styles.container}>
       <View style={styles.header}>
-  <Ionicons name="people" size={60} color={THEME.primary} />
+        <Ionicons name="people" size={60} color={THEME.primary} />
         <Text style={styles.title}>Bem-vindo!</Text>
         <Text style={styles.subtitle}>Escolha uma opção para começar:</Text>
       </View>
 
       <View style={styles.optionsContainer}>
-          <Pressable
+        <Pressable
           style={({ pressed }) => [
-              styles.roleOption,
-              Platform.OS === 'web' && styles.roleOptionWeb,
+            styles.roleOption,
+            Platform.OS === 'web' && styles.roleOptionWeb,
             pressed && { opacity: 0.7, transform: [{ scale: 0.98 }] }
           ]}
           onPress={() => goTo('create')}
@@ -160,8 +198,8 @@ export default function FamilySetupScreen({ onFamilySetup, onLogout, userEmail, 
 
         <Pressable
           style={({ pressed }) => [
-              styles.roleOption,
-              Platform.OS === 'web' && styles.roleOptionWeb,
+            styles.roleOption,
+            Platform.OS === 'web' && styles.roleOptionWeb,
             pressed && { opacity: 0.7, transform: [{ scale: 0.98 }] }
           ]}
           onPress={() => goTo('join')}
@@ -175,30 +213,24 @@ export default function FamilySetupScreen({ onFamilySetup, onLogout, userEmail, 
         </Pressable>
       </View>
 
-      {/* Botão para voltar ao login */}
       <Pressable
-        style={({ pressed }) => [
-          styles.logoutButton,
-          pressed && { opacity: 0.7 }
-        ]}
+        style={({ pressed }) => [styles.logoutButton, pressed && { opacity: 0.7 }]}
         onPress={onLogout}
       >
-  <Ionicons name="log-out-outline" size={20} color={THEME.textSecondary} />
+        <Ionicons name="log-out-outline" size={20} color={THEME.textSecondary} />
         <Text style={styles.logoutButtonText}>Entrar com outro email</Text>
       </Pressable>
     </View>
   );
 
-  const renderCreateFamily = () => (
+  // ============= RENDERIZAÇÃO: CRIAR FAMÍLIA =============
+  const CreateFamilyStep = () => (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Pressable
-          style={styles.backButton}
-          onPress={() => setCurrentStep('choose')}
-        >
+        <Pressable style={styles.backButton} onPress={goBack}>
           <Ionicons name="arrow-back" size={24} color={THEME.primary} />
         </Pressable>
-  <Ionicons name="home" size={60} color={THEME.primary} />
+        <Ionicons name="home" size={60} color={THEME.primary} />
         <Text style={styles.title}>Criar Família</Text>
         <Text style={styles.subtitle}>Insira o nome da sua família:</Text>
       </View>
@@ -208,42 +240,40 @@ export default function FamilySetupScreen({ onFamilySetup, onLogout, userEmail, 
           style={styles.input}
           placeholder="Nome da família"
           placeholderTextColor="#999"
-          value={familyName}
-          onChangeText={setFamilyName}
+          value={state.familyName}
+          onChangeText={(name) => setState(prev => ({ ...prev, familyName: name }))}
           maxLength={50}
+          editable={!state.isLoading}
         />
 
         <Pressable
-          style={[styles.primaryButton, isLoading && styles.disabledButton]}
+          style={[styles.primaryButton, state.isLoading && styles.disabledButton]}
           onPress={handleCreateFamily}
-          disabled={isLoading}
+          disabled={state.isLoading}
         >
           <Text style={styles.primaryButtonText}>
-            {isLoading ? 'Criando...' : 'Criar Família'}
+            {state.isLoading ? 'Criando...' : 'Criar Família'}
           </Text>
         </Pressable>
 
-        {/* Exibição temporária do invite code para facilitar testes manuais */}
-        {lastInviteCode ? (
+        {state.lastInviteCode && (
           <View style={styles.inviteCodeBoxInline}>
             <Text style={styles.inviteCodeLabelInline}>Código gerado:</Text>
-            <Text style={styles.inviteCodeTextInline}>{lastInviteCode}</Text>
+            <Text style={styles.inviteCodeTextInline}>{state.lastInviteCode}</Text>
           </View>
-        ) : null}
+        )}
       </View>
     </View>
   );
 
-  const renderJoinFamily = () => (
+  // ============= RENDERIZAÇÃO: ENTRAR EM FAMÍLIA =============
+  const JoinFamilyStep = () => (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Pressable
-          style={styles.backButton}
-          onPress={() => setCurrentStep('choose')}
-        >
+        <Pressable style={styles.backButton} onPress={goBack}>
           <Ionicons name="arrow-back" size={24} color={THEME.primary} />
         </Pressable>
-  <Ionicons name="enter" size={60} color={THEME.warning} />
+        <Ionicons name="enter" size={60} color={THEME.warning} />
         <Text style={styles.title}>Entrar na Família</Text>
         <Text style={styles.subtitle}>Insira o código da família:</Text>
       </View>
@@ -253,36 +283,38 @@ export default function FamilySetupScreen({ onFamilySetup, onLogout, userEmail, 
           style={styles.input}
           placeholder="Código da família (6 caracteres)"
           placeholderTextColor="#999"
-          value={familyCode}
+          value={state.familyCode}
           onChangeText={handleCodeChange}
           maxLength={6}
           autoCapitalize="characters"
           autoCorrect={false}
+          editable={!state.isLoading}
         />
 
         <Pressable
-          style={[styles.primaryButton, isLoading && styles.disabledButton]}
-          onPress={handleJoin}
-          disabled={isLoading}
+          style={[styles.primaryButton, state.isLoading && styles.disabledButton]}
+          onPress={handleJoinFamily}
+          disabled={state.isLoading}
         >
           <Text style={styles.primaryButtonText}>
-            {isLoading ? 'Entrando...' : 'Entrar na Família'}
+            {state.isLoading ? 'Entrando...' : 'Entrar na Família'}
           </Text>
         </Pressable>
       </View>
     </View>
   );
 
+  // ============= RENDERIZAÇÃO PRINCIPAL =============
   const renderCurrentStep = () => {
-    switch (currentStep) {
+    switch (state.currentStep) {
       case 'choose':
-        return renderChoose();
+        return <ChooseStep />;
       case 'create-family':
-        return renderCreateFamily();
+        return <CreateFamilyStep />;
       case 'join-family':
-        return renderJoinFamily();
+        return <JoinFamilyStep />;
       default:
-        return renderChoose();
+        return <ChooseStep />;
     }
   };
 

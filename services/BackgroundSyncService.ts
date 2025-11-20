@@ -4,6 +4,9 @@ import { Platform } from 'react-native';
 
 const BACKGROUND_SYNC_TASK = 'background-sync-task';
 
+// Flag para controlar se a task foi definida
+let taskDefined = false;
+
 // Background tasks não estão disponíveis no Expo Go.
 // Para usar essa funcionalidade, é necessário criar um Development Build (Dev Client).
 // Veja: https://docs.expo.dev/develop/development-builds/introduction/
@@ -19,28 +22,41 @@ async function isExpoGo(): Promise<boolean> {
 }
 
 // Define a tarefa de background (funciona apenas em Development Build/Standalone, não em Expo Go)
-TaskManager.defineTask(BACKGROUND_SYNC_TASK, async () => {
-  try {
-    console.log('🔄 [BG] Executando tarefa de sincronização...');
-
-    if (Platform.OS === 'web' || await isExpoGo()) {
-      console.log('⚠️ [BG] Ignorado: não disponível no Expo Go ou Web.');
-      return BackgroundFetch.BackgroundFetchResult.NoData;
-    }
-
-    // Import dinâmico para reduzir custo de inicialização e evitar ciclos
-    const { default: SyncService } = await import('./SyncService');
-
-    const ok = await SyncService.performBackgroundSync();
-    console.log(`✅ [BG] Tarefa concluída. Alterações: ${ok ? 'sim' : 'não'}`);
-    return ok
-      ? BackgroundFetch.BackgroundFetchResult.NewData
-      : BackgroundFetch.BackgroundFetchResult.NoData;
-  } catch (e) {
-    console.error('❌ [BG] Erro na tarefa de sincronização:', e);
-    return BackgroundFetch.BackgroundFetchResult.Failed;
+// Esta função pode ser chamada várias vezes, mas só define a task uma vez
+async function defineBackgroundSyncTask() {
+  if (taskDefined) {
+    return;
   }
-});
+
+  try {
+    TaskManager.defineTask(BACKGROUND_SYNC_TASK, async () => {
+      try {
+        console.log('🔄 [BG] Executando tarefa de sincronização...');
+
+        if (Platform.OS === 'web' || await isExpoGo()) {
+          console.log('⚠️ [BG] Ignorado: não disponível no Expo Go ou Web.');
+          return BackgroundFetch.BackgroundFetchResult.NoData;
+        }
+
+        // Import dinâmico para reduzir custo de inicialização e evitar ciclos
+        const { default: SyncService } = await import('./SyncService');
+
+        const ok = await SyncService.performBackgroundSync();
+        console.log(`✅ [BG] Tarefa concluída. Alterações: ${ok ? 'sim' : 'não'}`);
+        return ok
+          ? BackgroundFetch.BackgroundFetchResult.NewData
+          : BackgroundFetch.BackgroundFetchResult.NoData;
+      } catch (e) {
+        console.error('❌ [BG] Erro na tarefa de sincronização:', e);
+        return BackgroundFetch.BackgroundFetchResult.Failed;
+      }
+    });
+    taskDefined = true;
+    console.log('✅ Task de background sync definida.');
+  } catch (e) {
+    console.error('❌ Erro ao definir background sync task:', e);
+  }
+}
 
 async function registerBackgroundSyncAsync() {
   if (Platform.OS === 'web' || await isExpoGo()) {
@@ -48,6 +64,9 @@ async function registerBackgroundSyncAsync() {
     console.log('   Para usar background tasks, crie um Development Build.');
     return;
   }
+
+  // Garantir que a task está definida antes de registrar
+  await defineBackgroundSyncTask();
 
   const status = await BackgroundFetch.getStatusAsync();
   if (status === BackgroundFetch.BackgroundFetchStatus.Restricted || status === BackgroundFetch.BackgroundFetchStatus.Denied) {
@@ -92,4 +111,5 @@ async function unregisterBackgroundSyncAsync() {
 export default {
   registerBackgroundSyncAsync,
   unregisterBackgroundSyncAsync,
+  defineBackgroundSyncTask,
 };

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { View, Text, StyleSheet, Pressable, Image, TextInput, ActivityIndicator, Platform, ScrollView, Modal, KeyboardAvoidingView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,6 +9,50 @@ import FirebaseAuthService from '../services/FirebaseAuthService';
 import ConnectivityService from '../services/ConnectivityService';
 import Alert from '../utils/Alert';
 
+// ============= TIPOS =============
+interface AuthFormState {
+  email: string;
+  password: string;
+  name: string;
+  isLogin: boolean;
+}
+
+interface PasswordResetState {
+  email: string;
+  visible: boolean;
+  loading: boolean;
+}
+
+// ============= VALIDAÇÕES CONSOLIDADAS =============
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const validateEmail = (email: string): string | null => {
+  if (!email.trim()) {
+    return 'Por favor, digite seu email.';
+  }
+  if (!EMAIL_REGEX.test(email.trim())) {
+    return 'Por favor, digite um email válido (exemplo: usuario@gmail.com).';
+  }
+  return null;
+};
+
+const validatePassword = (password: string, isSignUp: boolean = false): string | null => {
+  if (!password.trim()) {
+    return 'Por favor, digite sua senha.';
+  }
+  if (isSignUp && password.length < 6) {
+    return 'A senha deve ter pelo menos 6 caracteres.';
+  }
+  return null;
+};
+
+const validateName = (name: string): string | null => {
+  if (!name.trim()) {
+    return 'Por favor, digite seu nome completo.';
+  }
+  return null;
+};
+
 interface LoginScreenProps {
   // Interface vazia - login agora é gerenciado internamente
 }
@@ -17,209 +61,145 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
   
-  const [email, setEmail] = useState<string>('');
-  const [password, setPassword] = useState<string>('');
-  const [name, setName] = useState<string>('');
-  const [isLogin, setIsLogin] = useState<boolean>(true);
-  const [loading, setLoading] = useState<boolean>(false);
-  const [resetModalVisible, setResetModalVisible] = useState<boolean>(false);
-  const [resetEmail, setResetEmail] = useState<string>('');
-  const [resetLoading, setResetLoading] = useState<boolean>(false);
-  const [showPassword, setShowPassword] = useState<boolean>(false);
+  const [form, setForm] = useState<AuthFormState>({
+    email: '',
+    password: '',
+    name: '',
+    isLogin: true,
+  });
+  const [authLoading, setAuthLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  
+  const [reset, setReset] = useState<PasswordResetState>({
+    email: '',
+    visible: false,
+    loading: false,
+  });
 
-  const handleEmailAuth = async () => {
-    console.log('🔵 handleEmailAuth iniciado');
-    console.log('📧 Email:', email);
-    console.log('🔐 Password length:', password.length);
-    console.log('👤 isLogin:', isLogin);
-    
-    // Validações mais detalhadas
-    if (!email.trim()) {
-      console.log('❌ Email vazio');
-      Alert.alert('Campo obrigatório', 'Por favor, digite seu email.');
-      return;
+  // ============= VALIDAÇÃO CONSOLIDADA =============
+  const validateAuthForm = useCallback((): string | null => {
+    const emailError = validateEmail(form.email);
+    if (emailError) {
+      Alert.alert('Campo obrigatório', emailError);
+      return emailError;
     }
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email.trim())) {
-      console.log('❌ Email inválido');
-      Alert.alert('Email inválido', 'Por favor, digite um email válido (exemplo: usuario@gmail.com).');
-      return;
+    const passwordError = validatePassword(form.password, !form.isLogin);
+    if (passwordError) {
+      Alert.alert('Campo obrigatório', passwordError);
+      return passwordError;
     }
 
-    if (!password.trim()) {
-      console.log('❌ Senha vazia');
-      Alert.alert('Campo obrigatório', 'Por favor, digite sua senha.');
-      return;
-    }
-
-    if (!isLogin && password.length < 6) {
-      console.log('❌ Senha muito curta');
-      Alert.alert('Senha muito fraca', 'A senha deve ter pelo menos 6 caracteres.');
-      return;
-    }
-
-    if (!isLogin && !name.trim()) {
-      console.log('❌ Nome vazio');
-      Alert.alert('Campo obrigatório', 'Por favor, digite seu nome completo.');
-      return;
-    }
-
-    console.log('✅ Validações passaram, iniciando autenticação...');
-    setLoading(true);
-
-    try {
-      console.log('🌐 Verificando conectividade...');
-      let result;
-      
-      // Verificar conectividade atual (pode ser inicializada no App.tsx)
-      let isOnline = ConnectivityService.isConnected();
-      console.log('📡 isConnected (cache):', isOnline);
-      
-      if (!isOnline) {
-        try {
-          console.log('🔄 Checando conectividade ativa...');
-          const st = await ConnectivityService.checkConnectivity();
-          isOnline = st.isConnected;
-          console.log('📡 isConnected (verificação):', isOnline);
-        } catch (e) {
-          console.warn('⚠️ Falha ao checar conectividade, assumindo offline:', e);
-          isOnline = false;
-        }
+    if (!form.isLogin) {
+      const nameError = validateName(form.name);
+      if (nameError) {
+        Alert.alert('Campo obrigatório', nameError);
+        return nameError;
       }
+    }
+
+    return null;
+  }, [form]);
+
+  // ============= CONECTIVIDADE =============
+  const checkConnectivity = useCallback(async (): Promise<boolean> => {
+    let isOnline = ConnectivityService.isConnected();
+    
+    if (!isOnline) {
+      try {
+        const state = await ConnectivityService.checkConnectivity();
+        isOnline = state.isConnected;
+      } catch (e) {
+        console.warn('⚠️ Falha ao checar conectividade:', e);
+        isOnline = false;
+      }
+    }
+    
+    return isOnline;
+  }, []);
+
+  // ============= AUTENTICAÇÃO =============
+  const handleEmailAuth = useCallback(async () => {
+    if (validateAuthForm()) return;
+
+    setAuthLoading(true);
+    try {
+      const isOnline = await checkConnectivity();
+      let result;
 
       if (isOnline) {
-        console.log('☁️ Online - usando autenticação Firebase');
-        // Prefer remote auth when online
-        if (isLogin) {
-          console.log('🔑 Tentando login remoto...');
-          result = await FirebaseAuthService.loginUser(email, password);
-        } else {
-          console.log('📝 Tentando registro remoto...');
-          result = await FirebaseAuthService.registerUser(email, password, name);
-        }
+        result = form.isLogin
+          ? await FirebaseAuthService.loginUser(form.email, form.password)
+          : await FirebaseAuthService.registerUser(form.email, form.password, form.name);
       } else {
-        console.log('💾 Offline - usando autenticação local');
-        // Fallback local
-        if (isLogin) {
-          console.log('🔑 Tentando login local...');
-          result = await LocalAuthService.loginUser(email, password);
-        } else {
-          console.log('📝 Tentando registro local...');
-          result = await LocalAuthService.registerUser(email, password, name, 'admin');
-        }
+        result = form.isLogin
+          ? await LocalAuthService.loginUser(form.email, form.password)
+          : await LocalAuthService.registerUser(form.email, form.password, form.name, 'admin');
       }
 
-      console.log('📊 Resultado da autenticação:', result);
-
       if (result.success) {
-        console.log('✅ Autenticação bem-sucedida!');
-        if (!isLogin) {
-          // Alerta após criar cadastro com confirmação e atualização automática
-          console.log('🎉 Mostrando alert de conta criada');
+        if (!form.isLogin) {
           Alert.alert(
             'Conta Criada com Sucesso!', 
             'Sua conta foi criada com sucesso! A página será atualizada automaticamente.',
-            [
-              {
-                text: 'OK',
-                onPress: () => {
-                  console.log('👍 Usuário clicou OK no alert');
-                  // Limpar formulário e voltar para tela de login
-                  setEmail('');
-                  setPassword('');
-                  setName('');
-                  setIsLogin(true);
-                  
-                  // Atualizar a página automaticamente após um breve delay
-                  setTimeout(() => {
-                    if (typeof window !== 'undefined') {
-                      console.log('🔄 Recarregando página...');
-                      window.location.reload();
-                    }
-                  }, 500);
+            [{
+              text: 'OK',
+              onPress: () => {
+                setForm({ email: '', password: '', name: '', isLogin: true });
+                if (typeof window !== 'undefined') {
+                  window.location.reload();
                 }
               }
-            ]
+            }]
           );
         }
-        // O AuthStateListener no App.tsx irá detectar o login automaticamente
-        console.log('👂 Aguardando AuthStateListener detectar mudança...');
       } else {
-        console.log('❌ Autenticação falhou:', result.error);
         Alert.alert('Erro', result.error);
       }
     } catch (error: any) {
-      console.error('💥 Erro inesperado na autenticação:', error);
+      console.error('Erro na autenticação:', error);
       Alert.alert('Erro', 'Erro inesperado: ' + error.message);
+    } finally {
+      setAuthLoading(false);
     }
+  }, [form, validateAuthForm, checkConnectivity]);
 
-    console.log('🔚 Finalizando handleEmailAuth');
-    setLoading(false);
-  };
-
-  const handlePasswordReset = async () => {
-    if (!resetEmail.trim()) {
-      Alert.alert('Campo obrigatório', 'Por favor, digite seu email.');
+  const handlePasswordReset = useCallback(async () => {
+    const emailError = validateEmail(reset.email);
+    if (emailError) {
+      Alert.alert('Email inválido', emailError);
       return;
     }
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(resetEmail.trim())) {
-      Alert.alert('Email inválido', 'Por favor, digite um email válido.');
-      return;
-    }
-
-    setResetLoading(true);
-
+    setReset(prev => ({ ...prev, loading: true }));
     try {
-      // Verificar conectividade
-      let isOnline = ConnectivityService.isConnected();
-      
-      if (!isOnline) {
-        try {
-          const st = await ConnectivityService.checkConnectivity();
-          isOnline = st.isConnected;
-        } catch (e) {
-          isOnline = false;
-        }
-      }
+      const isOnline = await checkConnectivity();
 
-      let result;
-      
-      if (isOnline) {
-        // Usar Firebase diretamente quando online
-        result = await FirebaseAuthService.resetPassword(resetEmail.trim());
-      } else {
-        // Offline: avisa que precisa de conexão
-        Alert.alert(
-          'Sem conexão', 
-          'O reset de senha requer conexão com a internet. Por favor, conecte-se e tente novamente.'
-        );
-        setResetLoading(false);
+      if (!isOnline) {
+        Alert.alert('Sem conexão', 'O reset de senha requer conexão com a internet.');
         return;
       }
+
+      const result = await FirebaseAuthService.resetPassword(reset.email.trim());
       
       if (result.success) {
         Alert.alert(
           'Email enviado!', 
-          'Verifique sua caixa de entrada e spam. O link de redefinição de senha foi enviado para seu email.',
-          [{ text: 'OK', onPress: () => setResetModalVisible(false) }]
+          'Verifique sua caixa de entrada e spam.',
+          [{ text: 'OK', onPress: () => {
+            setReset({ email: '', visible: false, loading: false });
+          }}]
         );
-        setResetEmail('');
       } else {
-        Alert.alert('Erro', result.error || 'Não foi possível enviar o email de reset.');
+        Alert.alert('Erro', result.error || 'Não foi possível enviar o email.');
       }
     } catch (error: any) {
-      console.error('Erro inesperado no reset de senha:', error);
+      console.error('Erro no reset:', error);
       Alert.alert('Erro', 'Erro inesperado: ' + error.message);
+    } finally {
+      setReset(prev => ({ ...prev, loading: false }));
     }
-
-    setResetLoading(false);
-  };
-
-  // Removido código não utilizado: validação de código de convite
-
+  }, [reset.email, checkConnectivity]);
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <KeyboardAvoidingView 
@@ -228,228 +208,210 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
         keyboardVerticalOffset={Platform.OS === 'ios' ? 40 : 0}
       >
         <ScrollView 
-        style={styles.scrollContainer}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-      >
-        <View style={styles.content}>
-          <View style={styles.header}>
-            <Image source={require('../assets/icon_natal.jpeg')} style={styles.logo} />
-            <Text style={styles.title}>Bem-vindo ao</Text>
-            <Text style={styles.appName}>Agenda Familiar</Text>
-          </View>
+          style={styles.scrollContainer}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={styles.content}>
+            <View style={styles.header}>
+              <Image source={require('../assets/icon_natal.jpeg')} style={styles.logo} />
+              <Text style={styles.title}>Bem-vindo ao</Text>
+              <Text style={styles.appName}>Agenda Familiar</Text>
+            </View>
 
-          {/* Toggle Login/Registro */}
-          <View style={styles.authToggle}>
-            <Pressable
-              style={({ pressed }) => [
-                styles.toggleButton,
-                isLogin && styles.toggleButtonActive,
-                pressed && { opacity: 0.7 }
-              ]}
-              onPress={() => setIsLogin(true)}
-              android_ripple={{ color: 'rgba(0, 122, 255, 0.2)' }}
-            >
-              <Text style={[styles.toggleText, isLogin && styles.toggleTextActive]}>Entrar</Text>
-            </Pressable>
-            <Pressable
-              style={({ pressed }) => [
-                styles.toggleButton,
-                !isLogin && styles.toggleButtonActive,
-                pressed && { opacity: 0.7 }
-              ]}
-              onPress={() => setIsLogin(false)}
-              android_ripple={{ color: 'rgba(0, 122, 255, 0.2)' }}
-            >
-              <Text style={[styles.toggleText, !isLogin && styles.toggleTextActive]}>Registrar</Text>
-            </Pressable>
-          </View>
+            {/* Toggle Login/Registro */}
+            <View style={styles.authToggle}>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.toggleButton,
+                  form.isLogin && styles.toggleButtonActive,
+                  pressed && { opacity: 0.7 }
+                ]}
+                onPress={() => setForm(prev => ({ ...prev, isLogin: true }))}
+                android_ripple={{ color: 'rgba(0, 122, 255, 0.2)' }}
+              >
+                <Text style={[styles.toggleText, form.isLogin && styles.toggleTextActive]}>Entrar</Text>
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.toggleButton,
+                  !form.isLogin && styles.toggleButtonActive,
+                  pressed && { opacity: 0.7 }
+                ]}
+                onPress={() => setForm(prev => ({ ...prev, isLogin: false }))}
+                android_ripple={{ color: 'rgba(0, 122, 255, 0.2)' }}
+              >
+                <Text style={[styles.toggleText, !form.isLogin && styles.toggleTextActive]}>Registrar</Text>
+              </Pressable>
+            </View>
 
-          {/* Formulário de Autenticação */}
-          <View style={styles.authForm}>
-            {!isLogin && (
-              <>
+            {/* Formulário de Autenticação */}
+            <View style={styles.authForm}>
+              {!form.isLogin && (
                 <View style={styles.inputContainer}>
                   <Ionicons name="person-outline" size={20} color={THEME.textSecondary} style={styles.inputIcon} />
                   <TextInput
                     style={styles.input}
                     placeholder="Nome completo"
-                    value={name}
-                    onChangeText={setName}
+                    value={form.name}
+                    onChangeText={(name) => setForm(prev => ({ ...prev, name }))}
                     autoCapitalize="words"
                     autoCorrect={false}
                   />
                 </View>
-              </>
-            )}
+              )}
 
-            <View style={styles.inputContainer}>
-              <Ionicons name="mail-outline" size={20} color={THEME.textSecondary} style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                placeholder="Email"
-                placeholderTextColor="#999"
-                value={email}
-                onChangeText={setEmail}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-            </View>
-
-            <View style={styles.inputContainer}>
-              <Ionicons name="lock-closed-outline" size={20} color={THEME.textSecondary} style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                placeholder="Senha"
-                placeholderTextColor="#999"
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry={!showPassword}
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-              <Pressable
-                onPress={() => setShowPassword(!showPassword)}
-                style={({ pressed }) => [
-                  styles.passwordToggle,
-                  pressed && { opacity: 0.5 }
-                ]}
-                android_ripple={{ color: 'rgba(0, 0, 0, 0.1)', radius: 20, borderless: true }}
-              >
-                <Ionicons 
-                  name={showPassword ? "eye-off-outline" : "eye-outline"} 
-                  size={20} 
-                  color={THEME.textSecondary} 
+              <View style={styles.inputContainer}>
+                <Ionicons name="mail-outline" size={20} color={THEME.textSecondary} style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Email"
+                  placeholderTextColor="#999"
+                  value={form.email}
+                  onChangeText={(email) => setForm(prev => ({ ...prev, email }))}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
                 />
-              </Pressable>
-            </View>
-          </View>
+              </View>
 
-          <View style={styles.buttonContainer}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.button,
-              styles.primaryButton,
-              loading && styles.buttonDisabled,
-              pressed && !loading && styles.buttonPressed
-            ]}
-            onPress={() => {
-              console.log('🖱️ BOTÃO CLICADO - Entrar com Email');
-              console.log('⏳ Loading state:', loading);
-              console.log('📝 Email atual:', email);
-              console.log('🔒 Password atual (length):', password.length);
-              handleEmailAuth();
-            }}
-            disabled={loading}
-            android_ripple={{ color: 'rgba(255, 255, 255, 0.3)' }}
-          >
-            {loading ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <>
-                <Ionicons name="mail" size={24} color="#fff" style={styles.buttonIcon} />
-                <Text style={styles.buttonText}>
-                  {isLogin ? 'Entrar com Email' : 'Criar Conta'}
-                </Text>
-              </>
-            )}
-          </Pressable>
-
-          {isLogin && (
-            <Pressable
-              style={({ pressed }) => [
-                styles.forgotPasswordButton,
-                pressed && { opacity: 0.6 }
-              ]}
-              onPress={() => setResetModalVisible(true)}
-            >
-              <Text style={styles.forgotPasswordText}>Esqueci minha senha</Text>
-            </Pressable>
-          )}
-        </View>
-        
-        {/* Nota sobre configurações */}
-        <View style={styles.infoNote}>
-          <Ionicons name="information-circle-outline" size={16} color={THEME.textSecondary} />
-          <Text style={styles.infoText}>
-            Você pode alterar seu perfil e configurações após fazer login
-          </Text>
-        </View>
-        
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>Organize suas tarefas de forma simples e compartilhada.</Text>
-        </View>
-      </View>
-      </ScrollView>
-
-      {/* Modal de Reset de Senha */}
-      <Modal
-        animationType="fade"
-        transparent={true}
-        visible={resetModalVisible}
-        onRequestClose={() => setResetModalVisible(false)}
-      >
-        <View style={styles.modalContainer}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Redefinir Senha</Text>
-            <Text style={styles.modalSubtitle}>
-              Digite seu email para receber um link de redefinição de senha
-            </Text>
-            
-            <View style={styles.inputContainer}>
-              <Ionicons name="mail-outline" size={20} color="#666" style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                placeholder="Digite seu email"
-                placeholderTextColor="#999"
-                value={resetEmail}
-                onChangeText={setResetEmail}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-                autoFocus
-              />
+              <View style={styles.inputContainer}>
+                <Ionicons name="lock-closed-outline" size={20} color={THEME.textSecondary} style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Senha"
+                  placeholderTextColor="#999"
+                  value={form.password}
+                  onChangeText={(password) => setForm(prev => ({ ...prev, password }))}
+                  secureTextEntry={!showPassword}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                <Pressable
+                  onPress={() => setShowPassword(!showPassword)}
+                  style={({ pressed }) => [styles.passwordToggle, pressed && { opacity: 0.5 }]}
+                  android_ripple={{ color: 'rgba(0, 0, 0, 0.1)', radius: 20, borderless: true }}
+                >
+                  <Ionicons 
+                    name={showPassword ? "eye-off-outline" : "eye-outline"} 
+                    size={20} 
+                    color={THEME.textSecondary} 
+                  />
+                </Pressable>
+              </View>
             </View>
 
-            <View style={styles.modalButtons}>
+            <View style={styles.buttonContainer}>
               <Pressable
                 style={({ pressed }) => [
-                  styles.modalButton,
-                  styles.cancelButton,
-                  pressed && !resetLoading && { opacity: 0.7 }
+                  styles.button,
+                  styles.primaryButton,
+                  authLoading && styles.buttonDisabled,
+                  pressed && !authLoading && styles.buttonPressed
                 ]}
-                onPress={() => {
-                  setResetModalVisible(false);
-                  setResetEmail('');
-                }}
-                disabled={resetLoading}
-                android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
-              >
-                <Text style={styles.cancelButtonText}>Cancelar</Text>
-              </Pressable>
-              <Pressable
-                style={({ pressed }) => [
-                  styles.modalButton,
-                  styles.sendButton,
-                  resetLoading && styles.buttonDisabled,
-                  pressed && !resetLoading && styles.buttonPressed
-                ]}
-                onPress={handlePasswordReset}
-                disabled={resetLoading}
+                onPress={handleEmailAuth}
+                disabled={authLoading}
                 android_ripple={{ color: 'rgba(255, 255, 255, 0.3)' }}
               >
-                {resetLoading ? (
+                {authLoading ? (
                   <ActivityIndicator size="small" color="#fff" />
                 ) : (
-                  <Text style={styles.sendButtonText}>Enviar</Text>
+                  <>
+                    <Ionicons name="mail" size={24} color="#fff" style={styles.buttonIcon} />
+                    <Text style={styles.buttonText}>
+                      {form.isLogin ? 'Entrar com Email' : 'Criar Conta'}
+                    </Text>
+                  </>
                 )}
               </Pressable>
+
+              {form.isLogin && (
+                <Pressable
+                  style={({ pressed }) => [styles.forgotPasswordButton, pressed && { opacity: 0.6 }]}
+                  onPress={() => setReset(prev => ({ ...prev, visible: true }))}
+                >
+                  <Text style={styles.forgotPasswordText}>Esqueci minha senha</Text>
+                </Pressable>
+              )}
+            </View>
+            
+            <View style={styles.infoNote}>
+              <Ionicons name="information-circle-outline" size={16} color={THEME.textSecondary} />
+              <Text style={styles.infoText}>
+                Você pode alterar seu perfil e configurações após fazer login
+              </Text>
+            </View>
+            
+            <View style={styles.footer}>
+              <Text style={styles.footerText}>Organize suas tarefas de forma simples e compartilhada.</Text>
             </View>
           </View>
-        </View>
-      </Modal>
+        </ScrollView>
+
+        {/* Modal de Reset de Senha */}
+        <Modal
+          animationType="fade"
+          transparent={true}
+          visible={reset.visible}
+          onRequestClose={() => setReset(prev => ({ ...prev, visible: false }))}
+        >
+          <View style={styles.modalContainer}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>Redefinir Senha</Text>
+              <Text style={styles.modalSubtitle}>
+                Digite seu email para receber um link de redefinição de senha
+              </Text>
+              
+              <View style={styles.inputContainer}>
+                <Ionicons name="mail-outline" size={20} color="#666" style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Digite seu email"
+                  placeholderTextColor="#999"
+                  value={reset.email}
+                  onChangeText={(email) => setReset(prev => ({ ...prev, email }))}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  autoFocus
+                />
+              </View>
+
+              <View style={styles.modalButtons}>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.modalButton,
+                    styles.cancelButton,
+                    pressed && !reset.loading && { opacity: 0.7 }
+                  ]}
+                  onPress={() => setReset({ email: '', visible: false, loading: false })}
+                  disabled={reset.loading}
+                  android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+                >
+                  <Text style={styles.cancelButtonText}>Cancelar</Text>
+                </Pressable>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.modalButton,
+                    styles.sendButton,
+                    reset.loading && styles.buttonDisabled,
+                    pressed && !reset.loading && styles.buttonPressed
+                  ]}
+                  onPress={handlePasswordReset}
+                  disabled={reset.loading}
+                  android_ripple={{ color: 'rgba(255, 255, 255, 0.3)' }}
+                >
+                  {reset.loading ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={styles.sendButtonText}>Enviar</Text>
+                  )}
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

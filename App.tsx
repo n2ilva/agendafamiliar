@@ -14,287 +14,281 @@ import BackgroundSyncService from './services/BackgroundSyncService';
 import Alert from './utils/Alert';
 import ConnectivityService from './services/ConnectivityService';
 import * as SplashScreen from 'expo-splash-screen';
-import { getCurrentSeason } from './utils/colors';
 
 // Importar ferramentas de diagnóstico (apenas em desenvolvimento)
 if (__DEV__) {
   import('./utils/DiagnosticTools');
 }
 
-
-
 const USER_STORAGE_KEY = 'familyApp_currentUser';
 
-export default function App() {
-  const [user, setUser] = useState<FamilyUser | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [familyConfigured, setFamilyConfigured] = useState<boolean>(false);
-  const [appIsReady, setAppIsReady] = useState<boolean>(false);
+// ============= TIPOS PRIVADOS =============
+interface UserUpdatePayload {
+  field: 'name' | 'picture' | 'profileIcon';
+  value: string;
+  historyDetails: string;
+}
 
-  // Evita que o Splash desapareça automaticamente; será escondido manualmente após boot essencial
+interface AuthState {
+  user: FamilyUser | null;
+  loading: boolean;
+  familyConfigured: boolean;
+  appIsReady: boolean;
+}
+
+export default function App() {
+  const [state, setState] = useState<AuthState>({
+    user: null,
+    loading: true,
+    familyConfigured: false,
+    appIsReady: false,
+  });
+
+  // ============= INICIALIZAÇÃO =============
   useEffect(() => {
     SplashScreen.preventAutoHideAsync().catch(() => {});
   }, []);
 
   useEffect(() => {
-    (async () => {
-      try {
-        await ConnectivityService.initialize();
-      } catch (e) {
-        console.warn('Falha ao inicializar ConnectivityService no startup:', e);
-      }
-      await checkPersistedUser();
-    })();
+    initializeApp();
   }, []);
 
-  // Quando o carregamento essencial terminar, marcamos appIsReady para esconder Splash no onLayout
   useEffect(() => {
-    if (!loading) {
-      setAppIsReady(true);
+    if (!state.loading && !state.appIsReady) {
+      setState(prev => ({ ...prev, appIsReady: true }));
     }
-  }, [loading]);
+  }, [state.loading, state.appIsReady]);
 
-  // Assim que o app estiver pronto, hide o Splash (sem depender de onLayout)
   useEffect(() => {
-    if (appIsReady) {
-      // Pequeno atraso garante que a primeira pintura do layout já ocorreu
-      const t = setTimeout(() => {
+    if (state.appIsReady) {
+      const timer = setTimeout(() => {
         SplashScreen.hideAsync().catch(() => {});
       }, 0);
-      return () => clearTimeout(t);
+      return () => clearTimeout(timer);
     }
-  }, [appIsReady]);
+  }, [state.appIsReady]);
 
-  const checkPersistedUser = async () => {
+  const initializeApp = async () => {
     try {
-      const savedUser = await AsyncStorage.getItem(USER_STORAGE_KEY);
-      if (savedUser) {
-        const userData = JSON.parse(savedUser);
-        console.log('👤 Usuário encontrado no storage local:', userData.name);
-        
-        try {
-          const userFamily = await familyService.getUserFamily(userData.id);
-          
-          if (userFamily) {
-            console.log('🏠 Família encontrada no Firebase:', userFamily.name);
-            if (!userData.familyId || userData.familyId !== userFamily.id) {
-              userData.familyId = userFamily.id;
-              console.log('✅ FamilyId atualizado no storage:', userFamily.id);
-            }
-            // Sincronizar role silenciosamente a partir do membro da família
-            try {
-              const me = userFamily.members.find(m => m.id === userData.id);
-              if (me && me.role && me.role !== userData.role) {
-                userData.role = me.role;
-                // Atualizar nos serviços locais (sem Alert)
-                try { await LocalAuthService.updateUserRole(userData.id, me.role); } catch {}
-                console.log('🔄 Role sincronizada do servidor (silencioso):', me.role);
-              }
-            } catch {}
-
-            await saveUserToStorage(userData);
-            setFamilyConfigured(true);
-          } else {
-            console.log('👤 Usuário não possui família');
-            setFamilyConfigured(false);
-          }
-        } catch (error) {
-          console.error('❌ Erro ao verificar família do usuário:', error);
-          setFamilyConfigured(!!userData.familyId);
-        }
-        
-        setUser(userData);
-      }
+      await ConnectivityService.initialize();
+      await checkPersistedUser();
+      setupAuthListener();
     } catch (error) {
-      console.error('Erro ao carregar usuário salvo:', error);
-    } finally {
-      setLoading(false);
+      console.warn('Erro ao inicializar app:', error);
+      setState(prev => ({ ...prev, loading: false }));
     }
   };
 
-  const saveUserToStorage = async (userData: FamilyUser) => {
+  // ============= STORAGE OPERATIONS =============
+  const saveUserToStorage = useCallback(async (userData: FamilyUser) => {
     try {
       await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(userData));
       console.log('💾 Usuário salvo no storage local');
     } catch (error) {
       console.error('Erro ao salvar usuário:', error);
     }
-  };
+  }, []);
 
-  const removeUserFromStorage = async () => {
+  const removeUserFromStorage = useCallback(async () => {
     try {
       await AsyncStorage.removeItem(USER_STORAGE_KEY);
       console.log('🗑️ Usuário removido do storage local');
     } catch (error) {
       console.error('Erro ao remover usuário:', error);
     }
+  }, []);
+
+  // ============= FAMILY SYNC =============
+  const syncUserFamily = async (userData: FamilyUser): Promise<boolean> => {
+    try {
+      const userFamily = await familyService.getUserFamily(userData.id);
+      
+      if (!userFamily) {
+        console.log('👤 Usuário não possui família');
+        return false;
+      }
+
+      console.log('🏠 Família encontrada:', userFamily.name);
+      
+      // Atualizar familyId se necessário
+      if (!userData.familyId || userData.familyId !== userFamily.id) {
+        userData.familyId = userFamily.id;
+      }
+
+      // Sincronizar role silenciosamente
+      const member = userFamily.members.find(m => m.id === userData.id);
+      if (member?.role && member.role !== userData.role) {
+        userData.role = member.role;
+        try {
+          await LocalAuthService.updateUserRole(userData.id, member.role);
+        } catch {}
+      }
+
+      return true;
+    } catch (error) {
+      console.error('❌ Erro ao sincronizar família:', error);
+      return !!userData.familyId;
+    }
   };
 
-  useEffect(() => {
-  console.log('🔔 Configurando listener de autenticação');
-  
-  // Timeout de segurança - se após 10s o loading não mudou, forçar false
-  const safetyTimeout = setTimeout(() => {
-    console.warn('⏱️ Timeout de segurança atingido - forçando loading=false');
-    setLoading(false);
-  }, 10000);
-  
-  const unsubscribe = LocalAuthService.onAuthStateChange(async (authUser) => {
-      clearTimeout(safetyTimeout); // Cancela o timeout quando auth responde
+  // ============= USER CHECKS =============
+  const checkPersistedUser = async () => {
+    try {
+      const savedUser = await AsyncStorage.getItem(USER_STORAGE_KEY);
+      if (savedUser) {
+        const userData = JSON.parse(savedUser);
+        console.log('👤 Usuário encontrado:', userData.name);
+        
+        const familyConfigured = await syncUserFamily(userData);
+        await saveUserToStorage(userData);
+        
+        setState(prev => ({
+          ...prev,
+          user: userData,
+          familyConfigured,
+          loading: false
+        }));
+      } else {
+        setState(prev => ({ ...prev, loading: false }));
+      }
+    } catch (error) {
+      console.error('Erro ao carregar usuário:', error);
+      setState(prev => ({ ...prev, loading: false }));
+    }
+  };
+
+  const setupAuthListener = () => {
+    console.log('🔔 Configurando listener de autenticação');
+    
+    const safetyTimeout = setTimeout(() => {
+      console.warn('⏱️ Timeout de segurança atingido');
+      setState(prev => ({ ...prev, loading: false }));
+    }, 10000);
+    
+    const unsubscribe = LocalAuthService.onAuthStateChange(async (authUser) => {
+      clearTimeout(safetyTimeout);
       
-      if (authUser) {
-        console.log('👤 Usuário autenticado detectado:', authUser.email);
-        setUser(authUser);
-        await saveUserToStorage(authUser);
+      if (!authUser) {
+        console.log('🚪 Auth indica logout');
+        setState(prev => ({
+          ...prev,
+          user: null,
+          familyConfigured: false,
+          loading: false
+        }));
+        await removeUserFromStorage();
+        return;
+      }
+
+      console.log('👤 Usuário autenticado:', authUser.email);
+      
+      try {
         await LocalAuthService.initializeOfflineSupport();
         await BackgroundSyncService.registerBackgroundSyncAsync();
         
-        try {
-          console.log('🔍 Buscando família do usuário:', authUser.id);
-          const userFamily = await familyService.getUserFamily(authUser.id);
-          
-          if (userFamily) {
-            console.log('🏠 Família encontrada no Firebase:', userFamily.name);
-            if (!authUser.familyId || authUser.familyId !== userFamily.id) {
-              authUser.familyId = userFamily.id;
-              console.log('✅ FamilyId atualizado:', userFamily.id);
-            }
-            // Sincronizar role silenciosamente com base no membro
-            try {
-              const me = userFamily.members.find(m => m.id === authUser.id);
-              if (me && me.role && me.role !== authUser.role) {
-                authUser.role = me.role;
-                try { await LocalAuthService.updateUserRole(authUser.id, me.role); } catch {}
-                console.log('🔄 Role sincronizada do servidor (silencioso):', me.role);
-              }
-            } catch {}
-
-            setUser(authUser);
-            await saveUserToStorage(authUser);
-            setFamilyConfigured(true);
-          } else {
-            console.log('👤 Usuário não possui família');
-            setFamilyConfigured(!!authUser.familyId);
-          }
-        } catch (error) {
-          console.error('❌ Erro ao verificar família:', error);
-          setFamilyConfigured(!!authUser.familyId);
-        }
-      } else {
-        console.log('🚪 Auth indica logout - limpando estado da aplicação');
-        setUser(null);
-        setFamilyConfigured(false);
-        await removeUserFromStorage();
+        const familyConfigured = await syncUserFamily(authUser);
+        await saveUserToStorage(authUser);
+        
+        setState(prev => ({
+          ...prev,
+          user: authUser,
+          familyConfigured,
+          loading: false
+        }));
+      } catch (error) {
+        console.error('Erro ao processar autenticação:', error);
+        setState(prev => ({
+          ...prev,
+          user: authUser,
+          familyConfigured: !!authUser.familyId,
+          loading: false
+        }));
       }
-      console.log('✅ onAuthStateChange concluído - definindo loading=false');
-      setLoading(false);
     });
 
     return () => {
       clearTimeout(safetyTimeout);
       unsubscribe();
     };
-  }, []);
-
-  const handleUserNameChange = async (newName: string) => {
-    if (user) {
-      const updatedUser = { ...user, name: newName };
-      setUser(updatedUser);
-      await saveUserToStorage(updatedUser);
-      console.log('✅ Nome do usuário atualizado no App.tsx');
-      // Sincronizar com Firebase
-      try {
-        await LocalAuthService.updateUserName(newName);
-      } catch (e) {
-        console.warn('Falha ao sincronizar nome com Firebase:', e);
-      }
-      // Registrar no histórico da família (best-effort)
-      try {
-        if (updatedUser.familyId) {
-          await familyService.addFamilyHistoryItem(updatedUser.familyId, {
-            action: 'edited',
-            taskTitle: 'Perfil do usuário',
-            taskId: '',
-            userId: updatedUser.id,
-            userName: updatedUser.name,
-            userRole: updatedUser.role,
-            details: `Nome alterado para "${newName}"`
-          });
-        }
-      } catch (e) {
-        console.warn('Falha ao registrar histórico de alteração de nome:', e);
-      }
-    }
   };
 
-  const handleUserImageChange = async (newImageUrl: string) => {
-    if (user) {
-      const updatedUser = { ...user, picture: newImageUrl };
-      setUser(updatedUser);
-      await saveUserToStorage(updatedUser);
-      console.log('✅ Foto do usuário atualizada no App.tsx');
-      // Sincronizar com Firebase (se não foi feito pelo serviço de upload)
-      try {
-        if (/^https?:\/\//i.test(newImageUrl)) {
-          // Se já é uma URL remota, atualizar docs de perfil
-          await LocalAuthService.uploadProfileImage(newImageUrl);
+  // ============= USER UPDATE OPERATIONS =============
+  const updateUserProfile = useCallback(async (payload: UserUpdatePayload) => {
+    if (!state.user) return;
+
+    const updatedUser: FamilyUser = {
+      ...state.user,
+      [payload.field === 'picture' ? 'picture' : 
+       payload.field === 'profileIcon' ? 'profileIcon' : 'name']: payload.value
+    };
+
+    setState(prev => ({ ...prev, user: updatedUser }));
+    await saveUserToStorage(updatedUser);
+
+    // Sincronizar com Firebase
+    try {
+      if (payload.field === 'name') {
+        await LocalAuthService.updateUserName(payload.value);
+      } else if (payload.field === 'picture') {
+        if (/^https?:\/\//i.test(payload.value)) {
+          await LocalAuthService.uploadProfileImage(payload.value);
         }
-      } catch (e) {
-        console.warn('Falha ao sincronizar foto com Firebase:', e);
+      } else if (payload.field === 'profileIcon') {
+        await LocalAuthService.setProfileIcon(payload.value);
       }
-      // Registrar no histórico da família (best-effort)
+    } catch (error) {
+      console.warn(`Falha ao sincronizar ${payload.field}:`, error);
+    }
+
+    // Registrar no histórico
+    if (updatedUser.familyId) {
       try {
-        if (updatedUser.familyId) {
-          await familyService.addFamilyHistoryItem(updatedUser.familyId, {
-            action: 'edited',
-            taskTitle: 'Perfil do usuário',
-            taskId: '',
-            userId: updatedUser.id,
-            userName: updatedUser.name,
-            userRole: updatedUser.role,
-            details: 'Foto de perfil atualizada'
-          });
-        }
-      } catch (e) {
-        console.warn('Falha ao registrar histórico de alteração de foto:', e);
+        await familyService.addFamilyHistoryItem(updatedUser.familyId, {
+          action: 'edited',
+          taskTitle: 'Perfil do usuário',
+          taskId: '',
+          userId: updatedUser.id,
+          userName: updatedUser.name,
+          userRole: updatedUser.role,
+          details: payload.historyDetails
+        });
+      } catch (error) {
+        console.warn('Falha ao registrar histórico:', error);
       }
     }
-  };
+  }, [state.user, saveUserToStorage]);
 
-  const handleUserProfileIconChange = async (newProfileIcon: string) => {
-    if (user) {
-      const updatedUser = { ...user, profileIcon: newProfileIcon };
-      setUser(updatedUser);
-      await saveUserToStorage(updatedUser);
-      console.log('✅ Ícone de perfil do usuário atualizado no App.tsx');
-      // Registrar no histórico da família (best-effort)
-      try {
-        if (updatedUser.familyId) {
-          await familyService.addFamilyHistoryItem(updatedUser.familyId, {
-            action: 'edited',
-            taskTitle: 'Perfil do usuário',
-            taskId: '',
-            userId: updatedUser.id,
-            userName: updatedUser.name,
-            userRole: updatedUser.role,
-            details: 'Ícone de perfil atualizado'
-          });
-        }
-      } catch (e) {
-        console.warn('Falha ao registrar histórico de alteração de ícone:', e);
-      }
-    }
-  };
+  const handleUserNameChange = useCallback((newName: string) => {
+    updateUserProfile({
+      field: 'name',
+      value: newName,
+      historyDetails: `Nome alterado para "${newName}"`
+    });
+  }, [updateUserProfile]);
 
-  const handleLogout = async () => {
+  const handleUserImageChange = useCallback((newImageUrl: string) => {
+    updateUserProfile({
+      field: 'picture',
+      value: newImageUrl,
+      historyDetails: 'Foto de perfil atualizada'
+    });
+  }, [updateUserProfile]);
+
+  const handleUserProfileIconChange = useCallback((newProfileIcon: string) => {
+    updateUserProfile({
+      field: 'profileIcon',
+      value: newProfileIcon,
+      historyDetails: 'Ícone de perfil atualizado'
+    });
+  }, [updateUserProfile]);
+
+  // ============= LOGOUT & FAMILY SETUP =============
+  const handleLogout = useCallback(async () => {
     Alert.alert(
       'Sair do App',
       'Tem certeza que deseja sair da sua conta?',
       [
-        { 
-          text: 'Cancelar', 
-          style: 'cancel' 
-        },
+        { text: 'Cancelar', style: 'cancel' },
         { 
           text: 'Sair', 
           style: 'destructive',
@@ -306,90 +300,86 @@ export default function App() {
             } catch (error) {
               console.error('Erro no logout:', error);
             } finally {
-              setUser(null);
+              setState(prev => ({ ...prev, user: null }));
             }
           }
         }
       ]
     );
-  };
+  }, [removeUserFromStorage]);
 
-  const handleFamilySetup = async (familyId: string) => {
-    if (user) {
-      const updatedUser = { ...user, familyId };
-      setUser(updatedUser);
+  const handleFamilySetup = useCallback(async (familyId: string) => {
+    if (state.user) {
+      const updatedUser = { ...state.user, familyId };
+      setState(prev => ({ ...prev, user: updatedUser, familyConfigured: true }));
       await saveUserToStorage(updatedUser);
+      console.log('✅ Família configurada com sucesso');
     }
-    setFamilyConfigured(true);
-    console.log('✅ Família configurada com sucesso');
-  };
+  }, [state.user, saveUserToStorage]);
 
-  const handleUserRoleChange = async (newRole: UserRole, opts?: { silent?: boolean }) => {
-    if (user) {
-      try {
-        // Atualizar role no armazenamento local se não for convidado
-        if (!user.isGuest) {
-          await LocalAuthService.updateUserRole(user.id, newRole);
-        }
-        
-        // Atualizar estado local
-        const updatedUser: FamilyUser = {
-          ...user,
-          role: newRole
-        };
-        setUser(updatedUser);
-        await saveUserToStorage(updatedUser); // Salvar mudança de role
-        
-        if (!opts?.silent) {
-          Alert.alert(
-            'Perfil Atualizado',
-            `Seu perfil foi alterado para ${newRole === 'admin' ? 'Administrador' : 'Dependente'}.`
-          );
-        }
-      } catch (error: any) {
-        Alert.alert('Erro', 'Não foi possível alterar o perfil: ' + error.message);
+  const handleUserRoleChange = useCallback(async (newRole: UserRole, opts?: { silent?: boolean }) => {
+    if (!state.user) return;
+
+    try {
+      if (!state.user.isGuest) {
+        await LocalAuthService.updateUserRole(state.user.id, newRole);
       }
+      
+      const updatedUser = { ...state.user, role: newRole };
+      setState(prev => ({ ...prev, user: updatedUser }));
+      await saveUserToStorage(updatedUser);
+      
+      if (!opts?.silent) {
+        Alert.alert(
+          'Perfil Atualizado',
+          `Seu perfil foi alterado para ${newRole === 'admin' ? 'Administrador' : 'Dependente'}.`
+        );
+      }
+    } catch (error: any) {
+      Alert.alert('Erro', 'Não foi possível alterar o perfil: ' + error.message);
     }
-  };
+  }, [state.user, saveUserToStorage]);
 
   return (
     <ThemeProvider>
       <AppContent
-        user={user}
-        loading={loading}
-        familyConfigured={familyConfigured}
-        handleLogout={handleLogout}
-        handleUserNameChange={handleUserNameChange}
-        handleUserImageChange={handleUserImageChange}
-        handleUserProfileIconChange={handleUserProfileIconChange}
-        handleUserRoleChange={handleUserRoleChange}
-        handleFamilySetup={handleFamilySetup}
+        user={state.user}
+        loading={state.loading}
+        familyConfigured={state.familyConfigured}
+        onLogout={handleLogout}
+        onUserNameChange={handleUserNameChange}
+        onUserImageChange={handleUserImageChange}
+        onUserProfileIconChange={handleUserProfileIconChange}
+        onUserRoleChange={handleUserRoleChange}
+        onFamilySetup={handleFamilySetup}
       />
     </ThemeProvider>
   );
 }
 
-// Componente interno que tem acesso ao tema
-const AppContent: React.FC<{
+// ============= COMPONENTE DE CONTEÚDO =============
+interface AppContentProps {
   user: FamilyUser | null;
   loading: boolean;
   familyConfigured: boolean;
-  handleLogout: () => Promise<void>;
-  handleUserNameChange: (newName: string) => void;
-  handleUserImageChange: (newImageUrl: string) => void;
-  handleUserProfileIconChange: (newProfileIcon: string) => void;
-  handleUserRoleChange: (newRole: UserRole, opts?: { silent?: boolean }) => void;
-  handleFamilySetup: (familyId: string) => void;
-}> = ({
+  onLogout: () => Promise<void>;
+  onUserNameChange: (newName: string) => void;
+  onUserImageChange: (newImageUrl: string) => void;
+  onUserProfileIconChange: (newProfileIcon: string) => void;
+  onUserRoleChange: (newRole: UserRole, opts?: { silent?: boolean }) => void;
+  onFamilySetup: (familyId: string) => void;
+}
+
+const AppContent: React.FC<AppContentProps> = ({
   user,
   loading,
   familyConfigured,
-  handleLogout,
-  handleUserNameChange,
-  handleUserImageChange,
-  handleUserProfileIconChange,
-  handleUserRoleChange,
-  handleFamilySetup,
+  onLogout,
+  onUserNameChange,
+  onUserImageChange,
+  onUserProfileIconChange,
+  onUserRoleChange,
+  onFamilySetup,
 }) => {
   const { colors, activeTheme } = useTheme();
 
@@ -400,59 +390,54 @@ const AppContent: React.FC<{
         backgroundColor={colors.background} 
         translucent={false}
       />
-      {/* Sincronizar StatusBar e (opcionalmente) NavigationBar no Android quando o tema mudar */}
       {Platform.OS === 'android' && (
         <SyncSystemBarsAndroid backgroundColor={colors.background} theme={activeTheme} />
       )}
-    <SafeAreaProvider>
-      {loading ? (
-        <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
-          <View style={styles.loadingIconContainer}>
-            <ActivityIndicator size="large" color={colors.primary} />
-            <Image 
-              source={require('./assets/chapeu_natal.png')} 
-              style={styles.loadingChristmasHat}
-            />
-          </View>
-          <Text style={{ marginTop: 10, color: colors.textSecondary }}>Carregando...</Text>
-        </View>
-      ) : user ? (
-        familyConfigured ? (
-          <>
-            {console.log('🎯 Renderizando TaskScreen', { user: user.name, familyId: user.familyId })}
+      <SafeAreaProvider>
+        {loading ? (
+          <LoadingScreen colors={colors} />
+        ) : user ? (
+          familyConfigured ? (
             <TaskScreen 
               user={user}
-              onLogout={handleLogout}
-              onUserNameChange={handleUserNameChange}
-              onUserImageChange={handleUserImageChange}
-              onUserProfileIconChange={handleUserProfileIconChange}
-              onUserRoleChange={handleUserRoleChange}
+              onLogout={onLogout}
+              onUserNameChange={onUserNameChange}
+              onUserImageChange={onUserImageChange}
+              onUserProfileIconChange={onUserProfileIconChange}
+              onUserRoleChange={onUserRoleChange}
             />
-          </>
-        ) : (
-          <>
-            {console.log('🏗️ Renderizando FamilySetupScreen', { user: user.name })}
+          ) : (
             <FamilySetupScreen
-              onFamilySetup={handleFamilySetup}
-              onLogout={() => { handleLogout(); }}
+              onFamilySetup={onFamilySetup}
+              onLogout={onLogout}
               userEmail={user.email || ''}
               userName={user.name}
               userId={user.id}
             />
-          </>
-        )
-      ) : (
-        <>
-          {console.log('🔐 Renderizando LoginScreen')}
+          )
+        ) : (
           <LoginScreen />
-        </>
-      )}
-    </SafeAreaProvider>
+        )}
+      </SafeAreaProvider>
     </View>
   );
 };
 
-// Componente auxiliar para sincronizar System Bars no Android
+// ============= COMPONENTE DE LOADING =============
+const LoadingScreen: React.FC<{ colors: any }> = ({ colors }) => (
+  <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
+    <View style={styles.loadingIconContainer}>
+      <ActivityIndicator size="large" color={colors.primary} />
+      <Image 
+        source={require('./assets/chapeu_natal.png')} 
+        style={styles.loadingChristmasHat}
+      />
+    </View>
+    <Text style={{ marginTop: 10, color: colors.textSecondary }}>Carregando...</Text>
+  </View>
+);
+
+// ============= COMPONENTE SYSTEM BARS =============
 const SyncSystemBarsAndroid: React.FC<{ backgroundColor: string; theme: 'light' | 'dark' }> = ({ backgroundColor, theme }) => {
   useEffect(() => {
     try {

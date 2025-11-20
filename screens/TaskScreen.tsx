@@ -43,6 +43,7 @@ import NotificationService from '../services/NotificationService';
 import Alert from '../utils/Alert';
 import { Header } from '../components/Header';
 import * as Notifications from 'expo-notifications';
+import logger from '../utils/Logger';
 
 const HISTORY_DAYS_TO_KEEP = 7;
 
@@ -452,6 +453,11 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   const [selectedMemberForEdit, setSelectedMemberForEdit] = useState<FamilyUser | null>(null);
   // Ref para gerenciar unsubscribe da assinatura de membros em tempo real
   const membersUnsubRef = useRef<(() => void) | null>(null);
+  // Ref para controlar notificações de tarefas vencidas e evitar duplicatas
+  // Formato: { taskId: timestamp da última notificação enviada }
+  const overdueNotificationTrackRef = useRef<Record<string, number>>({});
+  // Intervalo mínimo entre notificações da mesma tarefa (em minutos)
+  const NOTIFICATION_THROTTLE_MINUTES = 30;
 
   const isWeb = Platform.OS === 'web';
 
@@ -488,7 +494,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         return !!me?.permissions?.[perm];
       }
     } catch (e) {
-      console.warn('Falha ao atualizar permissões da família:', e);
+      logger.warn('PERMISSIONS', 'Falha ao atualizar permissões da família');
       // Fallback: usar estado local em caso de erro de rede
       const selfMember = familyMembers.find(m => m.id === user.id) as any;
       return !!selfMember?.permissions?.[perm];
@@ -640,7 +646,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         }
       } catch (e) {
         // Em caso de falha de rede, manter estado atual
-        console.warn('Falha ao carregar permissões efetivas do usuário:', e);
+        logger.warn('PERMISSIONS', 'Falha ao carregar permissões efetivas do usuário');
       }
     })();
     return () => { cancelled = true; };
@@ -675,7 +681,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         membersUnsubRef.current = null;
       }
     } catch (e) {
-      console.warn('[TaskScreen] Falha ao gerenciar assinatura de membros:', e);
+      logger.warn('FAMILY_MODAL', 'Falha ao gerenciar assinatura de membros');
     }
     // Sem retorno aqui quando modal está fechado
   }, [familyModalVisible, currentFamily?.id]);
@@ -753,7 +759,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
 
   // Função para converter Task local para formato remoto
   const taskToRemoteTask = (task: Task): RemoteTask => {
-    console.log('📤 Convertendo Local -> Remoto:', {
+    logger.debug('📤 Convertendo Local -> Remoto', {
       id: task.id,
       title: task.title,
       localDueDate: task.dueDate,
@@ -820,7 +826,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
 
     // Log para debug de tarefas privadas
     if ((task as any)?.private === true) {
-      console.log('🔒 Tarefa PRIVADA detectada:', {
+      logger.debug('🔒 Tarefa PRIVADA detectada', {
         id: remoteTask.id,
         title: remoteTask.title,
         private: remoteTask.private,
@@ -829,7 +835,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       });
     }
 
-    console.log('📤 Dados preparados para envio remota:', {
+    logger.debug('📤 Dados preparados para envio remota', {
       id: remoteTask.id,
       title: remoteTask.title,
       remoteDueDate: remoteTask.dueDate,
@@ -953,31 +959,31 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   // Função para carregar dados do cache local
   const loadDataFromCache = async () => {
     try {
-      console.log('📱 Carregando dados do cache local...');
+      logger.debug('CACHE_LOAD', 'Carregando dados do cache local');
       
       // Carregar tarefas do cache
       const cachedRemoteTasks = await LocalStorageService.getTasks();
         if (cachedRemoteTasks.length > 0) {
           const convertedTasks: Task[] = (cachedRemoteTasks.map(remoteTaskToTask as any) as Task[]);
           setTasks(convertedTasks);
-        console.log(`✅ ${convertedTasks.length} tarefas carregadas do cache`);
+        logger.success('CACHE_LOAD', `${convertedTasks.length} tarefas carregadas`);
       }
 
       // Carregar aprovações do cache
       const cachedApprovals = await LocalStorageService.getApprovals();
       if (cachedApprovals.length > 0) {
         setApprovals(cachedApprovals);
-        console.log(`✅ ${cachedApprovals.length} aprovações carregadas do cache`);
+        logger.success('CACHE_LOAD', `${cachedApprovals.length} aprovações carregadas`);
       }
 
       // Se há dados em cache, mostrar indicador
       const hasCachedData = await LocalStorageService.hasCachedData();
       if (hasCachedData) {
-        console.log('✅ Dados offline disponíveis');
+        logger.success('OFFLINE', 'Dados offline disponíveis');
       }
 
     } catch (error) {
-      console.error('❌ Erro ao carregar dados do cache:', error);
+      logger.error('CACHE_LOAD', 'Erro ao carregar dados do cache', error);
     }
   };
 
@@ -995,7 +1001,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         await LocalStorageService.saveApproval(approval);
       }
     } catch (error) {
-      console.error('❌ Erro ao salvar dados no cache:', error);
+      logger.error('CACHE_SAVE', 'Erro ao salvar dados no cache', error);
     }
   };
 
@@ -1003,7 +1009,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   const reloadFamilyTasks = async () => {
     if (currentFamily) {
       try {
-        console.log('🔄 Recarregando tarefas da família (com sync em background)...');
+        logger.info('SYNC', 'Recarregando tarefas da família (sync em background)');
         
         // Se estiver online, buscar do Firebase e fazer merge com cache
         if (!isOffline) {
@@ -1019,11 +1025,11 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             return true;
           });
           
-          console.log('📊 Tarefas convertidas (remotas):', convertedTasks.map(t => ({ id: t.id, title: t.title, dueDate: t.dueDate, dueTime: t.dueTime })));
+          logger.debug('REMOTE_TASKS', convertedTasks.map(t => ({ id: t.id, title: t.title, dueDate: t.dueDate, dueTime: t.dueTime })));
 
           // Fazer merge inteligente: manter tarefas locais mais recentes e adicionar novas do servidor remoto
           setTasks(currentTasks => {
-            console.log('📊 Tarefas locais antes do merge:', currentTasks.map(t => ({ id: t.id, title: t.title, dueDate: t.dueDate, dueTime: t.dueTime })));
+            logger.debug('LOCAL_TASKS_BEFORE', currentTasks.map(t => ({ id: t.id, title: t.title, dueDate: t.dueDate, dueTime: t.dueTime })));
             
             const mergedTasksMap = new Map(currentTasks.map(t => [t.id, t]));
 
@@ -1034,7 +1040,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
               if (!existingTask) {
                 // Tarefa não existe localmente, adicionar
                 mergedTasksMap.set(remoteTask.id, remoteTask);
-                console.log(`➕ Tarefa nova adicionada: ${remoteTask.title}`);
+                logger.success('MERGE', `Tarefa nova adicionada: ${remoteTask.title}`);
               } else {
                 // Tarefa existe, manter a versão mais recente baseada em updatedAt/editedAt
                 const existingTime = existingTask.editedAt || existingTask.createdAt;
@@ -1043,9 +1049,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                 if (remoteTime > existingTime) {
                   // Versão remota é mais recente
                   mergedTasksMap.set(remoteTask.id, remoteTask);
-                  console.log(`🔄 Tarefa atualizada pelo servidor remoto: ${remoteTask.title}`);
+                  logger.info('MERGE', `Tarefa atualizada pelo servidor: ${remoteTask.title}`);
                 } else {
-                  console.log(`🚫 Mantendo versão local de: ${existingTask.title} (mais recente)`);
+                  logger.info('MERGE', `Mantendo versão local de: ${existingTask.title}`);
                 }
               }
             });
@@ -1057,16 +1063,16 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                 // Preservar tarefas privadas do criador mesmo se ausentes no remoto
                 const isCreatorPrivate = (localTask as any).private === true && localTask.createdBy === user.id;
                 if (isCreatorPrivate) {
-                  console.log(`🛡️ Preservando tarefa privada do criador ausente no servidor: ${localTask.title}`);
+                  logger.info('MERGE', `Preservando tarefa privada: ${localTask.title}`);
                   return;
                 }
                 mergedTasksMap.delete(localTask.id);
-                console.log(`➖ Tarefa removida (não existe mais no servidor remoto): ${localTask.title}`);
+                logger.debug('MERGE', `Tarefa removida: ${localTask.title}`);
               }
             });
 
             const finalTasks = Array.from(mergedTasksMap.values());
-            console.log('📊 Tarefas locais após o merge:', finalTasks.map(t => ({ id: t.id, title: t.title, dueDate: t.dueDate, dueTime: t.dueTime })));
+            logger.debug('LOCAL_TASKS_AFTER', finalTasks.map(t => ({ id: t.id, title: t.title, dueDate: t.dueDate, dueTime: t.dueTime })));
             
             return finalTasks;
           });
@@ -1076,10 +1082,10 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             await LocalStorageService.saveTask(task as any);
           }
           
-          console.log(`✅ ${familyTasks.length} tarefas da família sincronizadas com merge inteligente e salvas no cache`);
+          logger.success('SYNC_COMPLETE', `${familyTasks.length} tarefas sincronizadas`);
         }
       } catch (error) {
-        console.error('❌ Erro ao recarregar tarefas da família:', error);
+        logger.error('RELOAD_TASKS', 'Erro ao recarregar tarefas da família', error);
       }
     }
   };
@@ -1095,13 +1101,13 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     
     // Configurar atualização automática a cada minuto
     const interval = setInterval(() => {
-      console.log('🔄 Executando atualização automática agendada...');
+      logger.debug('AUTO_UPDATE', 'Executando atualização automática agendada');
       forceRefresh();
     }, 60000); // 60000ms = 1 minuto
 
     const handleAppStateChange = (nextAppState: any) => {
       if (nextAppState === 'active') {
-        console.log('📱 App tornou-se ativo, forçando atualização...');
+        logger.info('APP_STATE', 'App ativo, forçando atualização');
         forceRefresh();
       }
     };
@@ -1188,7 +1194,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         // Carregar dados iniciais de forma otimista do cache
         await loadDataFromCache();
 
-        console.log('Sistema offline inicializado');
+        logger.info('OFFLINE', 'Sistema offline inicializado');
 
         // Cleanup function
         return () => {
@@ -1196,7 +1202,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           removeSyncListener();
         };
       } catch (error) {
-        console.error('Erro ao inicializar sistema offline:', error);
+        logger.error('OFFLINE_INIT', 'Erro ao inicializar sistema offline', error);
       }
     };
 
@@ -1219,11 +1225,11 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     didStartupSyncRef.current = true;
 
     // Tentativa imediata
-    SyncService.forceFullSync().catch(e => console.warn('Startup forceFullSync error:', e));
+    SyncService.forceFullSync().catch(e => logger.warn('STARTUP', 'forceFullSync error'));
 
     // Retry curto para captar o currentUser do Firebase já inicializado
     const retry = setTimeout(() => {
-      SyncService.forceFullSync().catch(e => console.warn('Startup retry forceFullSync error:', e));
+      SyncService.forceFullSync().catch(e => logger.warn('STARTUP', 'retry forceFullSync error'));
     }, 2000);
 
     return () => clearTimeout(retry);
@@ -1241,7 +1247,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     const loadUserFamily = async () => {
       try {
         if (user?.id) {
-          console.log('🏠 Carregando família do usuário (cache-first)...', {
+          logger.debug('FAMILY_LOAD', {
             userId: user.id,
             familyId: user.familyId,
             isOffline: isOffline
@@ -1252,7 +1258,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           // ========================================
           // 1. CARREGAR DO CACHE LOCAL PRIMEIRO (INSTANTÂNEO)
           // ========================================
-          console.log('📱 Carregando dados do cache local...');
+          logger.debug('CACHE_LOAD', 'Carregando dados do cache local');
           try {
             const cachedTasks = await LocalStorageService.getTasks();
             if (cachedTasks.length > 0) {
@@ -1264,32 +1270,32 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                 return true;
               });
               setTasks(filteredTasks);
-              console.log(`✅ ${filteredTasks.length} tarefas carregadas do cache local`);
+              logger.success('CACHE_LOAD', `${filteredTasks.length} tarefas carregadas do cache local`);
             }
 
             // Carregar família do cache se disponível
             const offlineData = await LocalStorageService.getOfflineData();
             if (user.familyId && offlineData.families[user.familyId]) {
               setCurrentFamily(offlineData.families[user.familyId]);
-              console.log('✅ Família carregada do cache:', offlineData.families[user.familyId].name);
+              logger.success('CACHE_LOAD', `Família carregada do cache: ${offlineData.families[user.familyId].name}`);
             }
           } catch (cacheError) {
-            console.warn('⚠️ Erro ao carregar do cache local:', cacheError);
+            logger.warn('CACHE_ERROR', 'Erro ao carregar do cache local');
           }
           
           // ========================================
           // 2. SINCRONIZAR EM BACKGROUND (NÃO BLOQUEIA A UI)
           // ========================================
           if (!isOffline) {
-            console.log('🔄 Iniciando sincronização em background...');
+            logger.debug('SYNC', 'Iniciando sincronização em background');
             
             // Carrega família do Firebase em background
             const userFamily = await familyService.getUserFamily(user.id);
-          console.log('🔍 Resultado da busca por família:', userFamily);
+          logger.debug('FAMILY_SEARCH', { userFamily });
           
           if (userFamily) {
             setCurrentFamily(userFamily);
-            console.log('👨‍👩‍👧‍👦 Família atualizada do Firebase:', userFamily.name);
+            logger.success('FAMILY_LOAD', `Família atualizada do Firebase: ${userFamily.name}`);
             
             // Salvar família no cache
             await LocalStorageService.saveFamily(userFamily);
@@ -1343,12 +1349,12 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
               await LocalStorageService.saveTask(task as any);
             }
             
-            console.log(`✅ ${familyTasks.length} tarefas sincronizadas do Firebase em background`);
+            logger.success('SYNC_BG', `${familyTasks.length} tarefas sincronizadas do Firebase`);
             
             // Disparar sync completo para garantir que tudo está atualizado
-            SyncService.forceFullSync().catch(e => console.warn('forceFullSync bg error:', e));
+            SyncService.forceFullSync().catch(e => logger.warn('SYNC_BG', 'forceFullSync error'));
           } else {
-            console.log('👤 Usuário não possui família no Firebase');
+            logger.info('FAMILY_LOAD', 'Usuário não possui família no Firebase');
             
             // Fallback: se temos familyId salvo, tentar carregar diretamente pelo ID
             if (user.familyId) {
@@ -1357,7 +1363,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                 if (fetchedFamily) {
                   setCurrentFamily(fetchedFamily);
                   await LocalStorageService.saveFamily(fetchedFamily);
-                  console.log('👨‍👩‍👧‍👦 Família carregada via fallback pelo ID:', fetchedFamily.name);
+                  logger.success('FAMILY_FALLBACK', `Família carregada via fallback: ${fetchedFamily.name}`);
                   
                   const familyTasks = await familyService.getFamilyTasks(fetchedFamily.id, user.id);
                   let convertedTasks: Task[] = familyTasks.map(remoteTaskToTask as any);
@@ -1374,35 +1380,35 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                     await LocalStorageService.saveTask(task as any);
                   }
                   
-                  console.log(`✅ ${convertedTasks.length} tarefas da família (fallback) sincronizadas`);
-                  SyncService.forceFullSync().catch(e => console.warn('forceFullSync bg error:', e));
+                  logger.success('SYNC_FALLBACK', `${convertedTasks.length} tarefas da família sincronizadas`);
+                  SyncService.forceFullSync().catch(e => logger.warn('SYNC_BG', 'forceFullSync error'));
                 }
               } catch (e) {
-                console.warn('Falha ao carregar família via fallback:', e);
+                logger.warn('FAMILY_FALLBACK', 'Falha ao carregar família via fallback');
               }
             }
           }
           }
         }
       } catch (error) {
-        console.error('❌ Erro ao carregar família do usuário:', error);
+        logger.error('FAMILY_LOAD', 'Erro ao carregar família do usuário', error);
         
         // Em caso de erro, tentar carregar do cache local
         try {
           const cachedTasks = await LocalStorageService.getTasks();
           if (cachedTasks.length > 0) {
             setTasks(cachedTasks);
-            console.log(`🔄 ${cachedTasks.length} tarefas carregadas do cache após erro`);
+            logger.info('FALLBACK', `${cachedTasks.length} tarefas carregadas do cache`);
           }
         } catch (cacheError) {
-          console.error('❌ Erro ao carregar do cache:', cacheError);
+          logger.error('FALLBACK', 'Erro ao carregar do cache', cacheError);
         }
       } finally {
         setIsBootstrapping(false);
       }
     };
 
-    console.log('📊 useEffect de carregamento de família executando...', {
+    logger.debug('FAMILY_LOAD_START', {
       hasUserId: !!user?.id,
       userId: user?.id,
       isOffline
@@ -1417,7 +1423,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     if (isOffline) return;
     if (!currentFamily?.id) return;
     didInitialFamilyRefreshRef.current = true;
-    forceRefresh().catch(e => console.warn('Initial family forceRefresh error:', e));
+    forceRefresh().catch(e => logger.warn('REFRESH', 'Initial forceRefresh error'));
   }, [currentFamily?.id, isOffline]);
 
   // useEffect para carregar histórico da família
@@ -1428,12 +1434,12 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       try {
         // Verificar se há usuário válido antes de tentar carregar histórico
         if (!user || !user.id) {
-          console.log('👤 Usuário não definido, pulando carregamento do histórico');
+          logger.debug('HISTORY', 'Usuário não definido, pulando carregamento');
           return;
         }
 
     // Primeiro, carregar histórico do cache local
-    console.log('📖 Carregando histórico do cache local...');
+    logger.debug('HISTORY', 'Carregando histórico do cache local');
   const localHistory = await LocalStorageService.getHistory(100);
   setHistory(localHistory.sort((a,b)=> new Date(b.timestamp as any).getTime() - new Date(a.timestamp as any).getTime()));
 
@@ -1441,7 +1447,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     await LocalStorageService.clearOldHistory(HISTORY_DAYS_TO_KEEP);
 
         if (currentFamily && currentFamily.id && !isOffline) {
-          console.log('📖 Carregando histórico da família...');
+          logger.debug('HISTORY', 'Carregando histórico da família');
 
           // Configurar listener para atualizações de tarefas em tempo real
           const unsubscribeTasks = familyService.subscribeToFamilyTasks(
@@ -1451,14 +1457,14 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                 .filter(task => {
                   // Se a tarefa estiver na lista de espera, não a atualize
                   if (pendingSyncIds.includes(task.id)) {
-                    console.log(`🚫 Tarefa ${task.id} ignorada na atualização remota (pendente de sincronização).`);
+                    logger.debug('REAL_TIME_SYNC', `Tarefa ${task.id} ignorada (pendente)`);
                     return false; // Não incluir esta atualização
                   }
 
                   // Filtrar tarefas privadas de outros usuários
                   const isPrivate = (task as any).private === true;
                   if (isPrivate && task.createdBy && task.createdBy !== user.id) {
-                    console.log(`🔒 Tarefa privada ${task.id} ignorada (não pertence ao usuário atual).`);
+                    logger.debug('REAL_TIME_SYNC', `Tarefa privada ${task.id} ignorada`);
                     return false;
                   }
 
@@ -1494,7 +1500,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           
           // Verificar se familyHistory é válido
           if (!familyHistory || !Array.isArray(familyHistory)) {
-            console.warn('⚠️ Histórico da família inválido:', familyHistory);
+            logger.warn('HISTORY_INVALID', 'Histórico da família inválido');
             return;
           }
           
@@ -1502,7 +1508,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           const convertedHistory: HistoryItem[] = familyHistory.map(item => {
             // Verificar se o item tem propriedades necessárias
             if (!item || typeof item !== 'object') {
-              console.warn('⚠️ Item de histórico inválido:', item);
+              logger.warn('HISTORY_ITEM_INVALID', 'Item de histórico inválido');
               return {
                 id: 'invalid-' + Date.now(),
                 action: 'created',
@@ -1598,10 +1604,10 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             50
           );
 
-          console.log(`📖 ${familyHistory.length} itens do histórico da família carregados`);
+          logger.success('HISTORY_LOAD', `${familyHistory.length} itens carregados`);
         }
       } catch (error) {
-        console.error('❌ Erro ao carregar histórico da família:', error);
+        logger.error('HISTORY_LOAD', 'Erro ao carregar histórico da família', error);
       }
     };
 
@@ -1639,13 +1645,13 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
 
     const loadFamilyCategories = async () => {
       if (!currentFamily || !currentFamily.id) {
-        console.log('👤 Sem família, usando categorias padrão');
+        logger.debug('CATEGORIES', 'Sem família, usando categorias padrão');
         setCategories(DEFAULT_CATEGORIES);
         return;
       }
 
       try {
-        console.log('🎨 Carregando categorias da família:', currentFamily.id);
+        logger.debug('CATEGORIES', `Carregando categorias da família: ${currentFamily.id}`);
         
         // Carregar categorias iniciais
         const familyCategories = await familyService.getFamilyCategories(currentFamily.id);
@@ -1657,7 +1663,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             ...familyCategories.filter(cat => !cat.isDefault)
           ];
           setCategories(mergedCategories);
-          console.log('✅ Categorias carregadas:', mergedCategories.length);
+          logger.success('CATEGORIES', `${mergedCategories.length} categorias carregadas`);
         } else {
           setCategories(DEFAULT_CATEGORIES);
         }
@@ -1667,7 +1673,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           unsubscribeCategories = familyService.subscribeToFamilyCategories(
             currentFamily.id,
             (updatedCategories) => {
-              console.log('🔔 Categorias atualizadas em tempo real');
+              logger.debug('CATEGORIES_RT', 'Categorias atualizadas em tempo real');
               const mergedCategories = [
                 ...DEFAULT_CATEGORIES,
                 ...updatedCategories.filter(cat => !cat.isDefault)
@@ -1677,7 +1683,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           );
         }
       } catch (error) {
-        console.error('❌ Erro ao carregar categorias da família:', error);
+        logger.error('CATEGORIES', 'Erro ao carregar categorias da família', error);
         setCategories(DEFAULT_CATEGORIES);
       }
     };
@@ -1693,7 +1699,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
 
   // Função para forçar atualização completa do aplicativo
   const forceRefresh = async () => {
-    console.log('🔄 Forçando atualização completa...');
+    logger.debug('REFRESH', 'Forçando atualização completa');
     
     setIsRefreshing(true);
     
@@ -1744,11 +1750,11 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             return Array.from(mergedTasksMap.values());
           });
 
-          console.log(`🔄 ${familyTasks.length} tarefas da família recarregadas (merge aplicado)`);
+          logger.success('REFRESH', `${familyTasks.length} tarefas recarregadas (merge aplicado)`);
         }
       }
     } catch (error) {
-      console.error('❌ Erro ao forçar sincronização:', error);
+      logger.error('REFRESH', 'Erro ao forçar sincronização', error);
     }
     
     // Atualizar timestamp
@@ -1765,7 +1771,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       setIsRefreshing(false);
       
       // Log de confirmação de sincronização
-      console.log('✅ Sincronização concluída com sucesso!');
+      logger.success('REFRESH', 'Sincronização concluída com sucesso!');
     }, 1000);
   };
 
@@ -1781,7 +1787,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         try {
           await SyncService.forceFullSync();
         } catch (e) {
-          console.warn('Auto-sync falhou:', e);
+          logger.warn('AUTO_SYNC', 'forceFullSync falhou');
         }
       })();
     }
@@ -1798,9 +1804,10 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       }),
     });
 
-    // Solicitar permissões
-    const { status } = await Notifications.requestPermissionsAsync();
-    if (status !== 'granted') {
+    // Usar a função do serviço para inicializar
+    const result = await NotificationService.initialize();
+    
+    if (!result.granted) {
       Alert.alert(
         'Permissão de Notificação',
         'Para receber lembretes de tarefas vencidas, permita as notificações nas configurações do seu dispositivo.'
@@ -1810,6 +1817,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
 
   const verificarTarefasVencidas = () => {
     const agora = new Date();
+    let notificadaspendentes = 0;
 
     tasks.forEach(task => {
       if (task.dueDate && !task.completed) {
@@ -1824,40 +1832,40 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         }
 
         const diffMinutos = (agora.getTime() - dataVencimento.getTime()) / (1000 * 60);
-        const diffHoras = diffMinutos / 60;
 
-        // Lógica inteligente para notificações baseada no tempo de atraso:
-        // - Venceu há menos de 5 minutos: notificar imediatamente
-        // - Venceu há 1 hora: notificar novamente
-        // - Venceu há 6 horas: notificar novamente
-        // - Venceu há 24 horas: notificar novamente
-        // - Depois disso, notificar a cada 24 horas (mas com prioridade menor)
-
-        let deveNotificar = false;
-
-        if (diffMinutos >= 0 && diffMinutos <= 5) {
-          // Acabou de vencer - alta prioridade
-          deveNotificar = true;
-        } else if (diffHoras >= 1 && diffHoras < 1.1) {
-          // Venceu há exatamente 1 hora
-          deveNotificar = true;
-        } else if (diffHoras >= 6 && diffHoras < 6.1) {
-          // Venceu há exatamente 6 horas
-          deveNotificar = true;
-        } else if (diffHoras >= 24 && diffHoras < 25) {
-          // Venceu há exatamente 24 horas
-          deveNotificar = true;
-        } else if (diffHoras >= 48 && Math.floor(diffHoras) % 24 === 0 && diffHoras < 48.1) {
-          // Venceu há múltiplos de 24 horas (48h, 72h, etc.) - baixa prioridade
-          deveNotificar = true;
-        }
-
-        if (deveNotificar) {
-          console.log(`[TaskScreen] Notificando tarefa vencida: "${task.title}" (${Math.floor(diffHoras)}h ${Math.floor(diffMinutos % 60)}min atraso)`);
-          enviarNotificacaoVencimento(task);
+        // Usar a nova função de verificação do serviço
+        if (diffMinutos >= 0 && NotificationService.shouldNotifyForOverdue(diffMinutos)) {
+          // Verificar se já enviou notificação para esta tarefa recentemente
+          const lastNotificationTime = overdueNotificationTrackRef.current[task.id];
+          const now = Date.now();
+          const throttleMs = NOTIFICATION_THROTTLE_MINUTES * 60 * 1000;
+          
+          if (!lastNotificationTime || (now - lastNotificationTime) > throttleMs) {
+            const diffHoras = Math.floor(diffMinutos / 60);
+            const diffDias = Math.floor(diffHoras / 24);
+            
+            const timeStr = diffDias > 0 
+              ? `${diffDias}d` 
+              : `${diffHoras}h`;
+            
+            logger.debug('NOTIFY', `Notificando tarefa vencida: "${task.title}" (${timeStr} atraso)`);
+            enviarNotificacaoVencimento(task);
+            
+            // Atualizar timestamp da última notificação
+            overdueNotificationTrackRef.current[task.id] = now;
+            notificadaspendentes++;
+          } else {
+            // Notificação já foi enviada recentemente, ignorar
+            const minutosRestantes = Math.ceil((throttleMs - (now - lastNotificationTime)) / 60000);
+            logger.debug('NOTIFY', `Tarefa "${task.title}" já notificada há pouco (próxima em ${minutosRestantes}min)`);
+          }
         }
       }
     });
+
+    if (notificadaspendentes > 0) {
+      logger.info('NOTIFY', `✅ ${notificadaspendentes} notificação(ões) de vencimento enviada(s)`);
+    }
   };
 
   const enviarNotificacaoVencimento = async (task: Task) => {
@@ -1869,12 +1877,12 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       const notificationId = await NotificationService.sendOverdueTaskNotification(task);
 
       if (notificationId) {
-        console.log(`[TaskScreen] Notificação de vencimento enviada para tarefa "${task.title}":`, notificationId);
+        logger.success('NOTIFY', `Notificação enviada para: "${task.title}"`);
       } else {
-        console.warn(`[TaskScreen] Falha ao enviar notificação de vencimento para tarefa "${task.title}"`);
+        logger.warn('NOTIFY', `Falha ao enviar notificação para: "${task.title}"`);
       }
     } catch (e) {
-      console.warn('[TaskScreen] Erro ao enviar notificação de vencimento:', e);
+      logger.error('NOTIFY', 'Erro ao enviar notificação de vencimento', e);
     }
   };
   
@@ -1889,7 +1897,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   }, [tasks.length]);
   
   // Toggle para colapsar/expandir um card específico
-  const toggleCardCollapse = (taskId: string) => {
+  const toggleCardCollapse = useCallback((taskId: string) => {
     setCollapsedCards(prev => {
       const newSet = new Set(prev);
       if (newSet.has(taskId)) {
@@ -1899,13 +1907,13 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       }
       return newSet;
     });
-  };
+  }, []);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
 
   // Debug: monitorar mudanças nos pickers
   useEffect(() => {
-    console.log('🔄 Estado dos pickers mudou:', {
+    logger.debug('PICKERS', {
       showDatePicker,
       showTimePicker,
       showSubtaskDatePicker: false, // será definido depois
@@ -1960,7 +1968,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   useEffect(() => {
     if (Platform.OS !== 'web') return;
 
-    console.log('🔄 Criando inputs HTML no DOM...');
+    logger.debug('WEB_INPUTS', 'Criando inputs HTML no DOM');
 
     // Criar container para inputs (mantê-lo no viewport, porém imperceptível)
     const container = document.createElement('div');
@@ -1996,7 +2004,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     styleHiddenInput(dateInput);
     const dateChangeHandler = (e: Event) => {
       const target = e.target as HTMLInputElement;
-      console.log('📅 Data selecionada no input HTML:', target.value);
+      logger.debug('WEB_INPUT', `Data selecionada: ${target.value}`);
       if (target.value) {
         const [year, month, day] = target.value.split('-').map(Number);
         const newDate = new Date(year, month - 1, day);
@@ -2007,7 +2015,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     dateInput.addEventListener('change', dateChangeHandler);
     container.appendChild(dateInput);
     webDateInputRef.current = dateInput as any;
-    console.log('✅ webDateInputRef atribuído');
+    logger.debug('WEB_INPUTS', 'webDateInputRef atribuído');
 
     // Criar input de hora principal
     const timeInput = document.createElement('input');
@@ -2016,7 +2024,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     styleHiddenInput(timeInput);
     const timeChangeHandler = (e: Event) => {
       const target = e.target as HTMLInputElement;
-      console.log('⏰ Hora selecionada no input HTML:', target.value);
+      logger.debug('WEB_INPUT', `Hora selecionada: ${target.value}`);
       if (target.value) {
         const [hours, minutes] = target.value.split(':').map(Number);
         const base = tempDueDate || stableNowRef.current;
@@ -2029,7 +2037,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     timeInput.addEventListener('change', timeChangeHandler);
     container.appendChild(timeInput);
     webTimeInputRef.current = timeInput as any;
-    console.log('✅ webTimeInputRef atribuído');
+    logger.debug('WEB_INPUTS', 'webTimeInputRef atribuído');
 
     // Criar input de data da subtarefa
     const subtaskDateInput = document.createElement('input');
@@ -2040,7 +2048,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       const target = e.target as HTMLInputElement;
       const currentEditingId = (subtaskDateInput as any)._editingSubtaskId;
       const categoryId = (subtaskDateInput as any)._categoryId;
-      console.log('📅 Data da subtarefa selecionada:', target.value, 'ID:', currentEditingId, 'CategoryId:', categoryId);
+      logger.debug('WEB_INPUT', `Data subtarefa: ${target.value}, ID: ${currentEditingId}`);
       if (target.value && currentEditingId) {
         const [year, month, day] = target.value.split('-').map(Number);
         const newDate = new Date(year, month - 1, day);
@@ -2079,7 +2087,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     subtaskDateInput.addEventListener('change', subtaskDateChangeHandler);
     container.appendChild(subtaskDateInput);
     webSubtaskDateInputRef.current = subtaskDateInput as any;
-    console.log('✅ webSubtaskDateInputRef atribuído');
+    logger.debug('WEB_INPUTS', 'webSubtaskDateInputRef atribuído');
 
     // Criar input de hora da subtarefa
     const subtaskTimeInput = document.createElement('input');
@@ -2090,7 +2098,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       const target = e.target as HTMLInputElement;
       const currentEditingId = (subtaskTimeInput as any)._editingSubtaskId;
       const categoryId = (subtaskTimeInput as any)._categoryId;
-      console.log('⏰ Hora da subtarefa selecionada:', target.value, 'ID:', currentEditingId, 'CategoryId:', categoryId);
+      logger.debug('WEB_INPUT', `Hora subtarefa: ${target.value}, ID: ${currentEditingId}`);
       if (target.value && currentEditingId) {
         const [hours, minutes] = target.value.split(':').map(Number);
         
@@ -2143,19 +2151,19 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           }));
         }
         setShowSubtaskTimePicker(false);
-        console.log('✅ Hora da subtarefa atualizada para ID:', currentEditingId);
+        logger.debug('WEB_INPUT', `Hora subtarefa atualizada para: ${currentEditingId}`);
       }
     };
     subtaskTimeInput.addEventListener('change', subtaskTimeChangeHandler);
     container.appendChild(subtaskTimeInput);
     webSubtaskTimeInputRef.current = subtaskTimeInput as any;
-    console.log('✅ webSubtaskTimeInputRef atribuído');
+    logger.debug('WEB_INPUTS', 'webSubtaskTimeInputRef atribuído');
 
-    console.log('✅ Todos os 4 inputs HTML criados e refs atribuídos!');
+    logger.success('WEB_INPUTS', '4 inputs HTML criados e refs atribuídos');
 
     // Cleanup
     return () => {
-      console.log('🧹 Limpando inputs HTML do DOM');
+      logger.debug('WEB_INPUTS', 'Limpando inputs HTML do DOM');
       dateInput.removeEventListener('change', dateChangeHandler);
       timeInput.removeEventListener('change', timeChangeHandler);
       subtaskDateInput.removeEventListener('change', subtaskDateChangeHandler);
@@ -2304,6 +2312,12 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     }
     if (isAddingTask) return; // Prevenir cliques múltiplos
 
+    // Enforcement: apenas admin pode criar/editar tarefas privadas
+    if (newTaskPrivate && user.role !== 'admin') {
+      Alert.alert('Sem permissão', 'Apenas administradores podem criar tarefas privadas.');
+      return;
+    }
+
     // Enforcement: dependente criando/atualizando tarefa de família pública precisa de permissões
     const isFamilyContext = !!currentFamily && !newTaskPrivate; // tarefa pública de família
     if (isFamilyContext && user.role === 'dependente') {
@@ -2335,10 +2349,10 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           setTempDueTime(subtaskBasedTime.time);
         }
         
-  console.log('💾 Salvando tarefa (edição) com subtarefas:', (subtasksDraftRef.current || subtasksDraft).map(s => ({ id: s.id, title: s.title, dueDate: s.dueDate, dueTime: s.dueTime })));
+  logger.debug('SAVE_TASK', 'Salvando tarefa com subtarefas');
   
         // Log dos valores de repetição ao editar tarefa
-        console.log('🔄 Valores de repetição ao editar tarefa:', {
+        logger.debug('REPEAT', {
           repeatType,
           repeatOption: (repeatType === RepeatType.DAILY ? 'diario' : repeatType === RepeatType.MONTHLY ? 'mensal' : repeatType === RepeatType.CUSTOM ? 'semanal' : repeatType === RepeatType.INTERVAL ? 'intervalo' : 'nenhum'),
           customDays,
@@ -2383,22 +2397,13 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         const updatedTask = updatedTasks.find(t => t.id === editingTaskId);
         
         // Log da tarefa atualizada com valores de repetição
-        console.log('✨ Tarefa editada:', {
-          id: updatedTask?.id,
-          title: updatedTask?.title,
-          repeatOption: updatedTask?.repeatOption,
-          repeatIntervalDays: (updatedTask as any)?.repeatIntervalDays,
-          repeatDurationMonths: (updatedTask as any)?.repeatDurationMonths,
-          repeatStartDate: (updatedTask as any)?.repeatStartDate,
-          repeatDays: (updatedTask as any)?.repeatDays
-        });
+        logger.success('SAVE_TASK', `Tarefa editada: ${updatedTask?.title}`);
         
         setTasks(updatedTasks);
         
         // Adicionar ID à lista de pendentes de sincronização
         setPendingSyncIds(prev => [...prev, editingTaskId]);
-        console.log(`⏳ Tarefa enfileirada para sincronização: taskId=${editingTaskId}` +
-          `${currentFamily ? ` familyId=${currentFamily.id}` : ''}`);
+        logger.debug('SYNC', `Tarefa enfileirada: ${editingTaskId}${currentFamily ? ` (family: ${currentFamily.id})` : ''}`);
 
         // Salvar no cache local
         if (updatedTask) {
@@ -2408,7 +2413,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           try {
             await NotificationService.rescheduleTaskReminder(updatedTask as any);
           } catch (e) {
-            console.warn('[Notifications] rescheduleTaskReminder falhou (ignorado):', e);
+            logger.warn('NOTIFY', 'rescheduleTaskReminder falhou');
           }
 
           // Reagendar lembretes das subtarefas
@@ -2424,7 +2429,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
               );
             }
           } catch (e) {
-            console.warn('[Notifications] Falha ao reagendar subtarefas (ignorado):', e);
+            logger.warn('NOTIFY', 'Falha ao reagendar subtarefas');
           }
           
           // Determinar se é create ou update baseado no ID
@@ -2443,27 +2448,27 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                 const res = await FirestoreService.saveTask(toSave);
                 // Atualizar cache local com familyId
                 await LocalStorageService.saveTask({ ...toSave, id: toSave.id || (res && (res as any).id) } as any);
-                console.log(`👨‍👩‍👧‍👦 Tarefa atualizada no Firestore (online): taskId=${toSave.id || (res && (res as any).id)} familyId=${currentFamily.id}`);
+                logger.success('FIRESTORE', `Tarefa atualizada: ${toSave.id || (res && (res as any).id)}`);
               } else {
                 // Offline: enfileirar operação com familyId
                 await SyncService.addOfflineOperation(operationType, 'tasks', {
                   ...remoteTask,
                   familyId: currentFamily.id
                 });
-                console.log(`👨‍👩‍👧‍👦 Tarefa enfileirada (offline family): taskId=${updatedTask?.id} familyId=${currentFamily.id}`);
+                logger.debug('OFFLINE_SYNC', `Tarefa enfileirada: ${updatedTask?.id}`);
               }
             } catch (error) {
-              console.error('❌ Erro ao sincronizar tarefa na família via Firestore, fallback local:', error);
+              logger.error('SAVE_FAMILY_TASK', 'Erro ao sincronizar tarefa na família', error);
               // Delegar fallback para FamilySyncHelper (centraliza remote-first / fallback)
               try {
                 await FamilySyncHelper.saveTaskToFamily(remoteTask as any, currentFamily.id, operationType);
               } catch (e) {
-                console.warn('Falha no fallback FamilySyncHelper.saveTaskToFamily:', e);
+                logger.warn('FAMILY_SYNC_FALLBACK', 'saveTaskToFamily falhou');
               }
             }
           }
           
-          console.log(`📱 Tarefa atualizada e adicionada à fila de sincronização: taskId=${updatedTask?.id}` +
+          logger.debug('SAVE_TASK', `Tarefa atualizada e adicionada à fila de sincronização: taskId=${updatedTask?.id}` +
             `${currentFamily ? ` familyId=${currentFamily.id}` : ''}`);
         }
         
@@ -2562,13 +2567,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         }
       } else {
         // Criar nova tarefa
-        console.log('📝 Criando nova tarefa:', {
-          title: newTaskTitle.trim(),
-          tempDueDate: tempDueDate,
-          tempDueTime: tempDueTime,
-          repeatType: repeatType,
-          customDays: customDays
-        });
+        logger.debug('CREATE_TASK', `Criando tarefa: ${newTaskTitle.trim()}`);
 
         const defaultDueDate = tempDueDate || (repeatType !== RepeatType.NONE ? getInitialDueDateForRecurrence(repeatType, customDays) : undefined);
         
@@ -2585,24 +2584,12 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           setTempDueTime(subtaskBasedTime.time);
         }
         
-        console.log('📅 Data final calculada para nova tarefa:', {
-          defaultDueDate: defaultDueDate,
-          finalDueDate: finalDueDate,
-          tempDueTime: tempDueTime,
-          finalDueTime: finalDueTime,
-          subtaskBasedTime: subtaskBasedTime
-        });
+        logger.debug('CREATE_TASK', 'Data final calculada');
 
-  console.log('💾 Salvando tarefa (criação) com subtarefas:', (subtasksDraftRef.current || subtasksDraft).map(s => ({ id: s.id, title: s.title, dueDate: s.dueDate, dueTime: s.dueTime })));
+  logger.debug('CREATE_TASK', 'Salvando tarefa com subtarefas');
   
         // Log dos valores de repetição
-        console.log('🔄 Valores de repetição ao criar tarefa:', {
-          repeatType,
-          repeatOption: (repeatType === RepeatType.DAILY ? 'diario' : repeatType === RepeatType.MONTHLY ? 'mensal' : repeatType === RepeatType.CUSTOM ? 'semanal' : repeatType === RepeatType.INTERVAL ? 'intervalo' : 'nenhum'),
-          customDays,
-          intervalDays,
-          durationMonths
-        });
+        logger.debug('REPEAT', `Repetição ao criar: ${repeatType}`);
   
   const newTask: Task = {
           id: uuidv4(), // Usar UUID para garantir ID único
@@ -2646,27 +2633,17 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           }
         }
 
-        console.log('✨ Nova tarefa criada:', {
-          id: newTask.id,
-          title: newTask.title,
-          dueDate: newTask.dueDate,
-          dueTime: newTask.dueTime,
-          repeatType: repeatType,
-          repeatOption: newTask.repeatOption,
-          repeatIntervalDays: newTask.repeatIntervalDays,
-          repeatDurationMonths: newTask.repeatDurationMonths,
-          repeatStartDate: newTask.repeatStartDate
-        });
+        logger.success('CREATE_TASK', `Nova tarefa criada: ${newTask.title}`);
 
   const updatedTasks = [newTask, ...tasks];
         
         // ✅ PROTEÇÃO CONTRA SOBRESCRITA: Adicionar ao pendingSyncIds para evitar que o listener sobrescreva
         setPendingSyncIds(prev => [...prev, newTask.id]);
-        console.log('🔒 Tarefa adicionada ao pendingSyncIds para proteção durante sincronização:', newTask.id);
+        logger.debug('SYNC', `Tarefa protegida para sincronização: ${newTask.id}`);
         
         // ATUALIZAÇÃO IMEDIATA: Atualizar o estado local primeiro para feedback instantâneo
         setTasks(updatedTasks);
-        console.log('✅ Tarefa adicionada ao estado local imediatamente:', newTask.id);
+        logger.debug('UPDATE_STATE', `Tarefa adicionada ao estado local: ${newTask.id}`);
         
         // Forçar atualização da UI
         setLastUpdate(new Date());
@@ -2676,7 +2653,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   try {
     await NotificationService.scheduleTaskReminder(newTask as any);
   } catch (e) {
-    console.warn('[Notifications] scheduleTaskReminder falhou (ignorado):', e);
+    logger.warn('NOTIFY', 'scheduleTaskReminder falhou');
   }
 
   // Agendar lembretes das subtarefas
@@ -2685,7 +2662,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       await NotificationService.scheduleSubtaskReminders(newTask.id, newTask.title, subtasksDraftRef.current);
     }
   } catch (e) {
-    console.warn('[Notifications] scheduleSubtaskReminders falhou (ignorado):', e);
+    logger.warn('NOTIFY', 'scheduleSubtaskReminders falhou');
   }
         
         // Salvar no cache local
@@ -2703,43 +2680,42 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
               const toSave = { ...remoteTask, familyId: currentFamily.id } as any;
               const res = await FirestoreService.saveTask(toSave);
               await LocalStorageService.saveTask({ ...toSave, id: toSave.id || (res && (res as any).id) } as any);
-              console.log(`👨‍👩‍👧‍👦 Nova tarefa salva no Firestore (online): taskId=${toSave.id || (res && (res as any).id)} familyId=${currentFamily.id}`);
+              logger.success('FIRESTORE', `Nova tarefa salva: ${toSave.id || (res && (res as any).id)}`);
               
               // ✅ REMOVER DO pendingSyncIds: Sincronização concluída com sucesso
               setPendingSyncIds(prev => prev.filter(id => id !== newTask.id));
-              console.log('🔓 Tarefa removida do pendingSyncIds após sincronização bem-sucedida:', newTask.id);
+              logger.debug('SYNC', `Tarefa sincronizada e removida do pendingSyncIds: ${newTask.id}`);
             } else {
               await SyncService.addOfflineOperation('create', 'tasks', { ...remoteTask, familyId: currentFamily.id });
-              console.log(`👨‍👩‍👧‍👦 Nova tarefa enfileirada (offline family): taskId=${remoteTask.id} familyId=${currentFamily.id}`);
+              logger.debug('OFFLINE_SYNC', `Nova tarefa enfileirada: ${remoteTask.id}`);
               
               // ✅ REMOVER DO pendingSyncIds: Tarefa enfileirada para sincronização offline
               // O listener do SyncService removerá quando sincronizar de fato
               setTimeout(() => {
                 setPendingSyncIds(prev => prev.filter(id => id !== newTask.id));
-                console.log('🔓 Tarefa removida do pendingSyncIds após enfileiramento offline:', newTask.id);
+                logger.debug('SYNC', `Tarefa removida do pendingSyncIds após enfileiramento: ${newTask.id}`);
               }, 1000); // 1 segundo de proteção
             }
           } catch (error) {
-            console.error('❌ Erro ao salvar tarefa na família via Firestore, delegando ao FamilySyncHelper:', error);
-            try { await FamilySyncHelper.saveTaskToFamily(remoteTask, currentFamily.id, 'create'); } catch (e) { console.warn('Falha fallback saveFamilyTask', e); }
+            logger.error('SAVE_FAMILY_TASK', 'Erro ao salvar tarefa na família', error);
+            try { await FamilySyncHelper.saveTaskToFamily(remoteTask, currentFamily.id, 'create'); } catch (e) { logger.warn('FAMILY_SYNC_FALLBACK', 'saveFamilyTask falhou'); }
             await SyncService.addOfflineOperation('create', 'tasks', { ...remoteTask, familyId: currentFamily.id });
             
             // ✅ REMOVER DO pendingSyncIds: Mesmo com erro, evitar bloquear a tarefa indefinidamente
             setTimeout(() => {
               setPendingSyncIds(prev => prev.filter(id => id !== newTask.id));
-              console.log('🔓 Tarefa removida do pendingSyncIds após erro (fallback):', newTask.id);
+              logger.debug('SYNC', `Tarefa removida do pendingSyncIds após erro: ${newTask.id}`);
             }, 2000); // 2 segundos de proteção
           }
         } else {
           // Tarefa privada ou usuário sem família - remover do pendingSyncIds após salvar localmente
           setTimeout(() => {
             setPendingSyncIds(prev => prev.filter(id => id !== newTask.id));
-            console.log('🔓 Tarefa privada/sem família removida do pendingSyncIds:', newTask.id);
+            logger.debug('SYNC', `Tarefa privada/sem família removida do pendingSyncIds: ${newTask.id}`);
           }, 1000);
         }
         
-        console.log(`📱 Nova tarefa criada e adicionada à fila de sincronização: taskId=${remoteTask.id}` +
-          `${currentFamily ? ` familyId=${currentFamily.id}` : ''}`);
+        logger.debug('CREATE_TASK', `Tarefa criada e enfileirada: ${remoteTask.id}`);
         
         // Adicionar ao histórico
         await addToHistory('created', newTask.title, newTask.id);
@@ -2753,16 +2729,13 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       resetForm();
       setModalVisible(false);
       
-      console.log('✅ Modal fechado, tarefa deve estar visível na lista');
+      logger.debug('UPDATE_STATE', 'Modal fechado, tarefa deve estar visível na lista');
       
       // Mostrar loading de sincronização e forçar atualização dos dados
       setIsSyncing(true);
-      setSyncMessage('Sincronizando tarefa...');
       
       // Aguardar um momento para o modal de tarefa fechar
       await new Promise(resolve => setTimeout(resolve, 300));
-      
-      setSyncMessage('Carregando dados atualizados...');
       
       // Usar a função forceRefresh para sincronizar os dados
       await forceRefresh();
@@ -2771,7 +2744,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       setSyncMessage('');
       
     } catch (error) {
-      console.error('Erro ao salvar tarefa:', error);
+      logger.error('CREATE_TASK', 'Erro ao salvar tarefa', error);
       Alert.alert('Erro', 'Não foi possível salvar a tarefa. Tente novamente.');
       setIsSyncing(false);
       setSyncMessage('');
@@ -2900,7 +2873,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   }, [modalVisible, isEditing, editingTaskId]);
 
   // Funções para filtrar tarefas por data
-  const getTodayTasks = () => {
+  const getTodayTasks = useMemo(() => () => {
     // Função pura: não altera estados durante a renderização
     return tasks.filter(task => {
       // Filtrar por categoria
@@ -2954,9 +2927,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       
       return dateA.getTime() - dateB.getTime();
     });
-  };
+  }, [tasks, filterCategory, currentFamily, user.id, user.role]);
 
-  const getUpcomingTasks = () => {
+  const getUpcomingTasks = useMemo(() => () => {
     // Apenas calcula e retorna; não altere estados aqui para evitar loops de renderização
     return tasks.filter(task => {
       // Filtrar por categoria
@@ -3003,15 +2976,17 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       
       return dateA.getTime() - dateB.getTime();
     });
-  };
+  }, [tasks, filterCategory, currentFamily, user.id, getRepeat]);
 
-  const getCurrentTasks = () => {
-    if (activeTab === 'today') {
-      return getTodayTasks();
-    } else {
-      return getUpcomingTasks();
-    }
-  };
+  const getCurrentTasks = useMemo(() => {
+    return () => {
+      if (activeTab === 'today') {
+        return getTodayTasks();
+      } else {
+        return getUpcomingTasks();
+      }
+    };
+  }, [activeTab, getTodayTasks, getUpcomingTasks]);
 
   // Funções do sistema de histórico
   const addToHistory = async (
@@ -3052,9 +3027,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     // Salvar no cache local (LocalStorage)
     try {
       await LocalStorageService.saveHistoryItem(historyItem);
-      console.log('💾 Item de histórico salvo no cache local');
+      logger.debug('HISTORY', 'Item de histórico salvo no cache local');
     } catch (error) {
-      console.error('❌ Erro ao salvar histórico no cache:', error);
+      logger.error('HISTORY', 'Erro ao salvar histórico no cache', error);
     }
 
     // Se o usuário pertence a uma família, adicionar também ao histórico da família
@@ -3069,9 +3044,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           userRole: historyItem.userRole,
           details
         });
-        console.log('👨‍👩‍👧‍👦 Item adicionado ao histórico da família');
+        logger.debug('HISTORY', 'Item adicionado ao histórico da família');
       } catch (error) {
-        console.error('❌ Erro ao adicionar ao histórico da família:', error);
+        logger.error('HISTORY', 'Erro ao adicionar ao histórico da família', error);
         
         // Se falhou salvar no Firebase, adicionar à fila de sincronização
         try {
@@ -3079,9 +3054,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           // remover undefined defensivamente
           Object.keys(toQueue).forEach(k => (toQueue as any)[k] === undefined && delete (toQueue as any)[k]);
           await SyncService.addOfflineOperation('create', 'history', toQueue);
-          console.log('📤 Item de histórico adicionado à fila de sincronização');
+          logger.debug('HISTORY', 'Item de histórico adicionado à fila de sincronização');
         } catch (syncError) {
-          console.error('❌ Erro ao adicionar histórico à fila de sincronização:', syncError);
+          logger.error('HISTORY', 'Erro ao adicionar histórico à fila de sincronização', syncError);
         }
       }
     } else if (!currentFamily) {
@@ -3090,9 +3065,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         const toQueue = { ...historyItem, familyId: null } as any;
         Object.keys(toQueue).forEach(k => (toQueue as any)[k] === undefined && delete (toQueue as any)[k]);
         await SyncService.addOfflineOperation('create', 'history', toQueue);
-        console.log('📤 Item de histórico adicionado à fila de sincronização (sem família)');
+        logger.debug('HISTORY', 'Item de histórico adicionado à fila de sincronização (sem família)');
       } catch (syncError) {
-        console.error('❌ Erro ao adicionar histórico à fila:', syncError);
+        logger.error('HISTORY', 'Erro ao adicionar histórico à fila', syncError);
       }
     }
   };
@@ -3218,7 +3193,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         // Filtrar apenas categorias personalizadas (não padrão) para salvar
         const customCategories = updatedCategories.filter(cat => !cat.isDefault);
         await familyService.saveFamilyCategories(currentFamily.id, customCategories);
-        console.log('✅ Categoria salva no Firebase:', newCategory.name);
+        logger.success('CATEGORIES', 'Categoria salva no Firebase: ' + newCategory.name);
       }
       
       setNewCategoryName('');
@@ -3228,7 +3203,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       
       Alert.alert('✓', 'Categoria criada com sucesso!');
     } catch (error) {
-      console.error('❌ Erro ao salvar categoria:', error);
+      logger.error('CATEGORIES', 'Erro ao salvar categoria', error);
       Alert.alert('Erro', 'Não foi possível salvar a categoria. Tente novamente.');
       // Reverter estado local em caso de erro
       setCategories(categories);
@@ -3269,14 +3244,14 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                 if (currentFamily && !isOffline) {
                   const customCategories = updatedCategories.filter(cat => !cat.isDefault);
                   await familyService.saveFamilyCategories(currentFamily.id, customCategories);
-                  console.log('✅ Categoria removida do Firebase');
+                  logger.success('CATEGORIES', 'Categoria removida do Firebase');
                 }
                 
                 if (filterCategory === categoryId) {
                   setFilterCategory('all');
                 }
               } catch (error) {
-                console.error('❌ Erro ao excluir categoria:', error);
+                logger.error('CATEGORIES', 'Erro ao excluir categoria', error);
                 Alert.alert('Erro', 'Não foi possível excluir a categoria.');
               }
             }
@@ -3300,14 +3275,14 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                 if (currentFamily && !isOffline) {
                   const customCategories = updatedCategories.filter(cat => !cat.isDefault);
                   await familyService.saveFamilyCategories(currentFamily.id, customCategories);
-                  console.log('✅ Categoria removida do Firebase');
+                  logger.success('CATEGORIES', 'Categoria removida do Firebase');
                 }
                 
                 if (filterCategory === categoryId) {
                   setFilterCategory('all');
                 }
               } catch (error) {
-                console.error('❌ Erro ao excluir categoria:', error);
+                logger.error('CATEGORIES', 'Erro ao excluir categoria', error);
                 Alert.alert('Erro', 'Não foi possível excluir a categoria.');
               }
             },
@@ -3397,13 +3372,13 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       closeManagedModal('picker');
       closeManagedModal('subtaskPicker');
     } catch (e) {
-      console.warn('Erro ao fechar pickers:', e);
+      logger.warn('PICKERS', 'Erro ao fechar pickers', e);
     }
   }, []);
 
   // Handler para mudança de data da tarefa principal - USA APENAS REFS
   const onDateChange = useCallback((event: any, date?: Date) => {
-    console.log('📅 onDateChange:', { platform: Platform.OS, eventType: event?.type, date });
+    logger.debug('PICKERS', `onDateChange: platform=${Platform.OS}, eventType=${event?.type}, date=${date}`);
     
     if (Platform.OS === 'android') {
       // Android: diálogo fecha automaticamente
@@ -3412,9 +3387,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       if (event?.type === 'set' && date) {
         pickerDateValueRef.current = date; // Atualiza APENAS a ref
         setTempDueDate(date); // Atualiza o estado para salvar depois
-        console.log('✅ Data selecionada (Android):', date);
+        logger.debug('PICKERS', 'Data selecionada (Android): ' + date);
       } else if (event?.type === 'dismissed') {
-        console.log('❌ Seleção cancelada (Android)');
+        logger.debug('PICKERS', 'Seleção cancelada (Android)');
       }
     } else if (Platform.OS === 'ios') {
       // iOS: spinner permanece visível, atualiza em tempo real
@@ -3422,14 +3397,14 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       if (date && (showDatePicker || showSubtaskDatePicker)) {
         pickerDateValueRef.current = date; // Atualiza APENAS a ref
         // NÃO atualiza tempDueDate aqui para evitar re-renders
-        console.log('✅ Data selecionada (iOS):', date);
+        logger.debug('PICKERS', 'Data selecionada (iOS): ' + date);
       }
     }
   }, [showDatePicker, showSubtaskDatePicker]);
 
   // Handler para mudança de hora da tarefa principal - USA APENAS REFS
   const onTimeChange = useCallback((event: any, time?: Date) => {
-    console.log('🕐 onTimeChange:', { platform: Platform.OS, eventType: event?.type, time });
+    logger.debug('PICKERS', `onTimeChange: platform=${Platform.OS}, eventType=${event?.type}, time=${time}`);
     
     if (Platform.OS === 'android') {
       // Android: diálogo fecha automaticamente
@@ -3442,9 +3417,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         merged.setHours(time.getHours(), time.getMinutes(), 0, 0);
         pickerTimeValueRef.current = merged; // Atualiza APENAS a ref
         setTempDueTime(merged); // Atualiza o estado para salvar depois
-        console.log('✅ Hora selecionada (Android):', time);
+        logger.debug('PICKERS', 'Hora selecionada (Android): ' + time);
       } else if (event?.type === 'dismissed') {
-        console.log('❌ Seleção cancelada (Android)');
+        logger.debug('PICKERS', 'Seleção cancelada (Android)');
       }
     } else if (Platform.OS === 'ios') {
       // iOS: spinner permanece visível, atualiza em tempo real
@@ -3456,14 +3431,14 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         merged.setHours(time.getHours(), time.getMinutes(), 0, 0);
         pickerTimeValueRef.current = merged; // Atualiza APENAS a ref
         // NÃO atualiza tempDueTime aqui para evitar re-renders
-        console.log('✅ Hora selecionada (iOS):', time);
+        logger.debug('PICKERS', 'Hora selecionada (iOS): ' + time);
       }
     }
   }, [tempDueDate, showTimePicker, showSubtaskTimePicker]);
 
   // Handler para mudança de data de subtarefa - USA APENAS REFS
   const onSubtaskDateChange = useCallback((event: any, date?: Date) => {
-    console.log('📅 onSubtaskDateChange:', { platform: Platform.OS, eventType: event?.type, date, editingSubtaskId });
+    logger.debug('PICKERS', `onSubtaskDateChange: platform=${Platform.OS}, eventType=${event?.type}, date=${date}, editingSubtaskId=${editingSubtaskId}`);
     
     if (Platform.OS === 'android') {
       setShowSubtaskDatePicker(false);
@@ -3475,10 +3450,10 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           return next;
         });
         setEditingSubtaskId(null);
-        console.log('✅ Data de subtarefa selecionada (Android):', date);
+        logger.debug('PICKERS', 'Data de subtarefa selecionada (Android): ' + date);
       } else if (event?.type === 'dismissed') {
         setEditingSubtaskId(null);
-        console.log('❌ Seleção de data de subtarefa cancelada (Android)');
+        logger.debug('PICKERS', 'Seleção de data de subtarefa cancelada (Android)');
       }
     } else if (Platform.OS === 'ios') {
       // iOS: atualiza apenas a ref em tempo real
@@ -3486,14 +3461,14 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       if (date && editingSubtaskId && showSubtaskDatePicker) {
         pickerSubtaskDateValueRef.current = date; // Atualiza APENAS a ref
         // NÃO atualiza o estado aqui para evitar re-renders
-        console.log('✅ Data de subtarefa selecionada (iOS):', date);
+        logger.debug('PICKERS', 'Data de subtarefa selecionada (iOS): ' + date);
       }
     }
   }, [editingSubtaskId, showSubtaskDatePicker]);
 
   // Handler para mudança de hora de subtarefa
   const onSubtaskTimeChange = useCallback((event: any, time?: Date) => {
-    console.log('🕐 onSubtaskTimeChange:', { platform: Platform.OS, eventType: event?.type, time, editingSubtaskId });
+    logger.debug('PICKERS', `onSubtaskTimeChange: platform=${Platform.OS}, eventType=${event?.type}, time=${time}, editingSubtaskId=${editingSubtaskId}`);
     
     // Atualizar o ref sempre que o valor mudar
     if (time) {
@@ -3523,16 +3498,16 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         }
         timePickerBaseRef.current = merged;
         setEditingSubtaskId(null);
-        console.log('✅ Hora de subtarefa selecionada (Android):', time);
+        logger.debug('PICKERS', 'Hora de subtarefa selecionada (Android): ' + time);
       } else if (event?.type === 'dismissed') {
         setEditingSubtaskId(null);
-        console.log('❌ Seleção de hora de subtarefa cancelada (Android)');
+        logger.debug('PICKERS', 'Seleção de hora de subtarefa cancelada (Android)');
       }
     } else if (Platform.OS === 'ios') {
       // iOS: apenas atualiza o ref durante a interação, sem atualizar estado
       // Verificar se ainda está dentro do modal correto
       if (time && editingSubtaskId && showSubtaskTimePicker) {
-        console.log('✅ Hora de subtarefa sendo selecionada (iOS):', time);
+        logger.debug('PICKERS', 'Hora de subtarefa sendo selecionada (iOS): ' + time);
       }
     }
   }, [editingSubtaskId, editingSubtask, showSubtaskTimePicker]);
@@ -3573,7 +3548,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         } as any;
         await FirestoreService.saveTask(toSave);
         await LocalStorageService.saveTask(toSave);
-        console.log(`🔓 Status de bloqueio atualizado no Firestore: ${newUnlockedState ? 'DESBLOQUEADO' : 'BLOQUEADO'}`);
+        logger.debug('SAVE_TASK', `Status de bloqueio atualizado no Firestore: ${newUnlockedState ? 'DESBLOQUEADO' : 'BLOQUEADO'}`);
       } else {
         // Tarefa privada ou offline - salvar localmente
         await LocalStorageService.saveTask(updatedTask as any);
@@ -3584,11 +3559,11 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             ...updatedTask,
             familyId: (task as any).familyId
           });
-          console.log(`🔓 Status de bloqueio enfileirado (offline): ${newUnlockedState ? 'DESBLOQUEADO' : 'BLOQUEADO'}`);
+          logger.debug('OFFLINE_SYNC', `Status de bloqueio enfileirado (offline): ${newUnlockedState ? 'DESBLOQUEADO' : 'BLOQUEADO'}`);
         }
       }
     } catch (error) {
-      console.error('Erro ao atualizar status de bloqueio:', error);
+      logger.error('SAVE_TASK', 'Erro ao atualizar status de bloqueio', error);
       // Reverter em caso de erro
       setTasks(prev => prev.map(t => t.id === taskId ? task : t));
       Alert.alert('Erro', 'Não foi possível atualizar o status de bloqueio da tarefa.');
@@ -3656,7 +3631,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         } as any;
         await FirestoreService.saveTask(toSave);
         await LocalStorageService.saveTask(toSave);
-        console.log(`📅 Data e horário da tarefa atualizados no Firestore`);
+        logger.debug('SAVE_TASK', 'Data e horário da tarefa atualizados no Firestore');
       } else {
         await LocalStorageService.saveTask(updatedTask as any);
         
@@ -3665,13 +3640,13 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             ...updatedTask,
             familyId: (task as any).familyId
           });
-          console.log(`📅 Atualização de data/horário enfileirada (offline)`);
+          logger.debug('OFFLINE_SYNC', 'Atualização de data/horário enfileirada (offline)');
         }
       }
 
       Alert.alert('Sucesso', 'Data e horário da tarefa atualizados.');
     } catch (error) {
-      console.error('Erro ao atualizar data/horário da tarefa:', error);
+      logger.error('SAVE_TASK', 'Erro ao atualizar data/horário da tarefa', error);
       setTasks(prev => prev.map(t => t.id === task.id ? task : t));
       Alert.alert('Erro', 'Não foi possível atualizar a tarefa.');
     }
@@ -3778,7 +3753,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     await handleTaskToggle(task);
   }, [tasks, user, currentFamily, isOffline]);
 
-  const handleTaskToggle = async (task: Task) => {
+  const handleTaskToggle = useCallback(async (task: Task) => {
     // Safety net adicional: dependente não altera diretamente
     if (user.role === 'dependente') {
       if (!task.completed) {
@@ -3816,12 +3791,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       const repeatConfig = getRepeat(task);
       if (repeatConfig.type !== RepeatType.NONE) {
         // Tarefa recorrente: criar nova instância para a próxima ocorrência
-        console.log('🔄 Calculando próxima data para tarefa recorrente:', {
-          taskTitle: task.title,
-          currentDate: task.dueDate,
-          repeatType: repeatConfig.type,
-          customDays: repeatConfig.days
-        });
+        logger.debug('REPEAT', `Calculando próxima data: ${task.title}, currentDate=${task.dueDate}, repeatType=${repeatConfig.type}`);
         
         // Respeitar duração em meses: se ultrapassou, não cria próxima
         if (repeatConfig.durationMonths && (task as any).repeatStartDate) {
@@ -3831,7 +3801,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           const current = safeToDate(task.dueDate) || new Date();
           if (current >= end) {
             // Não cria próxima, apenas marca concluída
-            console.log('⛔ Recorrência por intervalo expirou pela duração definida.');
+            logger.debug('REPEAT', 'Recorrência por intervalo expirou pela duração definida.');
             const updated = tasks.map(t => t.id === task.id ? { ...t, completed: true, status: 'concluida' as TaskStatus } : t);
             setTasks(updated);
             return;
@@ -3862,11 +3832,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             nextDate.setDate(nextDate.getDate() + step);
           }
           
-          console.log('📅 Próxima data (intervalo) calculada:', {
-            startDate: base,
-            step: step,
-            nextDate: nextDate
-          });
+          logger.debug('REPEAT', `Próxima data (intervalo) calculada: nextDate=${nextDate}`);
         } else {
           nextDate = getNextRecurrenceDate(
             task.dueDate || new Date(), 
@@ -3875,7 +3841,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           );
         }
         
-        console.log('📅 Próxima data calculada:', nextDate);
+        logger.debug('REPEAT', `Próxima data calculada: ${nextDate}`);
         
         // Preservar o horário original se existir
         let nextDateTime: Date | undefined = undefined;
@@ -3889,10 +3855,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
               originalTime.getSeconds(),
               originalTime.getMilliseconds()
             );
-            console.log('🕐 Horário preservado:', {
-              original: originalTime,
-              next: nextDateTime
-            });
+            logger.debug('REPEAT', `Horário preservado: original=${originalTime}, next=${nextDateTime}`);
           }
         }
         
@@ -3923,14 +3886,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           editedAt: new Date()
         } as any;
         
-        console.log('✨ Nova tarefa recorrente criada:', {
-          id: nextTask.id,
-          title: nextTask.title,
-          dueDate: nextTask.dueDate,
-          dueTime: nextTask.dueTime,
-          repeatStartDate: (nextTask as any).repeatStartDate,
-          repeatIntervalDays: (nextTask as any).repeatIntervalDays
-        });
+        logger.success('REPEAT', `Nova tarefa recorrente criada: ${nextTask.title}, dueDate=${nextTask.dueDate}`);
         
         // Marcar tarefa atual como concluída e adicionar nova tarefa
         updatedTasks = tasks.map(t => 
@@ -3954,7 +3910,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         try {
           await NotificationService.cancelTaskReminder(task.id);
         } catch (e) {
-          console.warn('[Notifications] cancelTaskReminder falhou (ignorado):', e);
+          logger.warn('NOTIFY', 'cancelTaskReminder falhou', e);
         }
         
         // Salvar nova tarefa no Firebase e na família imediatamente
@@ -3969,9 +3925,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                 const toSave = { ...remoteNextTask, familyId: currentFamily.id } as any;
                 const res = await FirestoreService.saveTask(toSave);
                 await LocalStorageService.saveTask({ ...toSave, id: toSave.id || (res && (res as any).id) } as any);
-                console.log(`👨‍👩‍👧‍👦 Próxima ocorrência recorrente salva no Firestore: taskId=${toSave.id || (res && (res as any).id)} familyId=${currentFamily.id}`);
+                logger.debug('SYNC', `Próxima ocorrência recorrente salva no Firestore: taskId=${toSave.id || (res && (res as any).id)} familyId=${currentFamily.id}`);
               } catch (e) {
-                console.warn('Falha ao salvar próxima ocorrência no Firestore, fallback local:', e);
+                logger.warn('SYNC', 'Falha ao salvar próxima ocorrência no Firestore, fallback local', e);
                 try { await FamilySyncHelper.saveTaskToFamily(remoteNextTask as any, currentFamily.id, 'create'); } catch (_) {}
                 await SyncService.addOfflineOperation('create', 'tasks', { ...remoteNextTask, familyId: currentFamily.id });
               }
@@ -3981,20 +3937,20 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
               ...remoteNextTask,
               familyId: currentFamily.id,
             });
-            console.log(`📱 Próxima ocorrência enfileirada (offline): taskId=${remoteNextTask.id} familyId=${currentFamily.id}`);
+            logger.debug('OFFLINE_SYNC', `Próxima ocorrência enfileirada (offline): taskId=${remoteNextTask.id} familyId=${currentFamily.id}`);
           }
           
           // agendar lembrete da próxima ocorrência
           try {
             await NotificationService.scheduleTaskReminder(nextTask as any);
           } catch (e) {
-            console.warn('[Notifications] scheduleTaskReminder falhou (ignorado):', e);
+            logger.warn('NOTIFY', 'scheduleTaskReminder falhou', e);
           }
           
-          console.log(`✅ Nova tarefa recorrente criada e sincronizada com sucesso: taskId=${remoteNextTask.id}` +
+          logger.success('REPEAT', `Nova tarefa recorrente criada e sincronizada: taskId=${remoteNextTask.id}` +
             `${currentFamily ? ` familyId=${currentFamily.id}` : ''}`);
         } catch (error) {
-          console.error('❌ Erro ao sincronizar nova tarefa recorrente:', error);
+          logger.error('REPEAT', 'Erro ao sincronizar nova tarefa recorrente', error);
           // Em caso de erro, manter a nova tarefa no estado local
           Alert.alert(
             'Aviso',
@@ -4021,7 +3977,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         try {
           await NotificationService.cancelTaskReminder(task.id);
         } catch (e) {
-          console.warn('[Notifications] cancelTaskReminder falhou (ignorado):', e);
+          logger.warn('NOTIFY', 'cancelTaskReminder falhou', e);
         }
       }
     } else {
@@ -4048,7 +4004,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           try {
             await NotificationService.rescheduleTaskReminder(t as any);
           } catch (e) {
-            console.warn('[Notifications] rescheduleTaskReminder falhou (ignorado):', e);
+            logger.warn('NOTIFY', 'rescheduleTaskReminder falhou', e);
           }
         }
       } else {
@@ -4081,21 +4037,21 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             const toSave = { ...remoteTask, familyId: currentFamily.id } as any;
             const res = await FirestoreService.saveTask(toSave);
             await LocalStorageService.saveTask({ ...toSave, id: toSave.id || (res && (res as any).id) } as any);
-            console.log(`👨‍👩‍👧‍👦 Tarefa atualizada no Firestore: taskId=${toSave.id || (res && (res as any).id)} familyId=${currentFamily.id}`);
+            logger.debug('SYNC', `Tarefa atualizada no Firestore: taskId=${toSave.id || (res && (res as any).id)} familyId=${currentFamily.id}`);
           } catch (error) {
-            console.error('❌ Erro ao atualizar tarefa na família via Firestore, fallback local:', error);
-            try { await FamilySyncHelper.saveTaskToFamily(remoteTask as any, currentFamily.id, operationType); } catch (e) { console.warn('Falha fallback saveFamilyTask', e); }
+            logger.error('SYNC', 'Erro ao atualizar tarefa na família via Firestore, fallback local', error);
+            try { await FamilySyncHelper.saveTaskToFamily(remoteTask as any, currentFamily.id, operationType); } catch (e) { logger.warn('SYNC', 'Falha fallback saveFamilyTask', e); }
             await SyncService.addOfflineOperation(operationType, 'tasks', { ...remoteTask, familyId: currentFamily.id });
           }
         } else if (currentFamily) {
           await SyncService.addOfflineOperation(operationType, 'tasks', { ...remoteTask, familyId: currentFamily.id });
-          console.log(`📱 Atualização enfileirada (offline): taskId=${remoteTask.id} familyId=${currentFamily.id}`);
+          logger.debug('OFFLINE_SYNC', `Atualização enfileirada (offline): taskId=${remoteTask.id} familyId=${currentFamily.id}`);
         }
         
-        console.log(`✅ Status da tarefa atualizado e sincronizado: taskId=${updatedTask.id}` +
+        logger.success('SAVE_TASK', `Status da tarefa atualizado e sincronizado: taskId=${updatedTask.id}` +
           `${currentFamily ? ` familyId=${currentFamily.id}` : ''}`);
       } catch (error) {
-        console.error('❌ Erro ao sincronizar toggle da tarefa:', error);
+        logger.error('SAVE_TASK', 'Erro ao sincronizar toggle da tarefa', error);
       }
     }
     
@@ -4105,7 +4061,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       task.title,
       task.id
     );
-  };
+  }, [user.role, tasks]);
 
   // Persistir alterações de subtarefas feitas no modal durante edição (salvar imediatamente)
   // FUNÇÃO DESABILITADA: Subtarefas agora só são salvas quando o botão Salvar/Adicionar da task principal é clicado
@@ -4294,7 +4250,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       try {
         await NotificationService.cancelSubtaskReminder(taskId, subtaskId);
       } catch (e) {
-        console.warn('[Notifications] Falha ao cancelar notificação de subtarefa (ignorado):', e);
+        logger.warn('NOTIFY', 'Falha ao cancelar notificação de subtarefa', e);
       }
     }
     
@@ -4317,7 +4273,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         }
       }
     } catch (e) {
-      console.error('Erro ao sincronizar subtarefa:', e);
+      logger.error('SAVE_TASK', 'Erro ao sincronizar subtarefa', e);
     }
 
     // Se todas subtarefas concluídas, agir sobre a tarefa principal
@@ -4333,7 +4289,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         }
       }
     } catch (e) {
-      console.warn('Erro ao processar conclusão automática por subtarefas:', e);
+      logger.warn('SAVE_TASK', 'Erro ao processar conclusão automática por subtarefas', e);
     }
   }, [tasks, user, currentFamily, isOffline]);
 
@@ -4374,7 +4330,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           const res = await FirestoreService.saveTask(toSave);
           await LocalStorageService.saveTask({ ...toSave, id: toSave.id || (res && (res as any).id) } as any);
         } catch (e) {
-          console.warn('Falha ao salvar approval/task pending no Firestore, delegando ao FamilySyncHelper:', e);
+          logger.warn('APPROVAL', 'Falha ao salvar approval/task pending no Firestore, delegando ao FamilySyncHelper', e);
           try { await FamilySyncHelper.saveTaskToFamily(remoteTask, currentFamily.id, 'update'); } catch (_) {}
           await SyncService.addOfflineOperation('update', 'tasks', { ...remoteTask, familyId: currentFamily.id });
         }
@@ -4394,7 +4350,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         ...(familyIdToSend ? { familyId: familyIdToSend } : {}),
       });
     } catch (err) {
-      console.error('❌ Erro ao persistir status pendente_aprovacao:', err);
+      logger.error('APPROVAL', 'Erro ao persistir status pendente_aprovacao', err);
     }
 
     // Notificações para admin serão derivadas de approvals (ver useEffect abaixo)
@@ -4484,7 +4440,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     try {
       await NotificationService.cancelTaskReminder(approval.taskId);
     } catch (e) {
-      console.warn('[Notifications] cancelTaskReminder falhou (ignorado):', e);
+      logger.warn('NOTIFY', 'cancelTaskReminder falhou', e);
     }
 
     // Persistir aprovação e atualizar tarefa (cache + fila + família)
@@ -4519,14 +4475,14 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             const res = await FirestoreService.saveTask(toSave);
             await LocalStorageService.saveTask({ ...toSave, id: toSave.id || (res && (res as any).id) } as any);
             } catch (e) {
-              console.warn('Falha ao salvar aprovação/tarefa aprovada no Firestore, delegando ao FamilySyncHelper:', e);
+              logger.warn('APPROVAL', 'Falha ao salvar aprovação/tarefa aprovada no Firestore, delegando ao FamilySyncHelper', e);
               try { await FamilySyncHelper.saveTaskToFamily(remoteTask as any, currentFamily.id, 'update'); } catch (_) {}
               await SyncService.addOfflineOperation('update', 'tasks', { ...remoteTask, familyId: currentFamily.id });
             }
         }
       }
     } catch (e) {
-      console.error('Erro ao persistir aprovação/tarefa aprovada:', e);
+      logger.error('APPROVAL', 'Erro ao persistir aprovação/tarefa aprovada', e);
     }
 
   // Remover notificação e a própria aprovação (local e remoto)
@@ -4536,7 +4492,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       await LocalStorageService.removeFromCache('approvals' as any, approvalId);
       await SyncService.addOfflineOperation('delete', 'approvals', { id: approvalId });
     } catch (e) {
-      console.error('Erro ao remover aprovação após aprovar:', e);
+      logger.error('APPROVAL', 'Erro ao remover aprovação após aprovar', e);
     }
 
     await addToHistory('approved', approval.dependenteName + ' - ' + tasks.find(t => t.id === approval.taskId)?.title || '', approval.taskId, adminComment);
@@ -4573,7 +4529,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       try {
         await NotificationService.rescheduleTaskReminder(t as any);
       } catch (e) {
-        console.warn('[Notifications] rescheduleTaskReminder falhou (ignorado):', e);
+        logger.warn('NOTIFY', 'rescheduleTaskReminder falhou', e);
       }
     }
 
@@ -4608,14 +4564,14 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             const res = await FirestoreService.saveTask(toSave);
             await LocalStorageService.saveTask({ ...toSave, id: toSave.id || (res && (res as any).id) } as any);
           } catch (e) {
-            console.warn('Falha ao salvar aprovação/tarefa rejeitada no Firestore, delegando ao FamilySyncHelper:', e);
+            logger.warn('APPROVAL', 'Falha ao salvar aprovação/tarefa rejeitada no Firestore, delegando ao FamilySyncHelper', e);
             try { await FamilySyncHelper.saveTaskToFamily(remoteTask as any, currentFamily.id, 'update'); } catch (_) {}
             await SyncService.addOfflineOperation('update', 'tasks', { ...remoteTask, familyId: currentFamily.id });
           }
         }
       }
     } catch (e) {
-      console.error('Erro ao persistir aprovação/tarefa rejeitada:', e);
+      logger.error('APPROVAL', 'Erro ao persistir aprovação/tarefa rejeitada', e);
     }
 
   // Remover notificação e a própria aprovação (local e remoto)
@@ -4625,7 +4581,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       await LocalStorageService.removeFromCache('approvals' as any, approvalId);
       await SyncService.addOfflineOperation('delete', 'approvals', { id: approvalId });
     } catch (e) {
-      console.error('Erro ao remover aprovação após rejeitar:', e);
+      logger.error('APPROVAL', 'Erro ao remover aprovação após rejeitar', e);
     }
 
     await addToHistory('rejected', approval.dependenteName + ' - ' + tasks.find(t => t.id === approval.taskId)?.title || '', approval.taskId, adminComment);
@@ -4657,7 +4613,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         }
       } catch {}
     } catch (e) {
-      console.error('Erro ao resolver solicitação de admin:', e);
+      logger.error('ADMIN', 'Erro ao resolver solicitação de admin', e);
       Alert.alert('Erro', 'Não foi possível processar a solicitação.');
     } finally {
       setResolvingAdminRequestId(null);
@@ -4681,7 +4637,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         Alert.alert('Erro', 'Código da família não disponível.');
       }
     } catch (error) {
-      console.error('Erro ao copiar código:', error);
+      logger.error('FAMILY', 'Erro ao copiar código', error);
       Alert.alert('Erro', 'Não foi possível copiar o código.');
     }
   };
@@ -4750,7 +4706,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
               
               Alert.alert('Sucesso', `${member.name} agora é ${roleNames[newRole]}.`);
             } catch (error) {
-              console.error('Erro ao alterar função do membro:', error);
+              logger.error('FAMILY', 'Erro ao alterar função do membro', error);
               Alert.alert('Erro', 'Não foi possível alterar a função do membro.');
               
               // Reverter mudança local em caso de erro
@@ -4798,7 +4754,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
       
       Alert.alert('Sucesso', 'Nome da família atualizado com sucesso!');
     } catch (error) {
-      console.error('Erro ao atualizar nome da família:', error);
+      logger.error('FAMILY', 'Erro ao atualizar nome da família', error);
       Alert.alert('Erro', 'Não foi possível atualizar o nome da família.');
       
       // Reverter mudança local em caso de erro
@@ -4812,7 +4768,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   const handleManageFamily = async () => {
     // Se não tem família, mostrar interface de criação
     if (!currentFamily) {
-      console.log('⚠️ Usuário sem família - ativando modo de criação');
+      logger.debug('FAMILY', 'Usuário sem família - ativando modo de criação');
       setIsCreatingFamilyMode(true);
       setNewFamilyNameInput('');
       setFamilyModalVisible(true);
@@ -4832,13 +4788,13 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           try {
             if (onUserRoleChange) await onUserRoleChange(myMember.role, { silent: true });
           } catch (e) {
-            console.warn('Falha ao sincronizar role do usuário ao abrir Gerenciar Família:', e);
+            logger.warn('FAMILY', 'Falha ao sincronizar role do usuário ao abrir Gerenciar Família', e);
           }
         }
         setIsCreatingFamilyMode(false);
       }
     } catch (error) {
-      console.error('Erro ao carregar dados da família:', error);
+      logger.error('FAMILY', 'Erro ao carregar dados da família', error);
     }
     
     setFamilyModalVisible(true);
@@ -4853,7 +4809,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
 
     setIsCreatingFamily(true);
     try {
-      console.log('🏠 Criando nova família pelo modal:', newFamilyNameInput);
+      logger.debug('FAMILY', 'Criando nova família pelo modal: ' + newFamilyNameInput);
       
       const newFamily = await familyService.createFamily(newFamilyNameInput.trim(), {
         id: user.id,
@@ -4864,7 +4820,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         joinedAt: new Date(),
       });
 
-      console.log('✅ Família criada com sucesso:', newFamily.id);
+      logger.success('FAMILY', 'Família criada com sucesso: ' + newFamily.id);
       
       // Atualizar estados
       setCurrentFamily(newFamily);
@@ -4880,13 +4836,13 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             text: 'OK',
             onPress: () => {
               // Modal permanece aberto mostrando os detalhes da família
-              console.log('✅ Modal atualizado para modo de gerenciamento');
+              logger.debug('FAMILY', 'Modal atualizado para modo de gerenciamento');
             }
           }
         ]
       );
     } catch (error) {
-      console.error('❌ Erro ao criar família:', error);
+      logger.error('FAMILY', 'Erro ao criar família', error);
       Alert.alert('Erro', 'Não foi possível criar a família. Verifique sua conexão e tente novamente.');
     } finally {
       setIsCreatingFamily(false);
@@ -4920,7 +4876,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         if (currentFamily && !isOffline) {
           const toSave = { ...remoteTask, familyId: currentFamily.id } as any;
           await FirestoreService.saveTask(toSave);
-          console.log(`↩️ Tarefa restaurada no Firestore após exclusão: ${taskToRestore.id}`);
+          logger.debug('UNDO', `Tarefa restaurada no Firestore após exclusão: ${taskToRestore.id}`);
         } else {
           await SyncService.addOfflineOperation('create', 'tasks', { ...remoteTask, familyId: (taskToRestore as any).familyId });
         }
@@ -4939,7 +4895,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
               );
             }
           } catch (e) {
-            console.warn('[Notifications] Falha ao reagendar notificações (ignorado):', e);
+            logger.warn('NOTIFY', 'Falha ao reagendar notificações', e);
           }
         }
         
@@ -4948,7 +4904,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         
         Alert.alert('✓', 'Exclusão desfeita! Tarefa restaurada com sucesso.');
       } catch (error) {
-        console.error('Erro ao desfazer exclusão:', error);
+        logger.error('UNDO', 'Erro ao desfazer exclusão', error);
         Alert.alert('Erro', 'Não foi possível desfazer a exclusão.');
       }
     }
@@ -4972,7 +4928,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         if (currentFamily && !isOffline) {
           const toSave = { ...remoteTask, familyId: currentFamily.id } as any;
           await FirestoreService.saveTask(toSave);
-          console.log(`↩️ Tarefa restaurada ao estado anterior no Firestore: ${taskToRestore.id}`);
+          logger.debug('UNDO', `Tarefa restaurada ao estado anterior no Firestore: ${taskToRestore.id}`);
         } else {
           await SyncService.addOfflineOperation('update', 'tasks', { ...remoteTask, familyId: (taskToRestore as any).familyId });
         }
@@ -4991,20 +4947,20 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
               );
             }
           } catch (e) {
-            console.warn('[Notifications] Falha ao reagendar notificações (ignorado):', e);
+            logger.warn('NOTIFY', 'Falha ao reagendar notificações', e);
           }
         } else {
           try {
             await NotificationService.cancelTaskReminder(taskToRestore.id);
             await NotificationService.cancelAllSubtaskReminders(taskToRestore.id);
           } catch (e) {
-            console.warn('[Notifications] Falha ao cancelar notificações (ignorado):', e);
+            logger.warn('NOTIFY', 'Falha ao cancelar notificações', e);
           }
         }
         
         Alert.alert('✓', 'Edição desfeita! Tarefa restaurada ao estado anterior.');
       } catch (error) {
-        console.error('Erro ao desfazer edição:', error);
+        logger.error('UNDO', 'Erro ao desfazer edição', error);
         Alert.alert('Erro', 'Não foi possível desfazer a edição.');
       }
     }
@@ -5042,7 +4998,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             try {
               if (currentFamily && !isOffline) {
                 await FirestoreService.deleteTask(possibleNewTask.id);
-                console.log(`🗑️ Tarefa recorrente removida do Firestore: ${possibleNewTask.id}`);
+                logger.debug('UNDO', `Tarefa recorrente removida do Firestore: ${possibleNewTask.id}`);
               }
               await SyncService.addOfflineOperation('delete', 'tasks', { id: possibleNewTask.id, familyId: (possibleNewTask as any).familyId });
               
@@ -5050,10 +5006,10 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
               try {
                 await NotificationService.cancelTaskReminder(possibleNewTask.id);
               } catch (e) {
-                console.warn('[Notifications] cancelTaskReminder falhou (ignorado):', e);
+                logger.warn('NOTIFY', 'cancelTaskReminder falhou', e);
               }
             } catch (error) {
-              console.error('Erro ao remover tarefa recorrente durante desfazer:', error);
+              logger.error('UNDO', 'Erro ao remover tarefa recorrente durante desfazer', error);
             }
           } else {
             setTasks(updatedTasks);
@@ -5073,7 +5029,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         if (currentFamily && !isOffline) {
           const toSave = { ...remoteTask, familyId: currentFamily.id } as any;
           await FirestoreService.saveTask(toSave);
-          console.log(`↩️ Tarefa restaurada no Firestore: ${taskToRestore.id}`);
+          logger.debug('UNDO', `Tarefa restaurada no Firestore: ${taskToRestore.id}`);
         } else {
           await SyncService.addOfflineOperation('update', 'tasks', { ...remoteTask, familyId: (taskToRestore as any).familyId });
         }
@@ -5083,19 +5039,19 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           try {
             await NotificationService.scheduleTaskReminder(taskToRestore as any);
           } catch (e) {
-            console.warn('[Notifications] scheduleTaskReminder falhou (ignorado):', e);
+            logger.warn('NOTIFY', 'scheduleTaskReminder falhou', e);
           }
         } else {
           try {
             await NotificationService.cancelTaskReminder(taskToRestore.id);
           } catch (e) {
-            console.warn('[Notifications] cancelTaskReminder falhou (ignorado):', e);
+            logger.warn('NOTIFY', 'cancelTaskReminder falhou', e);
           }
         }
 
         Alert.alert('✓', 'Ação desfeita com sucesso!');
       } catch (error) {
-        console.error('Erro ao desfazer ação:', error);
+        logger.error('UNDO', 'Erro ao desfazer ação', error);
         Alert.alert('Erro', 'Não foi possível desfazer a ação.');
       }
     }
@@ -5137,7 +5093,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
               try {
                 await NotificationService.cancelAllSubtaskReminders(taskId);
               } catch (e) {
-                console.warn('[Notifications] Falha ao cancelar notificações de subtarefas (ignorado):', e);
+                logger.warn('NOTIFY', 'Falha ao cancelar notificações de subtarefas', e);
               }
 
               // Usar SyncService para executar remotamente quando online ou enfileirar quando offline
@@ -5171,7 +5127,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
               }, 10000);
               
             } catch (error) {
-              console.error('Erro ao deletar tarefa:', error);
+              logger.error('DELETE_TASK', 'Erro ao deletar tarefa', error);
               Alert.alert('Erro', 'Não foi possível deletar a tarefa. Tente novamente.');
             } finally {
               setGlobalLoading(false);
@@ -5228,7 +5184,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
 
               Alert.alert('Sucesso', `${member.name} foi removido da família.`);
             } catch (e) {
-              console.error('Erro ao remover membro:', e);
+              logger.error('FAMILY', 'Erro ao remover membro', e);
               Alert.alert('Erro', 'Não foi possível remover o membro.');
             }
           }
@@ -5237,9 +5193,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     );
   }, [familyMembers, user, tasks, currentFamily]);
 
-  const handleSettings = () => {
+  const handleSettings = useCallback(() => {
     setSettingsModalVisible(true);
-  };
+  }, []);
 
   const handleUpdateData = async () => {
     setSettingsModalVisible(false);
@@ -5247,21 +5203,17 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     // Usar a mesma lógica do carregamento inicial
     try {
       if (user?.id) {
-        console.log('🔄 Recarregando dados do usuário...', {
-          userId: user.id,
-          familyId: user.familyId,
-          isOffline: isOffline
-        });
+        logger.debug('UPDATE_STATE', `Recarregando dados do usuário: userId=${user.id}, familyId=${user.familyId}, isOffline=${isOffline}`);
         
-        // Mostra overlay de carregamento
-        setIsBootstrapping(true);
+        // Não mostra overlay - usa apenas o banner do header
+        // setIsBootstrapping(true);
         
         const userFamily = await familyService.getUserFamily(user.id);
-        console.log('🔍 Resultado da busca por família:', userFamily);
+        logger.debug('FAMILY', `Resultado da busca por família: ${userFamily?.name || 'nenhuma'}`);
         
         if (userFamily) {
           setCurrentFamily(userFamily);
-          console.log('👨‍👩‍👧‍👦 Família recarregada:', userFamily.name);
+          logger.success('FAMILY', `Família recarregada: ${userFamily.name}`);
           
           // Carregar tarefas da família
           const familyTasks = await familyService.getFamilyTasks(userFamily.id, user.id);
@@ -5274,20 +5226,20 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           });
           setTasks(convertedTasks);
           
-          console.log(`📋 ${familyTasks.length} tarefas da família recarregadas`);
+          logger.success('SYNC', `${familyTasks.length} tarefas da família recarregadas`);
           // Disparar sync completo em background para atualizar tudo sem travar a UI
           if (!isOffline) {
-            SyncService.forceFullSync().catch(e => console.warn('forceFullSync bg error:', e));
+            SyncService.forceFullSync().catch(e => logger.warn('SYNC', 'forceFullSync falhou em background', e));
           }
         } else {
-          console.log('👤 Usuário não possui família');
+          logger.info('FAMILY', 'Usuário não possui família');
           
           // Se não tem família, carregar tarefas do cache local
           const cachedTasks = await LocalStorageService.getTasks();
           if (cachedTasks.length > 0) {
             const localTasks: Task[] = (cachedTasks.map(remoteTaskToTask as any) as Task[]);
             setTasks(localTasks);
-            console.log(`💾 ${localTasks.length} tarefas locais recarregadas do cache`);
+            logger.success('SYNC', `${localTasks.length} tarefas locais recarregadas do cache`);
           }
         }
         
@@ -5295,24 +5247,25 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         setLastUpdate(new Date());
       }
     } catch (error) {
-      console.error('❌ Erro ao recarregar dados:', error);
+      logger.error('UPDATE_STATE', 'Erro ao recarregar dados', error);
       
       // Em caso de erro, tentar carregar do cache local
       try {
         const cachedTasks = await LocalStorageService.getTasks();
         if (cachedTasks.length > 0) {
           setTasks(cachedTasks);
-          console.log(`🔄 ${cachedTasks.length} tarefas carregadas do cache após erro`);
+          logger.info('SYNC', `${cachedTasks.length} tarefas carregadas do cache após erro`);
         }
       } catch (cacheError) {
-        console.error('❌ Erro ao carregar do cache:', cacheError);
+        logger.error('SYNC', 'Erro ao carregar do cache', cacheError);
       }
     } finally {
-      setIsBootstrapping(false);
+      // Não fecha overlay pois nunca foi aberto
+      // setIsBootstrapping(false);
     }
   };
 
-  const handleSystemInfo = () => {
+  const handleSystemInfo = useCallback(() => {
     const lastUpdateTime = lastUpdate.toLocaleString('pt-BR', {
       day: '2-digit',
       month: '2-digit',
@@ -5345,15 +5298,15 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         }] : [])
       ]
     );
-  };
+  }, [lastUpdate, isOffline, syncStatus.pendingOperations, syncStatus.isSyncing, tasks.length]);
 
-  const handleLogout = async () => {
+  const handleLogout = useCallback(async () => {
     // Chamar diretamente o logout sem alerta duplicado
     // O alerta será exibido no App.tsx
     if (onLogout) {
       await onLogout();
     }
-  };
+  }, [onLogout]);
 
   const renderTask = ({ item }: { item: Task }) => {
     const categoryConfig = getCategoryConfig(item.category);
@@ -5797,7 +5750,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                 try {
                   if (onUserRoleChange) await onUserRoleChange(myMember.role, { silent: true });
                 } catch (e) {
-                  console.warn('Falha ao sincronizar role do usuário após entrar na família:', e);
+                  logger.warn('FAMILY', 'Falha ao sincronizar role do usuário após entrar na família', e);
                 }
               }
 
@@ -5817,19 +5770,21 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                     'Seu pedido para ser administrador foi enviado. Você entrou como dependente e será promovido após aprovação de um administrador.'
                   );
                 } catch (e) {
-                  console.warn('Falha ao criar solicitação de admin:', e);
+                  logger.warn('FAMILY', 'Falha ao criar solicitação de admin', e);
                 }
               }
               // histórico local
               await addToHistory('created', 'Entrada em nova família', '');
             } catch (e) {
-              console.error('Erro ao entrar na família por código:', e);
+              logger.error('FAMILY', 'Erro ao entrar na família por código', e);
               throw e;
             }
           }}
           syncStatus={{
             hasError: syncStatus.hasError,
-            isOnline: connectivityState.isConnected
+            isOnline: connectivityState.isConnected,
+            pendingOperations: syncStatus.pendingOperations,
+            isSyncing: syncStatus.isSyncing
           }}
         />
         
@@ -5925,19 +5880,25 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
             </Text>
           </View>
         ) : (
-          <ScrollView
+          <FlatList
+            data={getCurrentTasks()}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item: task }) => (
+              <View style={{ width: '100%', alignSelf: 'stretch' }}>
+                {renderTask({ item: task })}
+              </View>
+            )}
             style={styles.taskList}
+            contentContainerStyle={styles.taskListContent}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             bounces={true}
-            contentContainerStyle={styles.taskListContent}
-          >
-            {getCurrentTasks().map((task) => (
-              <View key={task.id} style={{ width: '100%', alignSelf: 'stretch' }}>
-                {renderTask({ item: task })}
-              </View>
-            ))}
-          </ScrollView>
+            removeClippedSubviews={true}
+            maxToRenderPerBatch={10}
+            updateCellsBatchingPeriod={50}
+            initialNumToRender={15}
+            scrollEventThrottle={16}
+          />
         )}
           </Animated.View>
         </PanGestureHandler>
@@ -6071,9 +6032,17 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                   <Pressable
                     style={[
                       styles.privateToggleButtonCompact, 
-                      newTaskPrivate && styles.privateToggleButtonActive
+                      newTaskPrivate && styles.privateToggleButtonActive,
+                      user.role !== 'admin' && styles.opacityDisabled
                     ]}
-                    onPress={() => setNewTaskPrivate(prev => !prev)}
+                    onPress={() => {
+                      if (user.role !== 'admin') {
+                        Alert.alert('Sem permissão', 'Apenas administradores podem criar tarefas privadas.');
+                        return;
+                      }
+                      setNewTaskPrivate(prev => !prev);
+                    }}
+                    disabled={user.role !== 'admin'}
                   >
                     <Ionicons 
                       name={newTaskPrivate ? "lock-closed" : "lock-open-outline"} 
@@ -6236,7 +6205,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                               </View>
                               <Pressable 
                                 onPress={() => {
-                                  console.log('🖱️ Botão de data da subtarefa clicado! ID:', st.id);
+                                  logger.debug('PICKERS', `Botão de data da subtarefa clicado! ID: ${st.id}`);
                                   setEditingSubtaskId(st.id);
                                   if (Platform.OS === 'web') {
                                     const inputElement = webSubtaskDateInputRef.current as HTMLInputElement | null;
@@ -6256,18 +6225,18 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                                         const m = String(now.getMonth() + 1).padStart(2, '0');
                                         inputElement.value = `${y}-${m}-01`;
                                       }
-                                      console.log('✅ ID armazenado no input:', st.id);
+                                      logger.debug('PICKERS', `ID armazenado no input: ${st.id}`);
                                       try {
                                         (inputElement as any).focus?.();
                                         if (typeof (inputElement as any).showPicker === 'function') {
-                                          console.log('✅ Usando showPicker() para subtarefa');
+                                          logger.debug('PICKERS', 'Usando showPicker() para subtarefa');
                                           (inputElement as any).showPicker();
                                         } else {
-                                          console.log('✅ Usando click() para subtarefa');
+                                          logger.debug('PICKERS', 'Usando click() para subtarefa');
                                           (inputElement as any).click();
                                         }
                                       } catch (error) {
-                                        console.error('❌ Erro ao abrir picker de subtarefa:', error);
+                                        logger.error('PICKERS', 'Erro ao abrir picker de subtarefa', error);
                                       }
                                     }
                                   } else {
@@ -6297,7 +6266,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                               </Pressable>
                               <Pressable 
                                 onPress={() => {
-                                  console.log('🖱️ Botão de hora da subtarefa clicado! ID:', st.id);
+                                  logger.debug('PICKERS', `Botão de hora da subtarefa clicado! ID: ${st.id}`);
                                   setEditingSubtaskId(st.id);
                                   if (Platform.OS === 'web') {
                                     const inputElement = webSubtaskTimeInputRef.current as HTMLInputElement | null;
@@ -6313,18 +6282,18 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                                       } else {
                                         inputElement.value = '';
                                       }
-                                      console.log('✅ ID armazenado no input:', st.id);
+                                      logger.debug('PICKERS', `ID armazenado no input: ${st.id}`);
                                       try {
                                         (inputElement as any).focus?.();
                                         if (typeof (inputElement as any).showPicker === 'function') {
-                                          console.log('✅ Usando showPicker() para subtarefa');
+                                          logger.debug('PICKERS', 'Usando showPicker() para subtarefa');
                                           (inputElement as any).showPicker();
                                         } else {
-                                          console.log('✅ Usando click() para subtarefa');
+                                          logger.debug('PICKERS', 'Usando click() para subtarefa');
                                           (inputElement as any).click();
                                         }
                                       } catch (error) {
-                                        console.error('❌ Erro ao abrir picker de subtarefa:', error);
+                                        logger.error('PICKERS', 'Erro ao abrir picker de subtarefa', error);
                                       }
                                     }
                                   } else {
@@ -6400,7 +6369,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                                     (inputElement as any).click();
                                   }
                                 } catch (error) {
-                                  console.error('❌ Erro ao abrir picker:', error);
+                                  logger.error('PICKERS', 'Erro ao abrir picker', error);
                                 }
                               }
                             } else {
@@ -6453,7 +6422,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                                     (inputElement as any).click();
                                   }
                                 } catch (error) {
-                                  console.error('❌ Erro ao abrir picker:', error);
+                                  logger.error('PICKERS', 'Erro ao abrir picker', error);
                                 }
                               }
                             } else {
@@ -6723,7 +6692,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                                   <View style={{ flexDirection: 'row', gap: 6, marginTop: 4, paddingLeft: 8, flexWrap: 'nowrap' }}>
                                     <Pressable
                                       onPress={() => {
-                                        console.log('🖱️ Botão de data da subtarefa de categoria clicado! ID:', subtask.id);
+                                        logger.debug('PICKERS', `Botão de data da subtarefa de categoria clicado! ID: ${subtask.id}`);
                                         setEditingSubtaskId(subtask.id);
                                         setEditingSubtaskCategoryId(category.id);
                                         if (Platform.OS === 'web') {
@@ -6753,7 +6722,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                                                 (inputElement as any).click();
                                               }
                                             } catch (error) {
-                                              console.error('❌ Erro ao abrir picker:', error);
+                                              logger.error('PICKERS', 'Erro ao abrir picker', error);
                                             }
                                           }
                                         } else {
@@ -6784,7 +6753,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                                     
                                     <Pressable
                                       onPress={() => {
-                                        console.log('🖱️ Botão de hora da subtarefa de categoria clicado! ID:', subtask.id);
+                                        logger.debug('PICKERS', `Botão de hora da subtarefa de categoria clicado! ID: ${subtask.id}`);
                                         setEditingSubtaskId(subtask.id);
                                         setEditingSubtaskCategoryId(category.id);
                                         if (Platform.OS === 'web') {
@@ -6810,7 +6779,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                                                 (inputElement as any).click();
                                               }
                                             } catch (error) {
-                                              console.error('❌ Erro ao abrir picker:', error);
+                                              logger.error('PICKERS', 'Erro ao abrir picker', error);
                                             }
                                           }
                                         } else {
@@ -6885,7 +6854,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                                             (inputElement as any).click();
                                           }
                                         } catch (error) {
-                                          console.error('❌ Erro ao abrir picker:', error);
+                                          logger.error('PICKERS', 'Erro ao abrir picker', error);
                                         }
                                       }
                                     } else {
@@ -6939,7 +6908,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                                             (inputElement as any).click();
                                           }
                                         } catch (error) {
-                                          console.error('❌ Erro ao abrir picker:', error);
+                                          logger.error('PICKERS', 'Erro ao abrir picker', error);
                                         }
                                       }
                                     } else {
@@ -7037,11 +7006,11 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                       Platform.OS === 'web' && styles.dateTimeButtonWeb
                     ]}
                     onPress={() => {
-                      console.log('🖱️ Botão de data clicado! Platform:', Platform.OS);
+                      logger.debug('PICKERS', `Botão de data clicado! Platform: ${Platform.OS}`);
                       if (Platform.OS === 'web') {
-                        console.log('🌐 Tentando abrir input de data web');
+                        logger.debug('PICKERS', 'Tentando abrir input de data web');
                         const inputElement = webDateInputRef.current as HTMLInputElement | null;
-                        console.log('🌐 Input element:', inputElement);
+                        logger.debug('PICKERS', `Input element: ${inputElement ? 'encontrado' : 'não encontrado'}`);
                         
                         if (inputElement) {
                           try {
@@ -7058,24 +7027,22 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                             }
                             (inputElement as any).focus?.();
                             if (typeof (inputElement as any).showPicker === 'function') {
-                              console.log('✅ Usando showPicker()');
+                              logger.debug('PICKERS', 'Usando showPicker()');
                               (inputElement as any).showPicker();
                             } else {
-                              console.log('✅ Usando click()');
+                              logger.debug('PICKERS', 'Usando click()');
                               (inputElement as any).click();
                             }
                           } catch (error) {
-                            console.error('❌ Erro ao abrir picker:', error);
+                            logger.error('PICKERS', 'Erro ao abrir picker', error);
                           }
                         } else {
-                          console.error('❌ Input element não encontrado!');
+                          logger.error('PICKERS', 'Input element não encontrado!');
                         }
                       } else {
                         // Mobile: Inicializar a ref com o valor atual antes de abrir o picker
-                        console.log('📱 Mobile: Inicializando picker de data');
-                        console.log('📱 repeatModalVisible:', repeatModalVisible);
-                        console.log('📱 tempDueDate:', tempDueDate);
-                        console.log('📱 todayStart:', todayStart);
+                        logger.debug('PICKERS', 'Mobile: Inicializando picker de data');
+                        logger.debug('PICKERS', `repeatModalVisible: ${repeatModalVisible}, tempDueDate: ${tempDueDate?.toISOString() || 'null'}`);
 
                         // iOS: fechar teclado para evitar que cubra o picker
                         Keyboard.dismiss();
@@ -7084,11 +7051,11 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                         pickerDateValueRef.current = initialValue;
                         
                         if (!repeatModalVisible) {
-                          console.log('✅ Abrindo date picker - setShowDatePicker(true)');
+                          logger.debug('PICKERS', 'Abrindo date picker - setShowDatePicker(true)');
                           setShowDatePicker(true);
                           openManagedModal('picker');
                         } else {
-                          console.log('⚠️ Modal de repetição está visível, não abrindo picker');
+                          logger.warn('PICKERS', 'Modal de repetição está visível, não abrindo picker');
                         }
                       }
                     }}
@@ -7105,11 +7072,11 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                       Platform.OS === 'web' && styles.dateTimeButtonWeb
                     ]}
                     onPress={() => {
-                      console.log('🖱️ Botão de hora clicado! Platform:', Platform.OS);
+                      logger.debug('PICKERS', `Botão de hora clicado! Platform: ${Platform.OS}`);
                       if (Platform.OS === 'web') {
-                        console.log('🌐 Tentando abrir input de hora web');
+                        logger.debug('PICKERS', 'Tentando abrir input de hora web');
                         const inputElement = webTimeInputRef.current as HTMLInputElement | null;
-                        console.log('🌐 Input element:', inputElement);
+                        logger.debug('PICKERS', `Input element: ${inputElement ? 'encontrado' : 'não encontrado'}`);
                         
                         if (inputElement) {
                           try {
@@ -7122,17 +7089,17 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                             }
                             (inputElement as any).focus?.();
                             if (typeof (inputElement as any).showPicker === 'function') {
-                              console.log('✅ Usando showPicker()');
+                              logger.debug('PICKERS', 'Usando showPicker()');
                               (inputElement as any).showPicker();
                             } else {
-                              console.log('✅ Usando click()');
+                              logger.debug('PICKERS', 'Usando click()');
                               (inputElement as any).click();
                             }
                           } catch (error) {
-                            console.error('❌ Erro ao abrir picker:', error);
+                            logger.error('PICKERS', 'Erro ao abrir picker', error);
                           }
                         } else {
-                          console.error('❌ Input element não encontrado!');
+                          logger.error('PICKERS', 'Input element não encontrado!');
                         }
                       } else {
                         // Mobile: Inicializar a ref com o valor atual antes de abrir o picker
@@ -7675,19 +7642,13 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                     onPress={() => {
                       if (repeatType === RepeatType.CUSTOM) {
                         setCustomDays(tempCustomDays);
-                        console.log('✅ Dias customizados salvos:', tempCustomDays);
+                        logger.success('REPEAT', `Dias customizados salvos: ${JSON.stringify(tempCustomDays)}`);
                       } else if (repeatType === RepeatType.INTERVAL) {
                         const calculatedIntervalDays = Math.max(1, (tempWeekly ? (Math.max(1, tempWeeksCount || 1) * 7) : (tempIntervalDays || 1)));
                         const calculatedDurationMonths = Math.max(0, tempDurationMonths || 0);
                         setIntervalDays(calculatedIntervalDays);
                         setDurationMonths(calculatedDurationMonths);
-                        console.log('✅ Intervalo salvo:', {
-                          intervalDays: calculatedIntervalDays,
-                          durationMonths: calculatedDurationMonths,
-                          tempWeekly,
-                          tempWeeksCount,
-                          tempIntervalDays
-                        });
+                        logger.success('REPEAT', `Intervalo salvo: intervalDays=${calculatedIntervalDays}, durationMonths=${calculatedDurationMonths}`);
                       }
                       setRepeatModalVisible(false);
                       closeManagedModal('repeat');
@@ -7713,23 +7674,23 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
               visible={true}
               presentationStyle="overFullScreen"
               statusBarTranslucent={true}
-              onShow={() => console.log('✅ Modal iOS DateTimePicker foi aberto!')}
+              onShow={() => logger.debug('PICKERS', 'Modal iOS DateTimePicker foi aberto!')}
               onRequestClose={() => {
-                console.log('🚫 Modal iOS DateTimePicker - onRequestClose chamado');
+                logger.debug('PICKERS', 'Modal iOS DateTimePicker - onRequestClose chamado');
                 closeAllPickers();
               }}
             >
               <Pressable 
                 style={styles.iosPickerOverlay}
                 onPress={() => {
-                  console.log('🖱️ Clicou no overlay - fechando pickers');
+                  logger.debug('PICKERS', 'Clicou no overlay - fechando pickers');
                   closeAllPickers();
                 }}
               >
                 <Pressable 
                   style={styles.iosPickerContainer} 
                   onPress={(e) => {
-                    console.log('🖱️ Clicou no container do picker');
+                    logger.debug('PICKERS', 'Clicou no container do picker');
                     e.stopPropagation();
                   }}
                 >
@@ -7992,6 +7953,11 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                     renderItem={renderHistoryItem}
                     style={styles.historyList}
                     contentContainerStyle={styles.historyListContent}
+                    removeClippedSubviews={true}
+                    maxToRenderPerBatch={15}
+                    updateCellsBatchingPeriod={50}
+                    initialNumToRender={20}
+                    scrollEventThrottle={16}
                   />
                 )}
               </View>
@@ -8821,7 +8787,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                                     return merged as Task[];
                                   });
                                 } catch (err) {
-                                  console.warn('Falha ao refazer fetch das tasks após permissão:', err);
+                                  logger.warn('FAMILY', 'Falha ao refazer fetch das tasks após permissão', err);
                                 }
                               }
                             } catch (e) {
@@ -8920,16 +8886,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         </View>
       </Modal>
       
-      {/* Removido overlay de atualização manual para UX mais discreta; o banner "Sincronizando..." abaixo do header já indica progresso */}
-      {(isGlobalLoading || isBootstrapping) && (
-        <View style={styles.fullscreenLoadingOverlay} pointerEvents="auto">
-          <View style={styles.fullscreenLoadingContent}>
-            <Text style={styles.fullscreenLoadingText}>
-              {isBootstrapping ? 'Sincronizando...' : 'Sincronizando...'}
-            </Text>
-          </View>
-        </View>
-      )}
+      {/* Overlay de carregamento removido - o banner "Sincronizando..." do header fornece feedback suficiente */}
 
       {/* Modal de Loading de Sincronização */}
       {isSyncing && (
@@ -11718,6 +11675,9 @@ const getStyles = (colors: any, activeTheme: 'light' | 'dark') => StyleSheet.cre
     color: '#b45309', // amber-700
     fontSize: 12,
     textAlign: 'center',
+  },
+  opacityDisabled: {
+    opacity: 0.5,
   },
 });
 

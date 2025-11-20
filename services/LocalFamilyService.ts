@@ -580,10 +580,29 @@ class LocalFamilyService {
 
   async updateMemberRole(familyId: string, memberId: string, newRole: string): Promise<Family> {
     try {
-      console.log('🔄 Atualizando role do membro:', memberId);
+      console.log('🔄 Atualizando role do membro:', memberId, 'para:', newRole);
       const db = this.getFirestore();
       const memberRef = doc(db, 'families', familyId, 'members', memberId);
-      await updateDoc(memberRef, { role: newRole });
+      
+      // Preparar payload de atualização
+      const updatePayload: any = { role: newRole };
+      
+      // Quando promovido a admin: conceder automaticamente todas as permissões
+      if (newRole === 'admin') {
+        updatePayload.permissions = {
+          create: true,
+          edit: true,
+          delete: true
+        };
+        console.log('✅ Concedendo todas as permissões ao novo admin:', memberId);
+      } else if (newRole === 'dependente') {
+        // Quando rebaixado a dependente: limpar permissões (admin vai conceder explicitamente se quiser)
+        updatePayload.permissions = {};
+        console.log('✅ Limpando permissões ao rebaixar para dependente:', memberId);
+      }
+      
+      await updateDoc(memberRef, updatePayload);
+      
       // Para múltiplos administradores: não sobrescrever adminId existente (mantém como owner original)
       if (newRole === 'admin') {
         try {
@@ -602,6 +621,7 @@ class LocalFamilyService {
           console.warn('⚠️ Falha ao verificar/definir adminId principal (ignorado):', e);
         }
       }
+      
       console.log('✅ Role atualizada com sucesso');
       const updated = await this.getFamilyById(familyId);
       if (!updated) throw new Error('Família não encontrada após atualizar role');

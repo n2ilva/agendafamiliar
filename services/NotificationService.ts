@@ -23,6 +23,13 @@ interface TaskNotifications {
 // runtime map para timeouts no web (não serializável)
 const webTimeouts: Record<string, Record<NotificationType, number>> = {};
 
+// Flag para evitar múltiplas inicializações
+let notificationHandlersRegistered = false;
+
+// Listeners para notificações recebidas
+type NotificationListener = (notification: Notifications.Notification) => void;
+const notificationListeners: Set<NotificationListener> = new Set();
+
 async function ensureAndroidChannel() {
   if (Platform.OS !== 'android') return;
 
@@ -52,6 +59,50 @@ async function ensureAndroidChannel() {
   });
 }
 
+async function registerNotificationHandlers() {
+  if (notificationHandlersRegistered) return;
+
+  try {
+    // Handler para quando a notificação chega com o app aberto ou em foreground
+    const subscription = Notifications.addNotificationReceivedListener((notification) => {
+      console.log('[Notifications] Notificação recebida em foreground:', {
+        title: notification.request.content.title,
+        body: notification.request.content.body,
+      });
+      
+      // Chamar listeners registrados
+      notificationListeners.forEach(listener => {
+        try {
+          listener(notification);
+        } catch (e) {
+          console.warn('[Notifications] Erro em listener:', e);
+        }
+      });
+    });
+
+    // Handler para quando o usuário toca na notificação
+    const responseSubscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      console.log('[Notifications] Usuário clicou em notificação:', {
+        taskId: response.notification.request.content.data?.taskId,
+        type: response.notification.request.content.data?.type,
+      });
+    });
+
+    notificationHandlersRegistered = true;
+    console.log('✅ Handlers de notificações registrados');
+
+    // Retornar função para desregistrar (cleanup)
+    return () => {
+      subscription.remove();
+      responseSubscription.remove();
+      notificationHandlersRegistered = false;
+    };
+  } catch (e) {
+    console.warn('[Notifications] Erro ao registrar handlers:', e);
+    return null;
+  }
+}
+
 async function getMap(): Promise<TaskNotifications> {
   try {
     const raw = await AsyncStorage.getItem(STORAGE_KEY);
@@ -66,12 +117,15 @@ async function setMap(map: TaskNotifications) {
 }
 
 export async function initialize() {
+  console.log('[Notifications] Inicializando sistema de notificações...');
+  
   // No web, expo-notifications não é suportado: fazer no-op seguro
   if (Platform.OS === 'web') {
     try {
       // Pedir permissão para Web Notifications
       const permission = await (window as any).Notification?.requestPermission?.();
       const granted = permission === 'granted';
+      console.log('[Notifications] Web Notifications permissão:', granted ? '✅ Concedida' : '❌ Negada');
 
       // Reagendar notificações previamente armazenadas
       if (granted) {
@@ -79,6 +133,8 @@ export async function initialize() {
           const raw = await AsyncStorage.getItem(STORAGE_KEY_WEB);
           const map = raw ? JSON.parse(raw) : {};
           const now = Date.now();
+          let reagendadas = 0;
+          
           for (const taskId of Object.keys(map)) {
             const taskData = map[taskId];
             if (!taskData || !taskData.dueTime) continue;
@@ -87,7 +143,6 @@ export async function initialize() {
             const delay = scheduledAt - now;
             if (delay > 0) {
               // Reagendar apenas notificação principal (at_due) na reinicialização
-              // As outras serão recalculadas quando scheduleTaskReminder for chamado
               if (!webTimeouts[taskId]) webTimeouts[taskId] = {} as any;
               
               webTimeouts[taskId]['at_due'] = window.setTimeout(() => {
@@ -100,18 +155,19 @@ export async function initialize() {
                   console.warn('[Notifications][Web] Erro ao disparar notificação agendada:', e);
                 }
               }, delay) as unknown as number;
+              reagendadas++;
             } else {
-              // horário já passou — remover do map
               delete map[taskId];
             }
           }
+          
+          console.log(`[Notifications] ${reagendadas} notificações reagendadas no Web`);
           await AsyncStorage.setItem(STORAGE_KEY_WEB, JSON.stringify(map));
         } catch (e) {
           console.warn('[Notifications][Web] Falha ao reagendar notificações:', e);
         }
       }
 
-      console.log('[Notifications] Web detectado - inicialização concluída (permissão:', granted, ')');
       return { granted };
     } catch (e) {
       console.warn('[Notifications] Erro na inicialização web:', e);
@@ -130,17 +186,36 @@ export async function initialize() {
     } as any);
 
     const { status } = await Notifications.requestPermissionsAsync();
-    if (status !== 'granted') {
-      // sem permissões; apenas seguir sem agendar
+    const granted = status === 'granted';
+    
+    console.log('[Notifications] Permissões mobile:', granted ? '✅ Concedidas' : '⚠️ Negadas');
+    
+    if (!granted) {
+      console.warn('[Notifications] ⚠️ Sem permissões. Usuário pode habilitar em: Configurações > App > Notificações');
       return { granted: false };
     }
 
     await ensureAndroidChannel();
+    await registerNotificationHandlers();
+    
+    console.log('✅ [Notifications] Inicialização concluída com sucesso');
     return { granted: true };
   } catch (e) {
-    console.warn('[Notifications] Falha ao inicializar, seguindo sem notificações:', e);
+    console.error('[Notifications] ❌ Falha ao inicializar:', e);
     return { granted: false };
   }
+}
+
+// Função para registrar um listener de notificações
+export function addNotificationListener(listener: NotificationListener): () => void {
+  notificationListeners.add(listener);
+  console.log('[Notifications] Listener registrado. Total:', notificationListeners.size);
+  
+  // Retornar função de unsubscribe
+  return () => {
+    notificationListeners.delete(listener);
+    console.log('[Notifications] Listener removido. Total:', notificationListeners.size);
+  };
 }
 
 export async function scheduleTaskReminder(task: any) {
@@ -462,6 +537,41 @@ export async function rescheduleTaskReminder(task: any) {
     // continuar mesmo se falhar
   }
   return scheduleTaskReminder(task);
+}
+
+// Helper para verificar se deve notificar baseado em tempo de vencimento
+export function shouldNotifyForOverdue(diffMinutes: number): boolean {
+  // Lógica mais robusta sem tolerâncias mágicas
+  // Notificar em intervalos: logo após, +1h, +6h, +24h, depois a cada dia
+  
+  const diffHours = diffMinutes / 60;
+  const diffDays = diffHours / 24;
+  
+  // 1. Acabou de vencer (últimos 5 minutos)
+  if (diffMinutes <= 5) {
+    return true;
+  }
+  
+  // 2. Venceu há ~1 hora (±15min de tolerância)
+  if (diffHours >= 1 && diffHours <= 1.25) {
+    return true;
+  }
+  
+  // 3. Venceu há ~6 horas (±30min de tolerância)
+  if (diffHours >= 6 && diffHours <= 6.5) {
+    return true;
+  }
+  
+  // 4. Venceu há ~24h ou múltiplos de 24h
+  if (diffDays >= 1) {
+    const hoursSinceDayStart = diffHours % 24;
+    // Notificar se estiver na primeira hora do "novo dia"
+    if (hoursSinceDayStart <= 1) {
+      return true;
+    }
+  }
+  
+  return false;
 }
 
 // ============= FUNÇÕES PARA SUBTAREFAS =============
@@ -803,11 +913,27 @@ export async function sendOverdueTaskNotification(task: any) {
       content.relevanceScore = 1.0;
     }
 
-    const id = await Notifications.scheduleNotificationAsync({ content, trigger: null });
-    console.log('[Notifications] Notificação de tarefa vencida enviada:', { id, taskId: task.id, title: task.title });
+    // Agendar a notificação para aparecer em 2 segundos
+    // Isso garante que funciona mesmo com app fechado (persistente no sistema)
+    const triggerDate = new Date(Date.now() + 2000);
+    
+    const id = await Notifications.scheduleNotificationAsync({ 
+      content, 
+      trigger: {
+        date: triggerDate,
+        type: (Notifications as any).SchedulableTriggerInputTypes?.DATE || 'date',
+      } as any,
+    });
+    
+    console.log('[Notifications] Notificação de tarefa vencida agendada:', { 
+      id, 
+      taskId: task.id, 
+      title: task.title,
+      scheduleFor: triggerDate.toLocaleString('pt-BR')
+    });
     return id;
   } catch (e) {
-    console.warn('[Notifications] Falha ao enviar notificação inteligente de tarefa vencida:', e);
+    console.warn('[Notifications] Falha ao agendar notificação de tarefa vencida:', e);
     return null;
   }
 }
@@ -851,6 +977,9 @@ Recomendações de otimização para notificações nativas (mobile):
 // Export padrão para compatibilidade com importações que assumem default export
 const NotificationService = {
   initialize,
+  addNotificationListener,
+  registerNotificationHandlers,
+  shouldNotifyForOverdue,
   scheduleTaskReminder,
   cancelTaskReminder,
   rescheduleTaskReminder,
@@ -859,6 +988,7 @@ const NotificationService = {
   scheduleSubtaskReminder,
   cancelSubtaskReminder,
   cancelAllSubtaskReminders,
+  openNotificationSettings,
 };
 
 export default NotificationService;

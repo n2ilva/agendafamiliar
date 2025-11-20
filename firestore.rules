@@ -12,6 +12,12 @@ service cloud.firestore {
         : null; 
     }
 
+    // Validação de tamanho de documento (proteção contra docs muito grandes)
+    function isValidDocumentSize(data) {
+      // Estimar tamanho do documento (máx 100 campos por documento como proteção)
+      return data.keys().size() < 100;
+    }
+
     function isMemberOf(familyId) {
       return familyId != null && familyId != '' && authId() != null && exists(/databases/$(database)/documents/families/$(familyId)/members/$(authId()));
     }
@@ -34,6 +40,8 @@ service cloud.firestore {
     function validTaskPayload(data) {
       return data.userId is string
         && data.title is string
+        && data.title.size() > 0 && data.title.size() <= 200
+        && (data.description == null || (data.description is string && data.description.size() <= 1000))
         && (data.familyId == null || data.familyId is string);
     }
 
@@ -60,14 +68,16 @@ service cloud.firestore {
       return data.type == 'admin_role_request'
         && data.requesterId is string
         && data.requesterId == authId()
-        && data.familyId is string;
+        && data.familyId is string
+        && data.timestamp is timestamp;
     }
 
     function validHistoryPayload(data) {
       return data.userId is string
         && data.action is string
         && (data.familyId == null || data.familyId is string)
-        && data.userId == authId();
+        && data.userId == authId()
+        && data.timestamp is timestamp;
     }
 
     // Users
@@ -154,6 +164,7 @@ service cloud.firestore {
     match /tasks/{taskId} {
       allow create: if isAuthenticated()
         && validTaskPayload(request.resource.data)
+        && isValidDocumentSize(request.resource.data)
         && (
           // Tarefa pessoal/privada (sem família) – autor pode criar
           request.resource.data.familyId == null
@@ -199,6 +210,7 @@ service cloud.firestore {
       // Somente admin pode atualizar tarefas da família. Para tarefas privadas, o próprio autor pode atualizar.
       allow update: if isAuthenticated()
         && validTaskPayload(request.resource.data)
+        && isValidDocumentSize(request.resource.data)
         && (
           // Tarefa privada / pessoal (sem familyId): autor pode editar
           (resource.data.familyId == null && (resource.data.userId == authId() || resource.data.createdBy == authId()))

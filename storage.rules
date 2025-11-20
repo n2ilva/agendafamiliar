@@ -16,6 +16,37 @@ service firebase.storage {
       allow delete: if request.auth != null;
     }
 
+    // Documentos e arquivos: formato documents/{userId}/{filename}
+    match /documents/{userId}/{allFiles=**} {
+      // Leitura: apenas o dono do arquivo
+      allow read: if request.auth != null && request.auth.uid == userId;
+
+      // Upload: apenas o dono do arquivo, com limite de 50MB
+      allow write: if request.auth != null 
+                   && request.auth.uid == userId
+                   && request.resource != null
+                   && request.resource.size < 50 * 1024 * 1024;
+
+      // Deleção: apenas o dono do arquivo
+      allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Arquivos compartilhados da família: formato familyShared/{familyId}/{filename}
+    // Requer validação de membro da família no Firestore (segurança em camadas)
+    match /familyShared/{familyId}/{allFiles=**} {
+      // Leitura: qualquer usuário autenticado (validação adicional seria via Cloud Functions)
+      // Ou restringir via Firestore rules ao verificar membership
+      allow read: if request.auth != null;
+
+      // Upload: apenas usuários autenticados com limite menor
+      allow write: if request.auth != null
+                   && request.resource != null
+                   && request.resource.size < 25 * 1024 * 1024; // 25MB para arquivos compartilhados
+
+      // Deleção: apenas usuários autenticados (será controlado em Cloud Functions)
+      allow delete: if request.auth != null;
+    }
+
     // Bloqueia todos os outros caminhos
     match /{allPaths=**} {
       allow read, write: if false;

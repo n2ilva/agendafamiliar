@@ -173,3 +173,34 @@ export interface FamilyData {
   notifications: ApprovalNotification[];
   invites: FamilyInvite[];
 }
+
+// ==================== TIPOS DE SINCRONIZAÇÃO ====================
+
+/**
+ * Metadados de sincronização para rastrear mudanças incrementais
+ * Permite delta sync: sincronizar apenas dados que foram modificados
+ */
+export interface SyncMetadata {
+  // Timestamp da última sincronização bem-sucedida deste item
+  lastSyncTime: number;
+  // Hash do último estado sincronizado (para detectar mudanças reais)
+  dataHash: string;
+  // Se o item foi modificado localmente e precisa sincronizar
+  isDirty: boolean;
+  // Versão do item (incrementa a cada mudança)
+  version: number;
+}
+
+/**
+ * Registro de mudanças por tipo de entidade
+ * Permite rastrear quais tarefas, usuários, famílias foram modificadas desde a última sincronização
+ */
+export interface SyncChangeLog {
+  // Mapa de ID -> timestamp da última mudança
+  tasks: Record<string, number>;
+  families: Record<string, number>;
+  users: Record<string, number>;
+  approvals: Record<string, number>;
+  // Timestamp da última verificação de mudanças
+  lastCheckTime: number;
+}

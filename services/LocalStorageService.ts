@@ -341,21 +341,24 @@ class LocalStorageService {
   // Limpar operações pendentes antigas (mais de 24 horas) ou que falharam muito
   static async cleanupOldOperations(): Promise<void> {
     const data = await this.getOfflineData();
-    const twentyFourHours = 24 * 60 * 60 * 1000; // 24 horas em milissegundos
+    const sevenDays = 7 * 24 * 60 * 60 * 1000; // 7 dias em milissegundos
     const now = Date.now();
     
     const initialCount = data.pendingOperations.length;
+    const reasons: { old: number; maxRetries: number } = { old: 0, maxRetries: 0 };
     
     data.pendingOperations = data.pendingOperations.filter(op => {
-      // Remover operações muito antigas (mais de 24 horas)
-      if (now - op.timestamp > twentyFourHours) {
+      // Remover operações muito antigas (mais de 7 dias)
+      if (now - op.timestamp > sevenDays) {
         console.log(`🗑️ Removendo operação antiga: ${op.type} ${op.collection} (${new Date(op.timestamp).toLocaleString()})`);
+        reasons.old++;
         return false;
       }
       
       // Remover operações que falharam muitas vezes
       if (op.retry >= this.MAX_RETRIES) {
         console.log(`🗑️ Removendo operação que falhou ${op.retry} vezes: ${op.type} ${op.collection}`);
+        reasons.maxRetries++;
         return false;
       }
       
@@ -364,7 +367,7 @@ class LocalStorageService {
     
     if (data.pendingOperations.length !== initialCount) {
       await this.saveOfflineData(data);
-      console.log(`🧹 Limpeza concluída: ${initialCount - data.pendingOperations.length} operações removidas`);
+      console.log(`🧹 Limpeza concluída: ${initialCount - data.pendingOperations.length} operações removidas (${reasons.old} antigas, ${reasons.maxRetries} max retries)`);
     }
   }
 
@@ -375,6 +378,231 @@ class LocalStorageService {
     data.pendingOperations = [];
     await this.saveOfflineData(data);
     console.log(`🧹 Todas as ${count} operações pendentes foram removidas`);
+  }
+
+  // Compactar cache removendo dados redundantes e muito antigos
+  static async compactCache(): Promise<void> {
+    try {
+      const data = await this.getOfflineData();
+      const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
+      const initialSize = JSON.stringify(data).length;
+
+      // Remover tarefas concluídas há mais de 30 dias
+      const tasksToKeep: Record<string, Task> = {};
+      let tasksRemoved = 0;
+      for (const [id, task] of Object.entries(data.tasks)) {
+        const taskDate = safeToDate((task as any).completedAt || (task as any).editedAt || (task as any).createdAt);
+        const isOldAndCompleted = (task as any).completed && taskDate && taskDate.getTime() < thirtyDaysAgo;
+        
+        if (!isOldAndCompleted) {
+          tasksToKeep[id] = task;
+        } else {
+          tasksRemoved++;
+        }
+      }
+
+      // Remover histórico muito antigo (mais de 60 dias)
+      const sixtyDaysAgo = Date.now() - (60 * 24 * 60 * 60 * 1000);
+      const historyToKeep: Record<string, any> = {};
+      let historyRemoved = 0;
+      for (const [id, item] of Object.entries(data.history)) {
+        const itemDate = safeToDate((item as any).timestamp);
+        if (itemDate && itemDate.getTime() < sixtyDaysAgo) {
+          historyRemoved++;
+        } else {
+          historyToKeep[id] = item;
+        }
+      }
+
+      // Salvar dados compactados
+      data.tasks = tasksToKeep;
+      data.history = historyToKeep;
+      await this.saveOfflineData(data);
+
+      const finalSize = JSON.stringify(data).length;
+      const savedBytes = initialSize - finalSize;
+      console.log(`🗜️ Cache compactado: ${tasksRemoved} tarefas antigas removidas, ${historyRemoved} itens de histórico removidos`);
+      console.log(`📉 Espaço economizado: ${(savedBytes / 1024).toFixed(2)}KB`);
+    } catch (error) {
+      console.error('Erro ao compactar cache:', error);
+    }
+  }
+
+  // ==================== DELTA SYNC - SINCRONIZAÇÃO INCREMENTAL ====================
+
+  /**
+   * Gera hash simples de um objeto para detecção de mudanças
+   * Usado para verificar se dados realmente mudaram antes de fazer download
+   */
+  private static generateDataHash(data: any): string {
+    const str = JSON.stringify(data);
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Converter para 32-bit integer
+    }
+    return hash.toString(36);
+  }
+
+  /**
+   * Obter tarefas que foram modificadas desde um timestamp
+   * Retorna apenas IDs das tarefas que foram modificadas
+   * @param sinceTimestamp - Sincronizar apenas tarefas modificadas após este timestamp
+   * @returns Array com IDs das tarefas modificadas
+   */
+  static async getModifiedTaskIds(sinceTimestamp: number): Promise<string[]> {
+    try {
+      const data = await this.getOfflineData();
+      return Object.entries(data.tasks)
+        .filter(([_, task]) => {
+          const taskUpdated = safeToDate((task as any).updatedAt || (task as any).createdAt || new Date());
+          return taskUpdated.getTime() > sinceTimestamp;
+        })
+        .map(([id, _]) => id);
+    } catch (error) {
+      console.warn('Erro ao obter IDs modificadas:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Obter tarefas específicas por IDs
+   * Usado para retornar apenas os dados que precisam sincronizar
+   * @param taskIds - Array de IDs das tarefas a recuperar
+   */
+  static async getTasksByIds(taskIds: string[]): Promise<Task[]> {
+    try {
+      const data = await this.getOfflineData();
+      return taskIds
+        .map(id => data.tasks[id])
+        .filter(task => task !== undefined) as Task[];
+    } catch (error) {
+      console.warn('Erro ao obter tarefas por IDs:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Salvar múltiplas tarefas em batch (otimizado para delta sync)
+   * Atualiza apenas os dados fornecidos, preservando o resto
+   * @param tasks - Array de tarefas a salvar/atualizar
+   */
+  static async saveBatchTasks(tasks: Task[]): Promise<void> {
+    try {
+      const data = await this.getOfflineData();
+      
+      for (const task of tasks) {
+        // Fixar datas antes de salvar
+        const fixedTask = this.fixTaskDates(task);
+        data.tasks[task.id] = fixedTask;
+      }
+
+      await this.saveOfflineData(data);
+    } catch (error) {
+      console.error('Erro ao salvar batch de tarefas:', error);
+    }
+  }
+
+  /**
+   * Atualizar apenas metadata de sincronização de uma tarefa
+   * Sem modificar os dados da tarefa em si
+   * @param taskId - ID da tarefa
+   * @param lastSyncTime - Timestamp da última sincronização
+   * @param dataHash - Hash dos dados
+   */
+  static async updateTaskSyncMetadata(
+    taskId: string,
+    lastSyncTime: number,
+    dataHash: string
+  ): Promise<void> {
+    try {
+      const data = await this.getOfflineData();
+      if (data.tasks[taskId]) {
+        const task = data.tasks[taskId];
+        (task as any).__syncMetadata = {
+          lastSyncTime,
+          dataHash,
+          isDirty: false,
+          version: ((task as any).__syncMetadata?.version || 0) + 1
+        };
+        await this.saveOfflineData(data);
+      }
+    } catch (error) {
+      console.warn('Erro ao atualizar metadata de sincronização:', error);
+    }
+  }
+
+  /**
+   * Marcar uma tarefa como "dirty" (precisa sincronizar)
+   * @param taskId - ID da tarefa
+   */
+  static async markTaskAsDirty(taskId: string): Promise<void> {
+    try {
+      const data = await this.getOfflineData();
+      if (data.tasks[taskId]) {
+        const task = data.tasks[taskId];
+        const metadata = (task as any).__syncMetadata || {};
+        (task as any).__syncMetadata = {
+          ...metadata,
+          isDirty: true,
+          version: (metadata.version || 0) + 1
+        };
+        await this.saveOfflineData(data);
+      }
+    } catch (error) {
+      console.warn('Erro ao marcar tarefa como dirty:', error);
+    }
+  }
+
+  /**
+   * Obter todas as tarefas marcadas como dirty (precisam sincronizar)
+   * @returns Array de tarefas que foram modificadas localmente
+   */
+  static async getDirtyTasks(): Promise<Task[]> {
+    try {
+      const data = await this.getOfflineData();
+      return Object.values(data.tasks)
+        .filter(task => (task as any).__syncMetadata?.isDirty === true) as Task[];
+    } catch (error) {
+      console.warn('Erro ao obter tarefas dirty:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Limpar flag de dirty de uma tarefa após sincronizar com sucesso
+   * @param taskId - ID da tarefa
+   */
+  static async clearDirtyFlag(taskId: string): Promise<void> {
+    try {
+      const data = await this.getOfflineData();
+      if (data.tasks[taskId]) {
+        const task = data.tasks[taskId];
+        const metadata = (task as any).__syncMetadata || {};
+        (task as any).__syncMetadata = {
+          ...metadata,
+          isDirty: false
+        };
+        await this.saveOfflineData(data);
+      }
+    } catch (error) {
+      console.warn('Erro ao limpar dirty flag:', error);
+    }
+  }
+
+  /**
+   * Obter timestamp da última sincronização global
+   * @returns Timestamp em ms da última sincronização bem-sucedida
+   */
+  static async getLastSyncTime(): Promise<number> {
+    try {
+      const data = await this.getOfflineData();
+      return data.lastSync || 0;
+    } catch (error) {
+      console.warn('Erro ao obter último sync time:', error);
+      return 0;
+    }
   }
 }
 
