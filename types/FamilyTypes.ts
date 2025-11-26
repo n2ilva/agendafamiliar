@@ -14,6 +14,22 @@ export interface CategoryConfig {
   createdAt?: Date | string;
 }
 
+export enum RepeatType {
+  NONE = 'none',
+  DAILY = 'daily',
+  WEEKENDS = 'weekends',
+  CUSTOM = 'custom',
+  MONTHLY = 'monthly',
+  INTERVAL = 'interval'
+}
+
+export interface RepeatConfig {
+  type: RepeatType;
+  days?: number[];
+  intervalDays?: number;
+  durationMonths?: number;
+}
+
 export interface FamilyUser {
   id: string;
   name: string;
@@ -125,6 +141,7 @@ export interface Task {
   status: TaskStatus;
   category: string;
   priority: 'baixa' | 'media' | 'alta';
+  familyId?: string | null; // Adicionado familyId opcional/nullable
   createdAt: Date | string;
   updatedAt: Date | string;
   completedAt?: Date | string;

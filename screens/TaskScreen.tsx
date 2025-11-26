@@ -28,8 +28,23 @@ import { v4 as uuidv4 } from 'uuid';
 import { 
   THEME
 } from '../utils/colors';
+import { 
+  DEFAULT_CATEGORIES, 
+  AVAILABLE_ICONS, 
+  AVAILABLE_COLORS, 
+  AVAILABLE_EMOJIS 
+} from '../utils/TaskConstants';
+import { 
+  repeatConfigToOption, 
+  optionToRepeatConfig, 
+  getRepeat, 
+  getEmojiForIcon 
+} from '../utils/TaskUtils';
 import { useTheme } from '../contexts/ThemeContext';
-import { Family, FamilyUser, UserRole, TaskApproval, ApprovalNotification, TaskStatus, Task, SubtaskCategory, Subtask } from '../types/FamilyTypes';
+import { Family, FamilyUser, UserRole, TaskApproval, ApprovalNotification, TaskStatus, Task, SubtaskCategory, Subtask, RepeatType, RepeatConfig, CategoryConfig } from '../types/FamilyTypes';
+import { CategorySelector } from '../components/CategorySelector';
+import { TaskFilterButton, TaskFilterDropdown } from '../components/TaskFilter';
+import { EmptyState } from '../components/EmptyState';
 import ConnectivityService, { ConnectivityState } from '../services/ConnectivityService';
 import { SyncStatus } from '../services/SyncService';
 import familyService from '../services/LocalFamilyService';
@@ -44,190 +59,19 @@ import Alert from '../utils/Alert';
 import { Header } from '../components/Header';
 import * as Notifications from 'expo-notifications';
 import logger from '../utils/Logger';
+import { useAuth } from '../contexts/AuthContext';
+import { useFamily } from '../hooks/useFamily';
+import { useTasks, taskToRemoteTask, remoteTaskToTask } from '../hooks/useTasks';
 
 const HISTORY_DAYS_TO_KEEP = 7;
 
-// RepeatType enum definition
-export enum RepeatType {
-  NONE = 'none',
-  DAILY = 'daily',
-  WEEKENDS = 'weekends',
-  CUSTOM = 'custom',
-  MONTHLY = 'monthly',
-  INTERVAL = 'interval'
-}
+// RepeatType and RepeatConfig moved to FamilyTypes.ts
 
-// RepeatConfig interface
-interface RepeatConfig {
-  type: RepeatType;
-  days?: number[];
-  intervalDays?: number;
-  durationMonths?: number;
-}
+// CategoryConfig interface moved to FamilyTypes.ts
 
-// CategoryConfig interface
-export interface CategoryConfig {
-  id: string;
-  name: string;
-  icon: string;
-  color: string;
-  bgColor: string;
-  isDefault: boolean;
-  createdBy?: string;
-  createdByName?: string;
-  createdAt?: Date | string;
-}
-
-// Default categories
-export const DEFAULT_CATEGORIES: CategoryConfig[] = [
-  {
-    id: 'all',
-    name: 'Todas',
-    icon: 'apps',
-    color: '#6B7280',
-    bgColor: '#F3F4F6',
-    isDefault: true
-  },
-  {
-    id: 'work',
-    name: 'Trabalho',
-    icon: 'briefcase',
-    color: '#3B82F6',
-    bgColor: '#EFF6FF',
-    isDefault: true
-  },
-  {
-    id: 'home',
-    name: 'Casa',
-    icon: 'home',
-    color: '#F59E0B',
-    bgColor: '#FFFBEB',
-    isDefault: true
-  },
-  {
-    id: 'health',
-    name: 'Saúde',
-    icon: 'fitness',
-    color: '#10B981',
-    bgColor: '#ECFDF5',
-    isDefault: true
-  },
-  {
-    id: 'study',
-    name: 'Estudos',
-    icon: 'book',
-    color: '#8B5CF6',
-    bgColor: '#F5F3FF',
-    isDefault: true
-  },
-  {
-    id: 'finance',
-    name: 'Finanças',
-    icon: 'card',
-    color: '#3f9605ff',
-    bgColor: '#ebffdeff',
-    isDefault: true
-  },
-  {
-    id: 'shopping',
-    name: 'Compras',
-    icon: 'bag',
-    color: '#EC4899',
-    bgColor: '#FDF2F8',
-    isDefault: true
-  }
-];
-
-export const AVAILABLE_ICONS = [
-  'briefcase', 'home', 'fitness', 'book', 'car', 'restaurant',
-  'airplane', 'camera', 'musical-notes', 'game-controller',
-  'heart', 'star', 'gift', 'trophy', 'school', 'desktop',
-  'card', 'bag', 'pizza', 'beer', 'cafe', 'cart',
-  'paw', 'build', 'brush', 'bulb', 'calculator', 'calendar',
-  'chatbubbles', 'code', 'compass', 'flask', 'flower', 'football',
-  'hammer', 'headset', 'key', 'leaf', 'magnet', 'medal',
-  'megaphone', 'moon', 'newspaper', 'nutrition', 'pencil', 'planet',
-  'pulse', 'rocket', 'rose', 'shield', 'shirt', 'tennisball',
-  'umbrella', 'wallet', 'watch', 'wifi', 'wine', 'basketball'
-];
-
-export const AVAILABLE_COLORS = [
-  { color: '#E74C3C', bgColor: '#FADBD8' }, // Vermelho
-  { color: '#E67E22', bgColor: '#FDEBD0' }, // Laranja
-  { color: '#F39C12', bgColor: '#FEF5E7' }, // Amarelo Ouro
-  { color: '#F1C40F', bgColor: '#FCF3CF' }, // Amarelo
-  { color: '#2ECC71', bgColor: '#D5F4E6' }, // Verde
-  { color: '#27AE60', bgColor: '#D4EFDF' }, // Verde Escuro
-  { color: '#1ABC9C', bgColor: '#D1F2EB' }, // Turquesa
-  { color: '#16A085', bgColor: '#D0ECE7' }, // Verde Água
-  { color: '#3498DB', bgColor: '#D6EAF8' }, // Azul
-  { color: '#2980B9', bgColor: '#D4E6F1' }, // Azul Escuro
-  { color: '#9B59B6', bgColor: '#EBDEF0' }, // Roxo
-  { color: '#8E44AD', bgColor: '#E8DAEF' }, // Roxo Escuro
-  { color: '#E91E63', bgColor: '#F8BBD0' }, // Rosa
-  { color: '#FF1744', bgColor: '#FFCDD2' }, // Rosa Forte
-  { color: '#795548', bgColor: '#EFEBE9' }, // Marrom
-  { color: '#607D8B', bgColor: '#ECEFF1' }, // Cinza Azulado
-  { color: '#FF5722', bgColor: '#FFCCBC' }, // Laranja Profundo
-  { color: '#009688', bgColor: '#B2DFDB' }, // Verde Azulado
-  { color: '#4CAF50', bgColor: '#C8E6C9' }, // Verde Claro
-  { color: '#CDDC39', bgColor: '#F0F4C3' }, // Lima
-];
-
-// Usar Task de FamilyTypes como base - evitar conflito de tipos
+// LocalTask type definition
 type LocalTask = Task & {
   repeat?: RepeatConfig; // compatibilidade com código antigo
-};
-
-// Helper para converter RepeatConfig para repeatOption/repeatDays
-const repeatConfigToOption = (repeat?: RepeatConfig): { repeatOption: 'nenhum' | 'diario' | 'semanal' | 'mensal' | 'intervalo'; repeatDays?: number[]; repeatIntervalDays?: number; repeatDurationMonths?: number } => {
-  if (!repeat || repeat.type === RepeatType.NONE) {
-    return { repeatOption: 'nenhum' };
-  }
-  if (repeat.type === RepeatType.DAILY) {
-    return { repeatOption: 'diario' };
-  }
-  if (repeat.type === RepeatType.CUSTOM) {
-    return { repeatOption: 'semanal', repeatDays: repeat.days || [] };
-  }
-  if (repeat.type === RepeatType.MONTHLY) {
-    return { repeatOption: 'mensal' };
-  }
-  if (repeat.type === RepeatType.INTERVAL) {
-    return { repeatOption: 'intervalo', repeatIntervalDays: repeat.intervalDays, repeatDurationMonths: repeat.durationMonths };
-  }
-  return { repeatOption: 'nenhum' };
-};
-
-// Helper para criar RepeatConfig a partir de repeatOption/repeatDays
-const optionToRepeatConfig = (repeatOption?: string, repeatDays?: number[], opts?: { repeatIntervalDays?: number; repeatDurationMonths?: number }): RepeatConfig => {
-  if (!repeatOption || repeatOption === 'nenhum') {
-    return { type: RepeatType.NONE };
-  }
-  if (repeatOption === 'diario') {
-    return { type: RepeatType.DAILY };
-  }
-  if (repeatOption === 'semanal') {
-    return { type: RepeatType.CUSTOM, days: repeatDays || [] };
-  }
-  if (repeatOption === 'mensal') {
-    return { type: RepeatType.MONTHLY };
-  }
-  if (repeatOption === 'intervalo') {
-    return { type: RepeatType.INTERVAL, intervalDays: opts?.repeatIntervalDays || 1, durationMonths: opts?.repeatDurationMonths || 0 };
-  }
-  return { type: RepeatType.NONE };
-};
-
-// Helper para acessar repeat de forma compatível
-const getRepeat = (task: Task): RepeatConfig => {
-  // Se o objeto já possui a configuração estruturada, usa direto
-  const anyTask: any = task as any;
-  if (anyTask.repeat && typeof anyTask.repeat === 'object' && 'type' in anyTask.repeat) {
-    return anyTask.repeat as RepeatConfig;
-  }
-  // Fallback: converte a partir de repeatOption/repeatDays
-  return optionToRepeatConfig(task.repeatOption, task.repeatDays, { repeatIntervalDays: (task as any).repeatIntervalDays, repeatDurationMonths: (task as any).repeatDurationMonths });
 };
 
 interface HistoryItem {
@@ -243,136 +87,8 @@ interface HistoryItem {
   userRole?: string;
 }
 
-// Lista de emojis disponíveis (mesma do Header)
-const AVAILABLE_EMOJIS = [
-  { emoji: '😊', name: 'happy' },
-  { emoji: '😎', name: 'cool' },
-  { emoji: '🤩', name: 'starstruck' },
-  { emoji: '🥳', name: 'partying' },
-  { emoji: '😇', name: 'angel' },
-  { emoji: '🤗', name: 'hugging' },
-  { emoji: '🎉', name: 'party' },
-  { emoji: '🎊', name: 'confetti' },
-  { emoji: '🎈', name: 'balloon' },
-  { emoji: '🎁', name: 'gift' },
-  { emoji: '🚀', name: 'rocket' },
-  { emoji: '✈️', name: 'airplane' },
-  { emoji: '🚗', name: 'car' },
-  { emoji: '🚴', name: 'bicycle' },
-  { emoji: '🏃', name: 'running' },
-  { emoji: '⭐', name: 'star' },
-  { emoji: '🌟', name: 'sparkles' },
-  { emoji: '💫', name: 'dizzy' },
-  { emoji: '✨', name: 'shine' },
-  { emoji: '❤️', name: 'heart' },
-  { emoji: '💙', name: 'blue-heart' },
-  { emoji: '💚', name: 'green-heart' },
-  { emoji: '💛', name: 'yellow-heart' },
-  { emoji: '💜', name: 'purple-heart' },
-  { emoji: '🧡', name: 'orange-heart' },
-  { emoji: '🖤', name: 'black-heart' },
-  { emoji: '🤍', name: 'white-heart' },
-  { emoji: '🌈', name: 'rainbow' },
-  { emoji: '🌸', name: 'flower' },
-  { emoji: '🌺', name: 'hibiscus' },
-  { emoji: '🌻', name: 'sunflower' },
-  { emoji: '🌹', name: 'rose' },
-  { emoji: '🌷', name: 'tulip' },
-  { emoji: '🌿', name: 'leaf' },
-  { emoji: '🍀', name: 'clover' },
-  { emoji: '🌳', name: 'tree' },
-  { emoji: '🌴', name: 'palm' },
-  { emoji: '🐶', name: 'dog' },
-  { emoji: '🐱', name: 'cat' },
-  { emoji: '🐭', name: 'mouse' },
-  { emoji: '🐹', name: 'hamster' },
-  { emoji: '🐰', name: 'rabbit' },
-  { emoji: '🦊', name: 'fox' },
-  { emoji: '🐻', name: 'bear' },
-  { emoji: '🐼', name: 'panda' },
-  { emoji: '🐨', name: 'koala' },
-  { emoji: '🐯', name: 'tiger' },
-  { emoji: '🦁', name: 'lion' },
-  { emoji: '🐮', name: 'cow' },
-  { emoji: '🐷', name: 'pig' },
-  { emoji: '🐸', name: 'frog' },
-  { emoji: '🐵', name: 'monkey' },
-  { emoji: '🦄', name: 'unicorn' },
-  { emoji: '🐾', name: 'paw' },
-  { emoji: '🦋', name: 'butterfly' },
-  { emoji: '🐝', name: 'bee' },
-  { emoji: '🐞', name: 'ladybug' },
-  { emoji: '🍎', name: 'apple' },
-  { emoji: '🍌', name: 'banana' },
-  { emoji: '🍉', name: 'watermelon' },
-  { emoji: '🍇', name: 'grapes' },
-  { emoji: '🍓', name: 'strawberry' },
-  { emoji: '🍒', name: 'cherries' },
-  { emoji: '🍕', name: 'pizza' },
-  { emoji: '🍔', name: 'burger' },
-  { emoji: '🍟', name: 'fries' },
-  { emoji: '🍦', name: 'icecream' },
-  { emoji: '🍩', name: 'donut' },
-  { emoji: '🍪', name: 'cookie' },
-  { emoji: '🎂', name: 'cake' },
-  { emoji: '🍰', name: 'shortcake' },
-  { emoji: '☕', name: 'coffee' },
-  { emoji: '🥤', name: 'drink' },
-  { emoji: '🧃', name: 'juice' },
-  { emoji: '⚽', name: 'soccer' },
-  { emoji: '🏀', name: 'basketball' },
-  { emoji: '🏈', name: 'football' },
-  { emoji: '⚾', name: 'baseball' },
-  { emoji: '🎾', name: 'tennis' },
-  { emoji: '🏐', name: 'volleyball' },
-  { emoji: '🎮', name: 'game' },
-  { emoji: '🎯', name: 'dart' },
-  { emoji: '🎲', name: 'dice' },
-  { emoji: '🎨', name: 'art' },
-  { emoji: '🎭', name: 'theater' },
-  { emoji: '🎪', name: 'circus' },
-  { emoji: '🎬', name: 'movie' },
-  { emoji: '🎵', name: 'music' },
-  { emoji: '🎸', name: 'guitar' },
-  { emoji: '🎹', name: 'piano' },
-  { emoji: '🎤', name: 'microphone' },
-  { emoji: '📚', name: 'book' },
-  { emoji: '📖', name: 'open-book' },
-  { emoji: '✏️', name: 'pencil' },
-  { emoji: '📝', name: 'memo' },
-  { emoji: '💼', name: 'briefcase' },
-  { emoji: '💻', name: 'laptop' },
-  { emoji: '📱', name: 'phone' },
-  { emoji: '⌚', name: 'watch' },
-  { emoji: '🔑', name: 'key' },
-  { emoji: '🔒', name: 'lock' },
-  { emoji: '💡', name: 'bulb' },
-  { emoji: '🔦', name: 'flashlight' },
-  { emoji: '🕯️', name: 'candle' },
-  { emoji: '🏠', name: 'home' },
-  { emoji: '🏡', name: 'house' },
-  { emoji: '🏖️', name: 'beach' },
-  { emoji: '🏔️', name: 'mountain' },
-  { emoji: '⛺', name: 'tent' },
-  { emoji: '🌙', name: 'moon' },
-  { emoji: '☀️', name: 'sun' },
-  { emoji: '⭐', name: 'star2' },
-  { emoji: '☁️', name: 'cloud' },
-  { emoji: '⚡', name: 'lightning' },
-  { emoji: '🔥', name: 'fire' },
-  { emoji: '💧', name: 'droplet' },
-  { emoji: '🌊', name: 'wave' },
-];
-
-// Função helper para obter emoji do ícone
-const getEmojiForIcon = (iconName?: string): string => {
-  if (!iconName) return '😊';
-  const icon = AVAILABLE_EMOJIS.find(i => i.name === iconName);
-  return icon ? icon.emoji : '😊';
-};
-
 interface TaskScreenProps {
-  user: FamilyUser;
+  user: FamilyUser; // Mantendo user prop por compatibilidade com tipos, mas idealmente usaria só context
   onLogout: () => Promise<void>;
   onUserNameChange: (newName: string) => void;
   onUserImageChange?: (newImageUrl: string) => void;
@@ -380,35 +96,68 @@ interface TaskScreenProps {
   onUserRoleChange?: (newRole: UserRole, opts?: { silent?: boolean }) => void;
 }
 
-export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNameChange, onUserImageChange, onUserProfileIconChange, onUserRoleChange }) => {
+export const TaskScreen: React.FC<TaskScreenProps> = ({ 
+  user: propUser, 
+  onLogout, 
+  onUserNameChange, 
+  onUserImageChange,
+  onUserProfileIconChange,
+  onUserRoleChange 
+}) => {
+  // Usar dados do contexto se disponíveis, senão fallback para props (durante transição)
+  const auth = useAuth();
+  const user = auth.user || propUser;
+  
   // Hook do tema
   const { colors, activeTheme } = useTheme();
   
   // Estilos dinâmicos baseados no tema
   const styles = useMemo(() => getStyles(colors, activeTheme), [colors, activeTheme]);
   
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  // Gating de boot inicial: evita UI "travando" enquanto sincroniza
-  const [isBootstrapping, setIsBootstrapping] = useState(true);
-  // Loading global para aguardar sincronizações específicas (ex.: exclusão remota)
-  const [isGlobalLoading, setGlobalLoading] = useState(false);
-  // Controle de auto-sync para evitar chamadas excessivas
-  const lastAutoSyncAtRef = useRef(0);
+  // Estados de conectividade (necessário para os hooks)
+  const [isOffline, setIsOffline] = useState(false);
+  const [connectivityState, setConnectivityState] = useState<ConnectivityState>({
+    isConnected: true,
+    isInternetReachable: true,
+    type: 'wifi'
+  });
 
-  // Estado para IDs de tarefas pendentes de sincronização
-  const [pendingSyncIds, setPendingSyncIds] = useState<string[]>([]);
+  // Hooks Customizados
+  const { 
+    currentFamily, 
+    setCurrentFamily, 
+    familyMembers, 
+    setFamilyMembers, 
+    isBootstrapping: isFamilyBootstrapping 
+  } = useFamily(user, isOffline);
+
+  const { 
+    tasks, 
+    setTasks, 
+    loadTasks,
+    pendingSyncIds, 
+    setPendingSyncIds 
+  } = useTasks(user, currentFamily, isOffline);
+
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  // Loading global para aguardar sincronizações específicas
+  const [isGlobalLoading, setGlobalLoading] = useState(false);
+  // Controle de auto-sync
+  const lastAutoSyncAtRef = useRef(0);
+  const didStartupSyncRef = useRef(false);
+  const didInitialFamilyRefreshRef = useRef(false);
+  const [isBootstrapping, setIsBootstrapping] = useState(true);
+  const membersUnsubRef = useRef<(() => void) | null>(null);
+
   const [isAddingTask, setIsAddingTask] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
-  // Garantir 1 disparo de sync no startup (com um retry curto) para captar o estado do Firebase Auth
-  const didStartupSyncRef = useRef(false);
-  // Garantir 1 refresh completo quando a família estiver definida e online
-  const didInitialFamilyRefreshRef = useRef(false);
+  
   const [syncMessage, setSyncMessage] = useState('');
-  // Recorrência por intervalo (a cada X dias e duração em meses)
+  // Recorrência
   const [intervalDays, setIntervalDays] = useState<number>(0);
   const [durationMonths, setDurationMonths] = useState<number>(0);
   
-  // Estados para controle do seletor de data/hora no modal de tarefa
+  // Estados para controle do seletor de data/hora
   const [tempDueDate, setTempDueDate] = useState<Date | undefined>(undefined);
   const [tempDueTime, setTempDueTime] = useState<Date | undefined>(undefined);
   
@@ -418,7 +167,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   const filterButtonRef = useRef<any>(null);
 
   // Estados principais
-  const [tasks, setTasks] = useState<Task[]>([]);
+  // tasks removido pois vem do hook
   const [categories, setCategories] = useState<CategoryConfig[]>(DEFAULT_CATEGORIES);
   const [selectedCategory, setSelectedCategory] = useState('work');
   const [filterCategory, setFilterCategory] = useState('all');
@@ -442,21 +191,16 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   const [showUndoButton, setShowUndoButton] = useState(false);
   const undoTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
-  // Estados de família
-  const [currentFamily, setCurrentFamily] = useState<Family | null>(null);
-  const [familyMembers, setFamilyMembers] = useState<FamilyUser[]>([]);
+  // Estados de família (currentFamily e familyMembers vêm do hook agora)
   const [familyModalVisible, setFamilyModalVisible] = useState(false);
   const [familyName, setFamilyName] = useState('');
   const [inviteCode, setInviteCode] = useState('');
   const [codeCountdown, setCodeCountdown] = useState('');
   const [editMemberModalVisible, setEditMemberModalVisible] = useState(false);
   const [selectedMemberForEdit, setSelectedMemberForEdit] = useState<FamilyUser | null>(null);
-  // Ref para gerenciar unsubscribe da assinatura de membros em tempo real
-  const membersUnsubRef = useRef<(() => void) | null>(null);
-  // Ref para controlar notificações de tarefas vencidas e evitar duplicatas
-  // Formato: { taskId: timestamp da última notificação enviada }
+  
+  // Ref para controlar notificações de tarefas vencidas
   const overdueNotificationTrackRef = useRef<Record<string, number>>({});
-  // Intervalo mínimo entre notificações da mesma tarefa (em minutos)
   const NOTIFICATION_THROTTLE_MINUTES = 30;
 
   const isWeb = Platform.OS === 'web';
@@ -563,13 +307,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     return null;
   }, [editingSubtaskId, editingSubtaskCategoryId, subtasksDraft, subtaskCategories]);
 
-  // Estados de conectividade e sincronização
-  const [isOffline, setIsOffline] = useState(false);
-  const [connectivityState, setConnectivityState] = useState<ConnectivityState>({
-    isConnected: true,
-    isInternetReachable: true,
-    type: 'wifi'
-  });
+  // Estados de conectividade e sincronização (já declarados acima)
   const [syncStatus, setSyncStatus] = useState<SyncStatus>({
     isSyncing: false,
     lastSync: 0,
@@ -757,204 +495,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     }
   }, [activeTab]);
 
-  // Função para converter Task local para formato remoto
-  const taskToRemoteTask = (task: Task): RemoteTask => {
-    logger.debug('📤 Convertendo Local -> Remoto', {
-      id: task.id,
-      title: task.title,
-      localDueDate: task.dueDate,
-      localDueTime: task.dueTime,
-    });
-    const remoteTask: any = {
-      id: task.id,
-      title: task.title,
-      description: task.description || '',
-      completed: task.completed,
-      status: task.status,
-      category: task.category,
-      priority: 'media', // valor padrão
-      createdAt: task.createdAt,
-      updatedAt: task.editedAt || new Date(),
-      dueDate: task.dueDate || null, // Converter undefined para null para preservar no Firestore
-      dueTime: task.dueTime || null, // Converter undefined para null para preservar no Firestore
-  repeatOption: task.repeatOption || 'nenhum',
-  repeatDays: task.repeatDays || null,
-  repeatIntervalDays: (task as any).repeatIntervalDays || null,
-  repeatDurationMonths: (task as any).repeatDurationMonths || null,
-  repeatStartDate: (task as any).repeatStartDate || (task as any).createdAt || task.dueDate || null,
-      userId: task.userId,
-  // Adicionar familyId se o usuário pertence a uma família, mas se a tarefa for privada garantimos null
-  familyId: (task as any)?.private === true ? null : currentFamily?.id,
-      // Campos de autoria
-      createdBy: task.createdBy,
-      createdByName: task.createdByName,
-    };
 
-    // Subtarefas -> payload simples serializável
-    if (Array.isArray(task.subtasks)) {
-      remoteTask.subtasks = task.subtasks.map(st => ({
-        id: st.id,
-        title: st.title,
-        done: !!st.done,
-        completedById: st.completedById || null,
-        completedByName: st.completedByName || null,
-        completedAt: st.completedAt || null,
-        dueDate: st.dueDate || null, // Incluir dueDate da subtarefa
-        dueTime: st.dueTime || null, // Incluir dueTime da subtarefa
-      }));
-    }
 
-    // Categorias de subtarefas -> payload serializável
-    if (Array.isArray((task as any).subtaskCategories)) {
-      remoteTask.subtaskCategories = (task as any).subtaskCategories.map((cat: SubtaskCategory) => ({
-        id: cat.id,
-        name: cat.name,
-        isExpanded: cat.isExpanded,
-        createdAt: cat.createdAt,
-        subtasks: cat.subtasks.map(st => ({
-          id: st.id,
-          title: st.title,
-          done: !!st.done,
-          completedById: st.completedById || null,
-          completedByName: st.completedByName || null,
-          completedAt: st.completedAt || null,
-          dueDate: st.dueDate || null,
-          dueTime: st.dueTime || null,
-        }))
-      }));
-    }
 
-    // Log para debug de tarefas privadas
-    if ((task as any)?.private === true) {
-      logger.debug('🔒 Tarefa PRIVADA detectada', {
-        id: remoteTask.id,
-        title: remoteTask.title,
-        private: remoteTask.private,
-        familyId: remoteTask.familyId,
-        userId: remoteTask.userId
-      });
-    }
-
-    logger.debug('📤 Dados preparados para envio remota', {
-      id: remoteTask.id,
-      title: remoteTask.title,
-      remoteDueDate: remoteTask.dueDate,
-      remoteDueTime: remoteTask.dueTime,
-      repeatOption: remoteTask.repeatOption,
-      repeatIntervalDays: remoteTask.repeatIntervalDays,
-      repeatDurationMonths: remoteTask.repeatDurationMonths,
-      repeatStartDate: remoteTask.repeatStartDate,
-      editedBy: (task as any).editedBy,
-      editedByName: (task as any).editedByName,
-      editedAt: (task as any).editedAt
-    });
-
-    // Adicionar campos apenas se não forem undefined
-    if (task.completed) {
-      remoteTask.completedAt = new Date();
-    }
-    
-    if (task.approvalId !== undefined) {
-      remoteTask.approvalId = task.approvalId;
-    }
-    
-    if (task.editedBy !== undefined) {
-      remoteTask.editedBy = task.editedBy;
-    }
-    
-    if (task.editedByName !== undefined) {
-      remoteTask.editedByName = task.editedByName;
-    }
-    
-    if (task.editedAt !== undefined) {
-      remoteTask.editedAt = task.editedAt;
-    }
-
-    // Garantir que a flag 'private' sempre seja um booleano no payload enviado ao servidor remoto
-    remoteTask.private = (task as any).private === true;
-
-    return remoteTask as RemoteTask;
-  };
-
-  // Função para converter dado remoto para Task local
-  const remoteTaskToTask = (remoteTask: RemoteTask): Task => {
-    const remote = remoteTask as any; // Cast para acessar campos estendidos
-    const dueDate = safeToDate(remote.dueDate);
-    const dueTime = safeToDate(remote.dueTime);
-
-    const repeatOption: 'nenhum' | 'diario' | 'semanal' | 'mensal' | 'intervalo' =
-      remote.repeatOption === 'diario' ? 'diario' :
-      remote.repeatOption === 'semanal' ? 'semanal' :
-      remote.repeatOption === 'mensal' ? 'mensal' :
-      remote.repeatOption === 'intervalo' ? 'intervalo' : 'nenhum';
-    const repeatDays: number[] | undefined = Array.isArray(remote.repeatDays) ? remote.repeatDays : [];
-    const repeatIntervalDays: number | undefined = typeof remote.repeatIntervalDays === 'number' ? remote.repeatIntervalDays : undefined;
-    const repeatDurationMonths: number | undefined = typeof remote.repeatDurationMonths === 'number' ? remote.repeatDurationMonths : undefined;
-    const repeatStartDate: Date | undefined = safeToDate(remote.repeatStartDate) || undefined;
-
-    return {
-      id: remoteTask.id || '',
-      title: remoteTask.title,
-      description: remote.description || '',
-      completed: remoteTask.completed || false,
-      status: remote.status || 'pendente' as TaskStatus,
-      category: remote.category || 'work',
-      priority: remote.priority || 'media',
-      familyId: remote.familyId ?? null,
-      dueDate: dueDate,
-      dueTime: dueTime,
-      // Campos planos para persistência e UI
-      repeatOption: repeatOption,
-      repeatDays: repeatDays,
-      repeatIntervalDays: repeatIntervalDays,
-      repeatDurationMonths: repeatDurationMonths,
-      repeatStartDate: repeatStartDate,
-      // Estrutura compatível usada internamente
-      repeat: {
-        type: repeatOption === 'diario' ? RepeatType.DAILY : repeatOption === 'mensal' ? RepeatType.MONTHLY : repeatOption === 'semanal' ? RepeatType.CUSTOM : repeatOption === 'intervalo' ? RepeatType.INTERVAL : RepeatType.NONE,
-        days: repeatDays || [],
-        intervalDays: repeatIntervalDays,
-        durationMonths: repeatDurationMonths
-      },
-      userId: remoteTask.userId,
-      approvalId: remote.approvalId,
-      createdAt: safeToDate(remoteTask.createdAt) || new Date(),
-      updatedAt: safeToDate(remoteTask.updatedAt) || safeToDate(remote.editedAt) || safeToDate(remoteTask.createdAt) || new Date(),
-      completedAt: safeToDate(remote.completedAt) || undefined,
-      subtasks: Array.isArray(remote.subtasks) ? remote.subtasks.map((st: any) => ({
-        id: st.id,
-        title: st.title,
-        done: !!st.done,
-        completedById: st.completedById || undefined,
-        completedByName: st.completedByName || undefined,
-        completedAt: safeToDate(st.completedAt) || undefined,
-        dueDate: safeToDate(st.dueDate) || undefined, // Converter dueDate da subtarefa
-        dueTime: safeToDate(st.dueTime) || undefined, // Converter dueTime da subtarefa
-      })) : [],
-      subtaskCategories: Array.isArray(remote.subtaskCategories) ? remote.subtaskCategories.map((cat: any) => ({
-        id: cat.id,
-        name: cat.name,
-        isExpanded: cat.isExpanded !== undefined ? cat.isExpanded : true,
-        createdAt: safeToDate(cat.createdAt) || new Date(),
-        subtasks: Array.isArray(cat.subtasks) ? cat.subtasks.map((st: any) => ({
-          id: st.id,
-          title: st.title,
-          done: !!st.done,
-          completedById: st.completedById || undefined,
-          completedByName: st.completedByName || undefined,
-          completedAt: safeToDate(st.completedAt) || undefined,
-          dueDate: safeToDate(st.dueDate) || undefined,
-          dueTime: safeToDate(st.dueTime) || undefined,
-        })) : []
-      })) : [],
-      createdBy: remote.createdBy || remoteTask.userId,
-      createdByName: remote.createdByName || 'Usuário',
-      editedBy: remote.editedBy,
-      editedByName: remote.editedByName,
-      editedAt: safeToDate(remote.editedAt),
-      private: remote.private
-    } as Task;
-  };
 
   // Função para carregar dados do cache local
   const loadDataFromCache = async () => {
@@ -992,7 +535,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     try {
       // Salvar tarefas convertidas
       for (const task of tasks) {
-  const remoteTask = taskToRemoteTask(task as any);
+  const remoteTask = taskToRemoteTask(task as any, currentFamily?.id);
   await LocalStorageService.saveTask(remoteTask as any);
       }
 
@@ -2407,7 +1950,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
 
         // Salvar no cache local
         if (updatedTask) {
-          const remoteTask = taskToRemoteTask(updatedTask as any);
+          const remoteTask = taskToRemoteTask(updatedTask as any, currentFamily?.id);
           await LocalStorageService.saveTask(remoteTask as any);
           // reagendar lembrete
           try {
@@ -2667,7 +2210,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         
         // Salvar no cache local
   // Incluir flag 'private' no objeto que será convertido para envio remoto
-  const remoteTask = taskToRemoteTask({ ...newTask, private: newTaskPrivate } as any);
+  const remoteTask = taskToRemoteTask({ ...newTask, private: newTaskPrivate } as any, currentFamily?.id);
     await LocalStorageService.saveTask(remoteTask as any);
         
         // Adicionar à fila de sincronização (online ou offline)
@@ -3915,7 +3458,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         
         // Salvar nova tarefa no Firebase e na família imediatamente
             try {
-            const remoteNextTask = taskToRemoteTask(nextTask as any);
+            const remoteNextTask = taskToRemoteTask(nextTask as any, currentFamily?.id);
           await LocalStorageService.saveTask(remoteNextTask as any);
           await SyncService.addOfflineOperation('create', 'tasks', remoteNextTask);
           
@@ -4022,7 +3565,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     const updatedTask = updatedTasks.find(t => t.id === task.id);
     if (updatedTask) {
       try {
-        const remoteTask = taskToRemoteTask(updatedTask as any);
+        const remoteTask = taskToRemoteTask(updatedTask as any, currentFamily?.id);
         await LocalStorageService.saveTask(remoteTask as any);
         
         // Determinar se é create ou update baseado no ID
@@ -4082,7 +3625,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
   //   setTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t));
 
   //   try {
-  //     const remoteTask = taskToRemoteTask(updatedTask as any);
+  //     const remoteTask = taskToRemoteTask(updatedTask as any, currentFamily?.id);
   //     await LocalStorageService.saveTask(remoteTask as any);
   //     await SyncService.addOfflineOperation('update', 'tasks', remoteTask);
   //     if (currentFamily) {
@@ -4255,7 +3798,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     }
     
     try {
-      const remoteTask = taskToRemoteTask(updatedTask as any);
+      const remoteTask = taskToRemoteTask(updatedTask as any, currentFamily?.id);
       await LocalStorageService.saveTask(remoteTask as any);
       await SyncService.addOfflineOperation('update', 'tasks', remoteTask);
       if (currentFamily) {
@@ -4321,7 +3864,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
     // Persistir alteração para sincronização/tempo real
     try {
       const updated = { ...task, status: 'pendente_aprovacao' as TaskStatus, approvalId: approval.id };
-      const remoteTask = taskToRemoteTask(updated as any);
+      const remoteTask = taskToRemoteTask(updated as any, currentFamily?.id);
       await LocalStorageService.saveTask(remoteTask as any);
       await SyncService.addOfflineOperation('update', 'tasks', remoteTask);
       if (currentFamily && !isOffline) {
@@ -4466,7 +4009,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           editedBy: user.id,
           editedByName: user.name,
         };
-        const remoteTask = taskToRemoteTask(updatedTask as any);
+        const remoteTask = taskToRemoteTask(updatedTask as any, currentFamily?.id);
         await LocalStorageService.saveTask(remoteTask as any);
         await SyncService.addOfflineOperation('update', 'tasks', remoteTask);
         if (currentFamily && !isOffline) {
@@ -4555,7 +4098,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           editedBy: user.id,
           editedByName: user.name,
         };
-        const remoteTask = taskToRemoteTask(updatedTask as any);
+        const remoteTask = taskToRemoteTask(updatedTask as any, currentFamily?.id);
         await LocalStorageService.saveTask(remoteTask as any);
         await SyncService.addOfflineOperation('update', 'tasks', remoteTask);
         if (currentFamily && !isOffline) {
@@ -4870,7 +4413,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         setTasks(prev => [taskToRestore, ...prev]);
         
         // Salvar no storage local e Firebase
-        const remoteTask = taskToRemoteTask(taskToRestore as any);
+        const remoteTask = taskToRemoteTask(taskToRestore as any, currentFamily?.id);
         await LocalStorageService.saveTask(remoteTask as any);
         
         if (currentFamily && !isOffline) {
@@ -4922,7 +4465,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         setTasks(updatedTasks);
         
         // Salvar no storage local e Firebase
-        const remoteTask = taskToRemoteTask(taskToRestore as any);
+        const remoteTask = taskToRemoteTask(taskToRestore as any, currentFamily?.id);
         await LocalStorageService.saveTask(remoteTask as any);
         
         if (currentFamily && !isOffline) {
@@ -5023,7 +4566,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
 
       // Salvar no Firebase e storage local
       try {
-        const remoteTask = taskToRemoteTask(taskToRestore as any);
+        const remoteTask = taskToRemoteTask(taskToRestore as any, currentFamily?.id);
         await LocalStorageService.saveTask(remoteTask as any);
         
         if (currentFamily && !isOffline) {
@@ -5832,9 +5375,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
           </View>
           
           {/* Botão de Filtro separado */}
-          <Pressable 
-            ref={filterButtonRef}
-            style={styles.filterButton}
+          <TaskFilterButton 
+            buttonRef={filterButtonRef}
             onPress={() => {
               if (!filterDropdownVisible) {
                 // Calcular posição do botão antes de abrir
@@ -5847,10 +5389,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
               }
               setFilterDropdownVisible(!filterDropdownVisible);
             }}
-            android_ripple={{ color: 'rgba(0, 122, 255, 0.1)', borderless: false }}
-          >
-            <Ionicons name="filter" size={18} color={THEME.primary} />
-          </Pressable>
+          />
         </View>
         
         <View style={styles.summaryContainer}>
@@ -5860,25 +5399,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         </View>
 
         {getCurrentTasks().length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Ionicons 
-              name={activeTab === 'today' ? 'checkmark-circle-outline' : 'calendar-outline'} 
-              size={64} 
-              color="#ccc" 
-            />
-            <Text style={styles.emptyText}>
-              {activeTab === 'today' 
-                ? 'Nenhuma tarefa para hoje!' 
-                : 'Nenhuma tarefa próxima!'
-              }
-            </Text>
-            <Text style={styles.emptySubtext}>
-              {activeTab === 'today' 
-                ? 'Aproveite seu dia livre ☺️' 
-                : 'Tudo certo por enquanto 🚀'
-              }
-            </Text>
-          </View>
+          <EmptyState activeTab={activeTab} />
         ) : (
           <FlatList
             data={getCurrentTasks()}
@@ -5921,91 +5442,18 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
         </SafeAreaView>
 
       {/* Dropdown de Filtros - posicionado para abrir à esquerda */}
-      {filterDropdownVisible && (
-        <>
-          {/* Overlay para fechar dropdown */}
-          <Pressable
-            style={styles.dropdownOverlay}
-            onPress={() => setFilterDropdownVisible(false)}
-            pointerEvents={filterDropdownVisible ? 'auto' : 'none'}
-          />
-          
-          <View style={[
-            styles.filterDropdownMenuFloating,
-            {
-              top: filterButtonLayout.top,
-              right: filterButtonLayout.right
-            }
-          ]} pointerEvents="auto">
-            <ScrollView 
-              style={{ maxHeight: 320 }} 
-              showsVerticalScrollIndicator={false}
-              bounces={false}
-            >
-              {categories.map((category) => (
-                <Pressable
-                  key={category.id}
-                  style={[
-                    styles.filterDropdownItem,
-                    filterCategory === category.id && styles.filterDropdownItemActive
-                  ]}
-                  onPress={() => {
-                    setFilterCategory(category.id);
-                    setFilterDropdownVisible(false);
-                  }}
-                >
-                  <View style={{ 
-                    width: 32, 
-                    height: 32, 
-                    borderRadius: 8,
-                    backgroundColor: filterCategory === category.id ? `${THEME.primary}15` : category.bgColor,
-                    justifyContent: 'center',
-                    alignItems: 'center'
-                  }}>
-                    <Ionicons 
-                      name={category.icon as any} 
-                      size={18} 
-                      color={filterCategory === category.id ? THEME.primary : category.color} 
-                    />
-                  </View>
-                  <Text style={[
-                    styles.filterDropdownItemText,
-                    filterCategory === category.id && styles.filterDropdownItemTextActive
-                  ]}>
-                    {category.name}
-                  </Text>
-                  
-                  {filterCategory === category.id && (
-                    <View style={{
-                      width: 24,
-                      height: 24,
-                      borderRadius: 12,
-                      backgroundColor: `${THEME.primary}15`,
-                      justifyContent: 'center',
-                      alignItems: 'center'
-                    }}>
-                      <Ionicons name="checkmark" size={16} color={THEME.primary} />
-                    </View>
-                  )}
-                  
-                  {!category.isDefault && (
-                    <Pressable
-                      style={styles.deleteCategoryButton}
-                      onPress={(e) => {
-                        e.stopPropagation();
-                        deleteCategory(category.id);
-                      }}
-                      hitSlop={8}
-                    >
-                      <Ionicons name="trash-outline" size={14} color="#9ca3af" />
-                    </Pressable>
-                  )}
-                </Pressable>
-              ))}
-            </ScrollView>
-          </View>
-        </>
-      )}
+      <TaskFilterDropdown
+        visible={filterDropdownVisible}
+        onClose={() => setFilterDropdownVisible(false)}
+        position={filterButtonLayout}
+        categories={categories}
+        selectedCategory={filterCategory}
+        onSelect={(id) => {
+          setFilterCategory(id);
+          setFilterDropdownVisible(false);
+        }}
+        onDeleteCategory={deleteCategory}
+      />
 
       <Modal
         animationType="slide"
@@ -6072,52 +5520,15 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({ user, onLogout, onUserNa
                 {/* 1. CATEGORIAS */}
                 <Text style={styles.categoryLabel}>Categoria:</Text>
                 <View style={styles.categorySelectorContainer}>
-                  <ScrollView 
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.categorySelectorScroll}
-                    style={styles.categorySelectorScrollView}
-                    decelerationRate="fast"
-                  >
-                    {categories.filter(cat => cat.id !== 'all').map((category) => (
-                      <Pressable
-                        key={category.id}
-                        style={[
-                          styles.categorySelector,
-                          selectedCategory === category.id && styles.categorySelectorActive,
-                          { 
-                            borderColor: category.color,
-                            backgroundColor: selectedCategory === category.id ? category.color : category.bgColor
-                          }
-                        ]}
-                        onPress={() => setSelectedCategory(category.id)}
-                      >
-                        <Ionicons 
-                          name={category.icon as any} 
-                          size={16} 
-                          color={selectedCategory === category.id ? '#fff' : category.color} 
-                        />
-                        <Text style={[
-                          styles.categorySelectorText,
-                          { color: selectedCategory === category.id ? '#fff' : category.color }
-                        ]}>
-                          {category.name}
-                        </Text>
-                      </Pressable>
-                    ))}
-                    
-                    {/* Botão Nova Categoria no final da lista */}
-                    <Pressable
-                      style={styles.addCategoryButton}
-                      onPress={() => {
-                        setCategoryModalVisible(true);
-                        openManagedModal('category');
-                      }}
-                    >
-                      <Ionicons name="add-circle" size={16} color={THEME.primary} />
-                      <Text style={styles.addCategoryText}>Nova</Text>
-                    </Pressable>
-                  </ScrollView>
+                <CategorySelector 
+                  categories={categories}
+                  selectedCategory={selectedCategory}
+                  onSelect={setSelectedCategory}
+                  onAddCategory={() => {
+                    setCategoryModalVisible(true);
+                    openManagedModal('category');
+                  }}
+                />
                 </View>
 
                 {/* 2. TÍTULO E DESCRIÇÃO */}

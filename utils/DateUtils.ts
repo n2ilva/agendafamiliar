@@ -194,3 +194,30 @@ export const getNextRecurrenceDate = (currentDate: Date, repeatType: string, cus
   console.log('✅ Data final calculada:', nextDate);
   return nextDate;
 };
+
+/**
+ * Format a date to a user-friendly string
+ */
+export const formatDate = (date?: Date): string => {
+  if (!date) return '';
+  const safeDate = safeToDate(date);
+  if (!safeDate) return '';
+  
+  const day = String(safeDate.getDate()).padStart(2, '0');
+  const month = String(safeDate.getMonth() + 1).padStart(2, '0');
+  const year = safeDate.getFullYear();
+  return `${day}/${month}/${year}`;
+};
+
+/**
+ * Format a time to a user-friendly string
+ */
+export const formatTime = (time?: Date | any): string => {
+  if (!time) return '';
+  const safeTime = safeToDate(time);
+  if (!safeTime) return '';
+  
+  const hours = String(safeTime.getHours()).padStart(2, '0');
+  const minutes = String(safeTime.getMinutes()).padStart(2, '0');
+  return `${hours}:${minutes}`;
+};

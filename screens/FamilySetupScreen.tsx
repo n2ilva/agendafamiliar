@@ -13,11 +13,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { THEME } from '../utils/colors';
 import { useTheme } from '../contexts/ThemeContext';
+import { useAuth } from '../contexts/AuthContext';
 import { familyService } from '../services/LocalFamilyService';
 import { UserRole } from '../types/FamilyTypes';
 import Alert from '../utils/Alert';
 
 // ============= TIPOS =============
+// Props removidas pois agora usamos Context
 interface FamilySetupScreenProps {
   onFamilySetup: (familyId: string) => void;
   onLogout: () => void;
@@ -59,7 +61,13 @@ export default function FamilySetupScreen({
   userId 
 }: FamilySetupScreenProps) {
   const { colors } = useTheme();
+  const { user } = useAuth(); // Usando AuthContext
   const styles = useMemo(() => getStyles(colors), [colors]);
+  
+  // Fallback para props se user do context não estiver pronto (embora deva estar)
+  const effectiveUserId = user?.id || userId;
+  const effectiveUserEmail = user?.email || userEmail;
+  const effectiveUserName = user?.name || userName;
   
   const [state, setState] = useState<SetupState>({
     currentStep: 'choose',
@@ -111,9 +119,9 @@ export default function FamilySetupScreen({
     setState(prev => ({ ...prev, isLoading: true }));
     try {
       const newFamily = await familyService.createFamily(state.familyName.trim(), {
-        id: userId,
-        email: userEmail,
-        name: userName,
+        id: effectiveUserId,
+        email: effectiveUserEmail,
+        name: effectiveUserName,
         role: 'admin' as UserRole,
         isGuest: false,
         joinedAt: new Date(),
@@ -135,7 +143,7 @@ export default function FamilySetupScreen({
     } finally {
       setState(prev => ({ ...prev, isLoading: false }));
     }
-  }, [state.familyName, userId, userEmail, userName, onFamilySetup]);
+  }, [state.familyName, effectiveUserId, effectiveUserEmail, effectiveUserName, onFamilySetup]);
 
   // ============= ENTRAR EM FAMÍLIA =============
   const handleJoinFamily = useCallback(async () => {
@@ -148,15 +156,15 @@ export default function FamilySetupScreen({
     setState(prev => ({ ...prev, isLoading: true }));
     try {
       await familyService.joinFamily(state.familyCode.trim(), {
-        id: userId,
-        email: userEmail,
-        name: userName,
+        id: effectiveUserId,
+        email: effectiveUserEmail,
+        name: effectiveUserName,
         role: 'dependente' as UserRole,
         isGuest: false,
         joinedAt: new Date(),
       });
 
-      const joinedFamily = await familyService.getUserFamily(userId);
+      const joinedFamily = await familyService.getUserFamily(effectiveUserId);
       
       Alert.alert('Sucesso!', 'Você entrou na família.', [{
         text: 'OK',
@@ -168,7 +176,7 @@ export default function FamilySetupScreen({
     } finally {
       setState(prev => ({ ...prev, isLoading: false }));
     }
-  }, [state.familyCode, userId, userEmail, userName, onFamilySetup]);
+  }, [state.familyCode, effectiveUserId, effectiveUserEmail, effectiveUserName, onFamilySetup]);
 
   // ============= RENDERIZAÇÃO: ESCOLHA =============
   const ChooseStep = () => (
