@@ -3,6 +3,9 @@
     "firestore": {
       "host": "127.0.0.1",
       "port": 8080
+    },
+    "functions": {
+      "port": 5001
     }
   },
   "firestore": {
@@ -11,5 +14,9 @@
   },
   "storage": {
     "rules": "storage.rules"
+  },
+  "functions": {
+    "source": "functions",
+    "runtime": "nodejs20"
   }
 }
