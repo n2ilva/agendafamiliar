@@ -117,11 +117,6 @@ O **Agenda Familiar** permite que famílias criem e gerenciem tarefas compartilh
 - **Expo Notifications** (Notificações push)
 - **Expo Clipboard** (Copiar código de convite)
 
-### Testes
-- **Jest** 29
-- **Testing Library React Native**
-- **Firebase Rules Unit Testing** (Testes de segurança)
-
 ## 📱 Plataformas Suportadas
 
 - ✅ **Android** (Nativo)
@@ -171,16 +166,6 @@ npm run ios
 npm run web
 ```
 
-### Testes
-
-```bash
-# Testes unitários e de integração
-npm test
-
-# Testes de regras do Firestore
-npm run test:rules
-```
-
 ## 📂 Estrutura do Projeto
 
 ```
@@ -211,9 +196,7 @@ agendafamiliar/
 │   ├── colors.ts               # Paletas e temas
 │   ├── DateUtils.ts            # Helpers de data
 │   ├── Holidays.ts             # Feriados brasileiros
-│   ├── Alert.ts                # Wrapper de alertas
-│   └── DiagnosticTools.ts      # Ferramentas de debug
-├── __tests__/                  # Testes unitários
+│   └── Alert.ts                # Wrapper de alertas
 ├── firestore.rules             # Regras de segurança Firestore
 ├── firebase.json               # Configuração Firebase
 └── package.json

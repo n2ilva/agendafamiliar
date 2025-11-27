@@ -15,11 +15,6 @@ import { LoadingScreen } from './components/LoadingScreen';
 import { SyncSystemBarsAndroid } from './components/SyncSystemBarsAndroid';
 import BackgroundSyncService from './services/BackgroundSyncService';
 
-// Importar ferramentas de diagnóstico (apenas em desenvolvimento)
-if (__DEV__) {
-  import('./utils/DiagnosticTools');
-}
-
 function AppContent() {
   const {
     user,

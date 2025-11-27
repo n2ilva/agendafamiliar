@@ -1019,141 +1019,6 @@ export async function openNotificationSettings() {
   }
 }
 
-// ============ FUNÇÕES DE DIAGNÓSTICO ============
-
-// Função para verificar o status atual das notificações
-export async function getNotificationStatus(): Promise<{
-  permissionGranted: boolean;
-  scheduledCount: number;
-  channelsConfigured: boolean;
-}> {
-  if (Platform.OS === 'web') {
-    return {
-      permissionGranted: (window as any).Notification?.permission === 'granted',
-      scheduledCount: Object.keys(webTimeouts).length,
-      channelsConfigured: false,
-    };
-  }
-
-  try {
-    const { status } = await Notifications.getPermissionsAsync();
-    const scheduled = await Notifications.getAllScheduledNotificationsAsync();
-    
-    let channelsConfigured = true;
-    if (Platform.OS === 'android') {
-      const defaultChannel = await Notifications.getNotificationChannelAsync('tasks-default');
-      const overdueChannel = await Notifications.getNotificationChannelAsync('tasks-overdue');
-      channelsConfigured = !!(defaultChannel && overdueChannel);
-    }
-
-    return {
-      permissionGranted: status === 'granted',
-      scheduledCount: scheduled.length,
-      channelsConfigured,
-    };
-  } catch (e) {
-    console.warn('[Notifications] Erro ao obter status:', e);
-    return {
-      permissionGranted: false,
-      scheduledCount: 0,
-      channelsConfigured: false,
-    };
-  }
-}
-
-// Função para listar todas as notificações agendadas (para debug)
-export async function listScheduledNotifications(): Promise<Notifications.NotificationRequest[]> {
-  if (Platform.OS === 'web') {
-    console.log('[Notifications][Web] Timeouts ativos:', Object.keys(webTimeouts));
-    return [];
-  }
-
-  try {
-    const scheduled = await Notifications.getAllScheduledNotificationsAsync();
-    console.log(`[Notifications] 📋 ${scheduled.length} notificações agendadas:`);
-    scheduled.forEach((notif, index) => {
-      const trigger = notif.trigger as any;
-      const triggerDate = trigger?.value ? new Date(trigger.value) : null;
-      console.log(`  ${index + 1}. ${notif.content.title} - ${triggerDate?.toLocaleString('pt-BR') || 'trigger desconhecido'}`);
-    });
-    return scheduled;
-  } catch (e) {
-    console.warn('[Notifications] Erro ao listar notificações:', e);
-    return [];
-  }
-}
-
-// Função para enviar uma notificação de teste imediata
-export async function sendTestNotification(): Promise<string | null> {
-  if (Platform.OS === 'web') {
-    try {
-      if ((window as any).Notification?.permission === 'granted') {
-        new (window as any).Notification('🧪 Teste de Notificação', { 
-          body: 'Se você está vendo isso, as notificações estão funcionando!',
-        });
-        return 'web-test';
-      }
-    } catch (e) {
-      console.warn('[Notifications][Web] Erro no teste:', e);
-    }
-    return null;
-  }
-
-  try {
-    const id = await Notifications.scheduleNotificationAsync({
-      content: {
-        title: '🧪 Teste de Notificação',
-        body: 'Se você está vendo isso, as notificações estão funcionando!',
-        sound: 'default',
-      },
-      trigger: null, // Imediato
-    });
-    console.log('[Notifications] ✅ Notificação de teste enviada:', id);
-    return id;
-  } catch (e) {
-    console.warn('[Notifications] Erro ao enviar teste:', e);
-    return null;
-  }
-}
-
-// Função para agendar uma notificação de teste em 5 segundos
-export async function sendDelayedTestNotification(delaySeconds: number = 5): Promise<string | null> {
-  if (Platform.OS === 'web') {
-    try {
-      if ((window as any).Notification?.permission === 'granted') {
-        setTimeout(() => {
-          new (window as any).Notification('⏰ Teste Agendado', { 
-            body: `Esta notificação foi agendada há ${delaySeconds} segundos!`,
-          });
-        }, delaySeconds * 1000);
-        return 'web-delayed-test';
-      }
-    } catch (e) {
-      console.warn('[Notifications][Web] Erro no teste agendado:', e);
-    }
-    return null;
-  }
-
-  try {
-    const id = await Notifications.scheduleNotificationAsync({
-      content: {
-        title: '⏰ Teste Agendado',
-        body: `Esta notificação foi agendada há ${delaySeconds} segundos!`,
-        sound: 'default',
-      },
-      trigger: {
-        seconds: delaySeconds,
-        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-      },
-    });
-    console.log(`[Notifications] ✅ Notificação de teste agendada para ${delaySeconds}s:`, id);
-    return id;
-  } catch (e) {
-    console.warn('[Notifications] Erro ao agendar teste:', e);
-    return null;
-  }
-}
-
 // Cancelar todas as notificações agendadas (útil para reset)
 export async function cancelAllNotifications(): Promise<void> {
   if (Platform.OS === 'web') {
@@ -1181,28 +1046,6 @@ export async function cancelAllNotifications(): Promise<void> {
   }
 }
 
-/*
-Recomendações de otimização para notificações nativas (mobile):
-
-- Android:
-  - Criar canais com importance correta e descrição clara (feito em ensureAndroidChannel).
-  - Usar channelId em content.android para ter certeza que o canal é aplicado.
-  - Para alertas urgentes, usar CHANNEL com IMPORTANCE_MAX e bypassDnd=true (já criado tasks-overdue).
-  - Verificar vibrationPattern e sound customizado (som custom exige configuração adicional no Android).
-
-- iOS:
-  - Usar interruptionLevel ('timeSensitive' / 'critical') somente quando justificável. Notas:
-    * 'critical' requer permissões especiais / entitlements e pode não funcionar em todos os dispositivos.
-    * 'timeSensitive' funciona com Focus/Não Perturbe no iOS 15+.
-  - Ajustar relevanceScore para destacar notificações importantes em concentrações de entregas.
-
-- Geral:
-  - Fornecer opção para o usuário abrir as configurações de notificações (helper openNotificationSettings).
-  - Testar em dispositivos reais: Android (OEMs têm variações: Samsung, Xiaomi, etc.), iOS (verificar comportamento com Focus/DND).
-  - Documentar quais comportamentos são esperados em cada plataforma e fornecer fallback (web no-op já implementado).
-
-*/
-
 // Export padrão para compatibilidade com importações que assumem default export
 const NotificationService = {
   initialize,
@@ -1218,11 +1061,6 @@ const NotificationService = {
   cancelSubtaskReminder,
   cancelAllSubtaskReminders,
   openNotificationSettings,
-  // Funções de diagnóstico
-  getNotificationStatus,
-  listScheduledNotifications,
-  sendTestNotification,
-  sendDelayedTestNotification,
   cancelAllNotifications,
 };
 

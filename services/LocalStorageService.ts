@@ -371,7 +371,7 @@ class LocalStorageService {
     }
   }
 
-  // Forçar limpeza de todas as operações pendentes (para debug)
+  // Forçar limpeza de todas as operações pendentes
   static async clearAllPendingOperations(): Promise<void> {
     const data = await this.getOfflineData();
     const count = data.pendingOperations.length;
