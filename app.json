@@ -23,7 +23,8 @@
         "UIStatusBarStyle": "UIStatusBarStyleDefault",
         "ITSAppUsesNonExemptEncryption": false,
         "UIBackgroundModes": [
-          "fetch"
+          "fetch",
+          "remote-notification"
         ]
       }
     },
@@ -44,7 +45,10 @@
         "WAKE_LOCK",
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE",
-        "CAMERA"
+        "CAMERA",
+        "POST_NOTIFICATIONS",
+        "SCHEDULE_EXACT_ALARM",
+        "USE_EXACT_ALARM"
       ],
       "package": "com.n2ilva.taskapp"
     },
@@ -58,7 +62,18 @@
     },
     "plugins": [
       "expo-font",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon_natal.jpeg",
+          "color": "#4A90D9",
+          "sounds": [],
+          "enableBackgroundRemoteNotifications": true
+        }
+      ],
+      "expo-task-manager",
+      "expo-background-fetch"
     ]
   }
 }

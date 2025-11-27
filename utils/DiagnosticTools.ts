@@ -143,14 +143,108 @@ import LocalStorageService from '../services/LocalStorageService';
   }
 };
 
+// ============ DIAGNÓSTICO DE NOTIFICAÇÕES ============
+
+// Função para verificar status das notificações
+(global as any).diagnoseNotifications = async function() {
+  console.log('🔔 Iniciando diagnóstico de notificações...');
+  
+  try {
+    const NotificationService = (await import('../services/NotificationService')).default;
+    
+    const status = await NotificationService.getNotificationStatus();
+    console.log('📊 Status das notificações:', status);
+    
+    const scheduled = await NotificationService.listScheduledNotifications();
+    console.log(`📋 ${scheduled.length} notificações agendadas`);
+    
+    // Verificar se está no Expo Go
+    try {
+      const Constants = require('expo-constants');
+      const isExpoGo = Constants?.appOwnership === 'expo';
+      if (isExpoGo) {
+        console.warn('⚠️ ATENÇÃO: Você está usando o Expo Go!');
+        console.warn('   Notificações agendadas podem NÃO funcionar quando o app está fechado.');
+        console.warn('   Para notificações confiáveis, crie um Development Build:');
+        console.warn('   npx expo run:android ou npx expo run:ios');
+      } else {
+        console.log('✅ Você está usando um Development Build/Standalone.');
+        console.log('   Notificações agendadas devem funcionar quando o app está fechado.');
+      }
+    } catch (e) {
+      console.log('ℹ️ Não foi possível verificar se está no Expo Go');
+    }
+    
+    return {
+      success: true,
+      status,
+      scheduledCount: scheduled.length,
+      scheduled
+    };
+  } catch (error) {
+    console.error('💥 Erro no diagnóstico:', error);
+    return { success: false, error };
+  }
+};
+
+// Função para testar notificação imediata
+(global as any).testNotification = async function() {
+  console.log('🧪 Enviando notificação de teste...');
+  
+  try {
+    const NotificationService = (await import('../services/NotificationService')).default;
+    const id = await NotificationService.sendTestNotification();
+    
+    if (id) {
+      console.log('✅ Notificação de teste enviada com sucesso! ID:', id);
+    } else {
+      console.error('❌ Falha ao enviar notificação de teste');
+    }
+    
+    return { success: !!id, id };
+  } catch (error) {
+    console.error('💥 Erro ao enviar teste:', error);
+    return { success: false, error };
+  }
+};
+
+// Função para testar notificação agendada (5 segundos)
+(global as any).testScheduledNotification = async function(seconds = 5) {
+  console.log(`⏰ Agendando notificação de teste para ${seconds} segundos...`);
+  console.log('   FECHE O APP AGORA para testar se funciona em background!');
+  
+  try {
+    const NotificationService = (await import('../services/NotificationService')).default;
+    const id = await NotificationService.sendDelayedTestNotification(seconds);
+    
+    if (id) {
+      console.log(`✅ Notificação agendada! ID: ${id}`);
+      console.log(`   Você deve receber em ${seconds} segundos.`);
+    } else {
+      console.error('❌ Falha ao agendar notificação de teste');
+    }
+    
+    return { success: !!id, id };
+  } catch (error) {
+    console.error('💥 Erro ao agendar teste:', error);
+    return { success: false, error };
+  }
+};
+
 console.log(`
 🔧 Utilitários de diagnóstico carregados!
 
 Use no console:
-- diagnoseFirebasePermissions() - Diagnóstico completo
+- diagnoseFirebasePermissions() - Diagnóstico completo de permissões
 - fixFamilyPermissions('familyId') - Corrigir permissões de uma família
 - listCacheData() - Listar dados em cache
 
+🔔 Diagnóstico de Notificações:
+- diagnoseNotifications() - Ver status das notificações
+- testNotification() - Enviar notificação imediata
+- testScheduledNotification(30) - Agendar notificação em 30 segundos
+
 Exemplo:
-> await diagnoseFirebasePermissions()
+> await diagnoseNotifications()
+> await testScheduledNotification(10) // Depois FECHE O APP
 `);

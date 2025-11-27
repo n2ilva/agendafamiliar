@@ -181,12 +181,36 @@ export async function initialize() {
       handleNotification: async () => ({
         shouldShowAlert: true,
         shouldPlaySound: true,
-        shouldSetBadge: false,
+        shouldSetBadge: true,
+        priority: Notifications.AndroidNotificationPriority.MAX,
       }),
     } as any);
 
-    const { status } = await Notifications.requestPermissionsAsync();
-    const granted = status === 'granted';
+    // Verificar permissões existentes primeiro
+    const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    
+    let finalStatus = existingStatus;
+    
+    // Se não tiver permissão, solicitar
+    if (existingStatus !== 'granted') {
+      const { status } = await Notifications.requestPermissionsAsync({
+        ios: {
+          allowAlert: true,
+          allowBadge: true,
+          allowSound: true,
+          allowAnnouncements: true,
+          allowCriticalAlerts: true,
+        },
+        android: {
+          allowAlert: true,
+          allowBadge: true,
+          allowSound: true,
+        },
+      });
+      finalStatus = status;
+    }
+    
+    const granted = finalStatus === 'granted';
     
     console.log('[Notifications] Permissões mobile:', granted ? '✅ Concedidas' : '⚠️ Negadas');
     
@@ -197,6 +221,12 @@ export async function initialize() {
 
     await ensureAndroidChannel();
     await registerNotificationHandlers();
+    
+    // Verificar se há notificações agendadas e logar para debug
+    if (__DEV__) {
+      const scheduledNotifications = await Notifications.getAllScheduledNotificationsAsync();
+      console.log(`[Notifications] 📅 ${scheduledNotifications.length} notificações agendadas atualmente`);
+    }
     
     console.log('✅ [Notifications] Inicialização concluída com sucesso');
     return { granted: true };
@@ -427,7 +457,14 @@ async function scheduleNotification(
   channelId: string
 ): Promise<string | null> {
   try {
-    const content: any = {
+    // Validar que a data é no futuro
+    const now = new Date();
+    if (fireAt <= now) {
+      console.warn(`[Notifications] ⚠️ Tentativa de agendar no passado: ${type}`);
+      return null;
+    }
+
+    const content: Notifications.NotificationContentInput = {
       title,
       body,
       data: { taskId, type, notificationType: type },
@@ -435,29 +472,36 @@ async function scheduleNotification(
     };
 
     if (Platform.OS === 'android') {
-      content.android = {
-        channelId,
-        priority: channelId === 'tasks-overdue' 
-          ? Notifications.AndroidNotificationPriority.MAX
-          : Notifications.AndroidNotificationPriority.HIGH,
-      };
+      content.priority = channelId === 'tasks-overdue' 
+        ? Notifications.AndroidNotificationPriority.MAX
+        : Notifications.AndroidNotificationPriority.HIGH;
+      (content as any).channelId = channelId;
+      // Sticky notification para tarefas vencidas
+      if (channelId === 'tasks-overdue') {
+        (content as any).sticky = true;
+        (content as any).autoDismiss = false;
+      }
     }
 
     if (Platform.OS === 'ios' && channelId === 'tasks-overdue') {
-      content.relevanceScore = 1.0;
+      (content as any).relevanceScore = 1.0;
+      (content as any).interruptionLevel = 'timeSensitive';
     }
 
+    // Usar trigger baseado em segundos para maior precisão
+    const secondsFromNow = Math.floor((fireAt.getTime() - now.getTime()) / 1000);
+    
     const trigger: Notifications.NotificationTriggerInput = {
-      date: fireAt,
-      type: (Notifications as any).SchedulableTriggerInputTypes?.DATE || 'date',
-    } as any;
+      seconds: secondsFromNow,
+      type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+    };
 
     const id = await Notifications.scheduleNotificationAsync({
       content,
       trigger,
     });
 
-    console.log(`✅ [Notifications] Agendada: ${type} para ${fireAt.toLocaleString('pt-BR')}`);
+    console.log(`✅ [Notifications] Agendada: ${type} para ${fireAt.toLocaleString('pt-BR')} (em ${secondsFromNow}s) - ID: ${id}`);
     return id;
   } catch (e) {
     console.warn(`[Notifications] Falha ao agendar ${type}:`, e);
@@ -952,6 +996,168 @@ export async function openNotificationSettings() {
   }
 }
 
+// ============ FUNÇÕES DE DIAGNÓSTICO ============
+
+// Função para verificar o status atual das notificações
+export async function getNotificationStatus(): Promise<{
+  permissionGranted: boolean;
+  scheduledCount: number;
+  channelsConfigured: boolean;
+}> {
+  if (Platform.OS === 'web') {
+    return {
+      permissionGranted: (window as any).Notification?.permission === 'granted',
+      scheduledCount: Object.keys(webTimeouts).length,
+      channelsConfigured: false,
+    };
+  }
+
+  try {
+    const { status } = await Notifications.getPermissionsAsync();
+    const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+    
+    let channelsConfigured = true;
+    if (Platform.OS === 'android') {
+      const defaultChannel = await Notifications.getNotificationChannelAsync('tasks-default');
+      const overdueChannel = await Notifications.getNotificationChannelAsync('tasks-overdue');
+      channelsConfigured = !!(defaultChannel && overdueChannel);
+    }
+
+    return {
+      permissionGranted: status === 'granted',
+      scheduledCount: scheduled.length,
+      channelsConfigured,
+    };
+  } catch (e) {
+    console.warn('[Notifications] Erro ao obter status:', e);
+    return {
+      permissionGranted: false,
+      scheduledCount: 0,
+      channelsConfigured: false,
+    };
+  }
+}
+
+// Função para listar todas as notificações agendadas (para debug)
+export async function listScheduledNotifications(): Promise<Notifications.NotificationRequest[]> {
+  if (Platform.OS === 'web') {
+    console.log('[Notifications][Web] Timeouts ativos:', Object.keys(webTimeouts));
+    return [];
+  }
+
+  try {
+    const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+    console.log(`[Notifications] 📋 ${scheduled.length} notificações agendadas:`);
+    scheduled.forEach((notif, index) => {
+      const trigger = notif.trigger as any;
+      const triggerDate = trigger?.value ? new Date(trigger.value) : null;
+      console.log(`  ${index + 1}. ${notif.content.title} - ${triggerDate?.toLocaleString('pt-BR') || 'trigger desconhecido'}`);
+    });
+    return scheduled;
+  } catch (e) {
+    console.warn('[Notifications] Erro ao listar notificações:', e);
+    return [];
+  }
+}
+
+// Função para enviar uma notificação de teste imediata
+export async function sendTestNotification(): Promise<string | null> {
+  if (Platform.OS === 'web') {
+    try {
+      if ((window as any).Notification?.permission === 'granted') {
+        new (window as any).Notification('🧪 Teste de Notificação', { 
+          body: 'Se você está vendo isso, as notificações estão funcionando!',
+        });
+        return 'web-test';
+      }
+    } catch (e) {
+      console.warn('[Notifications][Web] Erro no teste:', e);
+    }
+    return null;
+  }
+
+  try {
+    const id = await Notifications.scheduleNotificationAsync({
+      content: {
+        title: '🧪 Teste de Notificação',
+        body: 'Se você está vendo isso, as notificações estão funcionando!',
+        sound: 'default',
+      },
+      trigger: null, // Imediato
+    });
+    console.log('[Notifications] ✅ Notificação de teste enviada:', id);
+    return id;
+  } catch (e) {
+    console.warn('[Notifications] Erro ao enviar teste:', e);
+    return null;
+  }
+}
+
+// Função para agendar uma notificação de teste em 5 segundos
+export async function sendDelayedTestNotification(delaySeconds: number = 5): Promise<string | null> {
+  if (Platform.OS === 'web') {
+    try {
+      if ((window as any).Notification?.permission === 'granted') {
+        setTimeout(() => {
+          new (window as any).Notification('⏰ Teste Agendado', { 
+            body: `Esta notificação foi agendada há ${delaySeconds} segundos!`,
+          });
+        }, delaySeconds * 1000);
+        return 'web-delayed-test';
+      }
+    } catch (e) {
+      console.warn('[Notifications][Web] Erro no teste agendado:', e);
+    }
+    return null;
+  }
+
+  try {
+    const id = await Notifications.scheduleNotificationAsync({
+      content: {
+        title: '⏰ Teste Agendado',
+        body: `Esta notificação foi agendada há ${delaySeconds} segundos!`,
+        sound: 'default',
+      },
+      trigger: {
+        seconds: delaySeconds,
+        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+      },
+    });
+    console.log(`[Notifications] ✅ Notificação de teste agendada para ${delaySeconds}s:`, id);
+    return id;
+  } catch (e) {
+    console.warn('[Notifications] Erro ao agendar teste:', e);
+    return null;
+  }
+}
+
+// Cancelar todas as notificações agendadas (útil para reset)
+export async function cancelAllNotifications(): Promise<void> {
+  if (Platform.OS === 'web') {
+    Object.keys(webTimeouts).forEach(taskId => {
+      const timeouts = webTimeouts[taskId];
+      if (timeouts) {
+        Object.values(timeouts).forEach(timeoutId => {
+          if (timeoutId) clearTimeout(timeoutId);
+        });
+      }
+    });
+    // Limpar o objeto
+    Object.keys(webTimeouts).forEach(key => delete webTimeouts[key]);
+    await AsyncStorage.removeItem(STORAGE_KEY_WEB);
+    console.log('[Notifications][Web] Todas as notificações canceladas');
+    return;
+  }
+
+  try {
+    await Notifications.cancelAllScheduledNotificationsAsync();
+    await setMap({});
+    console.log('[Notifications] ✅ Todas as notificações canceladas');
+  } catch (e) {
+    console.warn('[Notifications] Erro ao cancelar todas:', e);
+  }
+}
+
 /*
 Recomendações de otimização para notificações nativas (mobile):
 
@@ -989,6 +1195,12 @@ const NotificationService = {
   cancelSubtaskReminder,
   cancelAllSubtaskReminders,
   openNotificationSettings,
+  // Funções de diagnóstico
+  getNotificationStatus,
+  listScheduledNotifications,
+  sendTestNotification,
+  sendDelayedTestNotification,
+  cancelAllNotifications,
 };
 
 export default NotificationService;
