@@ -984,22 +984,19 @@ export async function sendOverdueTaskNotification(task: any) {
     }
 
     // Agendar a notificação para aparecer em 2 segundos
-    // Isso garante que funciona mesmo com app fechado (persistente no sistema)
-    const triggerDate = new Date(Date.now() + 2000);
-    
+    // Usar TIME_INTERVAL que é mais confiável com app fechado
     const id = await Notifications.scheduleNotificationAsync({ 
       content, 
       trigger: {
-        date: triggerDate,
-        type: (Notifications as any).SchedulableTriggerInputTypes?.DATE || 'date',
-      } as any,
+        seconds: 2,
+        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+      },
     });
     
     console.log('[Notifications] Notificação de tarefa vencida agendada:', { 
       id, 
       taskId: task.id, 
       title: task.title,
-      scheduleFor: triggerDate.toLocaleString('pt-BR')
     });
     return id;
   } catch (e) {
