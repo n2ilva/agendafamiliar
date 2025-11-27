@@ -72,6 +72,17 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [filter, setFilter] = useState<CalendarFilter>('all');
   
+  // Estados de expansão das seções (minimizado por padrão)
+  const [expandedSections, setExpandedSections] = useState<{
+    pending: boolean;
+    overdue: boolean;
+    completed: boolean;
+  }>({
+    pending: false,
+    overdue: false,
+    completed: false,
+  });
+  
   const { 
     markedDates, 
     monthHolidays, 
@@ -88,8 +99,17 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
     if (visible) {
       setCalendarMonth(new Date());
       setFilter('all');
+      setExpandedSections({ pending: false, overdue: false, completed: false });
     }
   }, [visible]);
+
+  // Toggle expansão de uma seção
+  const toggleSection = (section: 'pending' | 'overdue' | 'completed') => {
+    setExpandedSections(prev => ({
+      ...prev,
+      [section]: !prev[section],
+    }));
+  };
 
   // Renderizar filtros
   const renderFilters = () => (
@@ -426,15 +446,28 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
                         {/* Pendentes (em primeiro) */}
                         {pendingTasks.length > 0 && (
                           <View style={localStyles.taskSection}>
-                            <View style={localStyles.taskSectionHeader}>
+                            <TouchableOpacity 
+                              style={localStyles.taskSectionHeader}
+                              onPress={() => toggleSection('pending')}
+                              activeOpacity={0.7}
+                            >
                               <MaterialCommunityIcons name="clock-outline" size={16} color="#4CAF50" />
-                              <Text style={[localStyles.taskSectionTitle, { color: '#4CAF50' }]}>
+                              <Text style={[localStyles.taskSectionTitle, { color: '#4CAF50', flex: 1 }]}>
                                 Pendentes ({pendingTasks.length})
                               </Text>
-                            </View>
-                            {pendingTasks.slice(0, 5).map(renderTask)}
-                            {pendingTasks.length > 5 && (
-                              <Text style={localStyles.moreTasksText}>+ {pendingTasks.length - 5} outras</Text>
+                              <MaterialCommunityIcons 
+                                name={expandedSections.pending ? 'chevron-up' : 'chevron-down'} 
+                                size={20} 
+                                color="#4CAF50" 
+                              />
+                            </TouchableOpacity>
+                            {expandedSections.pending && (
+                              <>
+                                {pendingTasks.slice(0, 10).map(renderTask)}
+                                {pendingTasks.length > 10 && (
+                                  <Text style={localStyles.moreTasksText}>+ {pendingTasks.length - 10} outras</Text>
+                                )}
+                              </>
                             )}
                           </View>
                         )}
@@ -442,15 +475,28 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
                         {/* Vencidas */}
                         {overdueTasks.length > 0 && (
                           <View style={localStyles.taskSection}>
-                            <View style={localStyles.taskSectionHeader}>
+                            <TouchableOpacity 
+                              style={localStyles.taskSectionHeader}
+                              onPress={() => toggleSection('overdue')}
+                              activeOpacity={0.7}
+                            >
                               <MaterialCommunityIcons name="alert-circle" size={16} color={APP_COLORS.status.error} />
-                              <Text style={[localStyles.taskSectionTitle, { color: APP_COLORS.status.error }]}>
+                              <Text style={[localStyles.taskSectionTitle, { color: APP_COLORS.status.error, flex: 1 }]}>
                                 Vencidas ({overdueTasks.length})
                               </Text>
-                            </View>
-                            {overdueTasks.slice(0, 5).map(renderTask)}
-                            {overdueTasks.length > 5 && (
-                              <Text style={localStyles.moreTasksText}>+ {overdueTasks.length - 5} outras</Text>
+                              <MaterialCommunityIcons 
+                                name={expandedSections.overdue ? 'chevron-up' : 'chevron-down'} 
+                                size={20} 
+                                color={APP_COLORS.status.error} 
+                              />
+                            </TouchableOpacity>
+                            {expandedSections.overdue && (
+                              <>
+                                {overdueTasks.slice(0, 10).map(renderTask)}
+                                {overdueTasks.length > 10 && (
+                                  <Text style={localStyles.moreTasksText}>+ {overdueTasks.length - 10} outras</Text>
+                                )}
+                              </>
                             )}
                           </View>
                         )}
@@ -458,15 +504,28 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
                         {/* Concluídas */}
                         {completedTasks.length > 0 && (
                           <View style={localStyles.taskSection}>
-                            <View style={localStyles.taskSectionHeader}>
+                            <TouchableOpacity 
+                              style={localStyles.taskSectionHeader}
+                              onPress={() => toggleSection('completed')}
+                              activeOpacity={0.7}
+                            >
                               <MaterialCommunityIcons name="check-circle" size={16} color="#2196F3" />
-                              <Text style={[localStyles.taskSectionTitle, { color: '#2196F3' }]}>
+                              <Text style={[localStyles.taskSectionTitle, { color: '#2196F3', flex: 1 }]}>
                                 Concluídas ({completedTasks.length})
                               </Text>
-                            </View>
-                            {completedTasks.slice(0, 5).map(renderTask)}
-                            {completedTasks.length > 5 && (
-                              <Text style={localStyles.moreTasksText}>+ {completedTasks.length - 5} outras</Text>
+                              <MaterialCommunityIcons 
+                                name={expandedSections.completed ? 'chevron-up' : 'chevron-down'} 
+                                size={20} 
+                                color="#2196F3" 
+                              />
+                            </TouchableOpacity>
+                            {expandedSections.completed && (
+                              <>
+                                {completedTasks.slice(0, 10).map(renderTask)}
+                                {completedTasks.length > 10 && (
+                                  <Text style={localStyles.moreTasksText}>+ {completedTasks.length - 10} outras</Text>
+                                )}
+                              </>
                             )}
                           </View>
                         )}
