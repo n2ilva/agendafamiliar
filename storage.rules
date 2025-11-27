@@ -1,53 +1,36 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    // Fotos de perfil: formato profilePictures/{userId}-{timestamp}.jpg
-    match /profilePictures/{allFiles=**} {
-      // Qualquer usuário autenticado pode ler fotos de perfil
+    
+    // ========================================
+    // FOTOS DE PERFIL
+    // Formato: profilePictures/{userId}-{timestamp}.jpg
+    // ========================================
+    match /profilePictures/{fileName} {
+      // Helper: extrai o userId do nome do arquivo (antes do primeiro "-")
+      function getFileOwnerId() {
+        return fileName.split('-')[0];
+      }
+      
+      // Leitura: qualquer usuário autenticado pode ver fotos de perfil
       allow read: if request.auth != null;
 
-      // Upload/atualização: validar tipo de arquivo e tamanho
+      // Upload: apenas o próprio usuário pode enviar sua foto
+      // Validações: tipo de imagem, tamanho máximo 5MB, nome deve começar com seu userId
       allow write: if request.auth != null
+                   && request.auth.uid == getFileOwnerId()
                    && request.resource != null
-                   && request.resource.contentType.matches('image/.*')
-                   && request.resource.size < 5 * 1024 * 1024; // Limite de 5MB
+                   && request.resource.contentType.matches('image/(jpeg|png|gif|webp)')
+                   && request.resource.size < 5 * 1024 * 1024;
 
-      // Deletar: apenas usuários autenticados (deletarão suas próprias fotos pelo código)
-      allow delete: if request.auth != null;
+      // Deletar: apenas o próprio usuário pode deletar sua foto
+      allow delete: if request.auth != null
+                    && request.auth.uid == getFileOwnerId();
     }
 
-    // Documentos e arquivos: formato documents/{userId}/{filename}
-    match /documents/{userId}/{allFiles=**} {
-      // Leitura: apenas o dono do arquivo
-      allow read: if request.auth != null && request.auth.uid == userId;
-
-      // Upload: apenas o dono do arquivo, com limite de 50MB
-      allow write: if request.auth != null 
-                   && request.auth.uid == userId
-                   && request.resource != null
-                   && request.resource.size < 50 * 1024 * 1024;
-
-      // Deleção: apenas o dono do arquivo
-      allow delete: if request.auth != null && request.auth.uid == userId;
-    }
-
-    // Arquivos compartilhados da família: formato familyShared/{familyId}/{filename}
-    // Requer validação de membro da família no Firestore (segurança em camadas)
-    match /familyShared/{familyId}/{allFiles=**} {
-      // Leitura: qualquer usuário autenticado (validação adicional seria via Cloud Functions)
-      // Ou restringir via Firestore rules ao verificar membership
-      allow read: if request.auth != null;
-
-      // Upload: apenas usuários autenticados com limite menor
-      allow write: if request.auth != null
-                   && request.resource != null
-                   && request.resource.size < 25 * 1024 * 1024; // 25MB para arquivos compartilhados
-
-      // Deleção: apenas usuários autenticados (será controlado em Cloud Functions)
-      allow delete: if request.auth != null;
-    }
-
-    // Bloqueia todos os outros caminhos
+    // ========================================
+    // BLOQUEIA TODOS OS OUTROS CAMINHOS
+    // ========================================
     match /{allPaths=**} {
       allow read, write: if false;
     }
