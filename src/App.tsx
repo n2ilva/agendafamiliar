@@ -21,6 +21,7 @@ function AppContent() {
     loading,
     familyConfigured,
     appIsReady,
+    isDataReady,
     setAppIsReady,
     handleLogout,
     updateUserProfile,
@@ -30,11 +31,14 @@ function AppContent() {
 
   const { colors, activeTheme } = useTheme();
 
+  // App só está pronto quando loading = false E dados estão prontos
+  const isFullyReady = !loading && isDataReady;
+
   useEffect(() => {
-    if (!loading && !appIsReady) {
+    if (isFullyReady && !appIsReady) {
       setAppIsReady(true);
     }
-  }, [loading, appIsReady, setAppIsReady]);
+  }, [isFullyReady, appIsReady, setAppIsReady]);
 
   useEffect(() => {
     if (appIsReady) {
@@ -56,7 +60,7 @@ function AppContent() {
         <SyncSystemBarsAndroid backgroundColor={colors.background} theme={activeTheme} />
       )}
       <SafeAreaProvider>
-        {loading ? (
+        {!isFullyReady ? (
           <LoadingScreen colors={colors} />
         ) : user ? (
           familyConfigured ? (

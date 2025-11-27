@@ -121,13 +121,13 @@ export const remoteTaskToTask = (remoteTask: RemoteTask): Task => {
 export function useTasks(user: any, currentFamily: any, isOffline: boolean) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [pendingSyncIds, setPendingSyncIds] = useState<string[]>([]);
-  const { isAuthReady } = useAuth();
+  const { isAuthReady, isDataReady } = useAuth();
   
   // Carregar tarefas
   const loadTasks = useCallback(async () => {
-    // Aguardar Firebase Auth estar pronto antes de carregar
-    if (!user?.id || !isAuthReady) {
-      logger.debug('TASKS_LOAD', 'Aguardando autenticação completa antes de carregar tarefas');
+    // Aguardar Firebase Auth e dados estarem prontos antes de carregar
+    if (!user?.id || !isAuthReady || !isDataReady) {
+      logger.debug('TASKS_LOAD', 'Aguardando autenticação e dados completos antes de carregar tarefas');
       return;
     }
 
@@ -164,14 +164,14 @@ export function useTasks(user: any, currentFamily: any, isOffline: boolean) {
     } catch (error) {
       logger.error('TASKS_LOAD', 'Erro ao carregar tarefas', error);
     }
-  }, [user?.id, currentFamily?.id, isOffline, isAuthReady]);
+  }, [user?.id, currentFamily?.id, isOffline, isAuthReady, isDataReady]);
 
   // Recarregar quando dependências mudam
   useEffect(() => {
-    if (isAuthReady) {
+    if (isAuthReady && isDataReady) {
       loadTasks();
     }
-  }, [loadTasks, isAuthReady]);
+  }, [loadTasks, isAuthReady, isDataReady]);
 
   return {
     tasks,

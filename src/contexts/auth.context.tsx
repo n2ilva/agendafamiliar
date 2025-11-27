@@ -5,6 +5,8 @@ import LocalAuthService from '../services/auth/local-auth.service';
 import familyService from '../services/family/local-family.service';
 import BackgroundSyncService from '../services/sync/background-sync.service';
 import ConnectivityService from '../services/sync/connectivity.service';
+import SyncService from '../services/sync/sync.service';
+import LocalStorageService from '../services/storage/local-storage.service';
 import Alert from '../utils/helpers/alert';
 
 const USER_STORAGE_KEY = 'familyApp_currentUser';
@@ -21,6 +23,7 @@ interface AuthContextData {
   familyConfigured: boolean;
   appIsReady: boolean;
   isAuthReady: boolean; // Indica se Firebase Auth está totalmente inicializado
+  isDataReady: boolean; // Indica se todos os dados foram carregados/sincronizados
   updateUserProfile: (payload: UserUpdatePayload) => Promise<void>;
   handleLogout: () => Promise<void>;
   handleFamilySetup: (familyId: string) => Promise<void>;
@@ -36,6 +39,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [familyConfigured, setFamilyConfigured] = useState(false);
   const [appIsReady, setAppIsReady] = useState(false);
   const [isAuthReady, setIsAuthReady] = useState(false); // Firebase Auth inicializado
+  const [isDataReady, setIsDataReady] = useState(false); // Dados sincronizados
 
   // ============= STORAGE OPERATIONS =============
   const saveUserToStorage = useCallback(async (userData: FamilyUser) => {
@@ -55,6 +59,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error('Erro ao remover usuário:', error);
     }
   }, []);
+
+  // ============= PRE-LOAD DATA =============
+  // Carrega e sincroniza todos os dados antes de mostrar a tela principal
+  const preloadData = async (userData: FamilyUser) => {
+    console.log('🔄 Pré-carregando dados...');
+    
+    try {
+      // 1. Limpar cache de tarefas antigas
+      console.log('🧹 Limpando tarefas antigas do cache...');
+      await LocalStorageService.clearOldCompletedTasks(7);
+      
+      // 2. Se tiver família e estiver online, sincronizar tarefas
+      if (userData.familyId) {
+        const isOnline = await ConnectivityService.isOnline();
+        
+        if (isOnline) {
+          console.log('📡 Sincronizando dados com Firebase...');
+          try {
+            // Forçar sync completo das tarefas
+            await SyncService.forceFullSync(userData.id, userData.familyId);
+            console.log('✅ Sincronização completa');
+          } catch (syncError) {
+            console.warn('⚠️ Erro na sincronização, usando cache local:', syncError);
+          }
+        } else {
+          console.log('📴 Offline - usando dados do cache');
+        }
+      }
+      
+      console.log('✅ Pré-carregamento concluído');
+    } catch (error) {
+      console.warn('⚠️ Erro no pré-carregamento (continuando com cache):', error);
+    }
+    
+    setIsDataReady(true);
+  };
 
   // ============= FAMILY SYNC =============
   const syncUserFamily = async (userData: FamilyUser): Promise<boolean> => {
@@ -138,14 +178,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const isFamilyConfigured = await syncUserFamily(userData);
         await saveUserToStorage(userData);
         
+        // Pré-carregar dados antes de mostrar a tela
+        await preloadData(userData);
+        
         setUser(userData);
         setFamilyConfigured(isFamilyConfigured);
         setLoading(false);
       } else {
+        setIsDataReady(true); // Sem usuário, dados estão "prontos"
         setLoading(false);
       }
     } catch (error) {
       console.error('Erro ao carregar usuário:', error);
+      setIsDataReady(true);
       setLoading(false);
     }
   };
@@ -168,6 +213,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.log('🚪 Auth indica logout');
         setUser(null);
         setFamilyConfigured(false);
+        setIsDataReady(true);
         setLoading(false);
         await removeUserFromStorage();
         return;
@@ -182,6 +228,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const isFamilyConfigured = await syncUserFamily(authUser);
         await saveUserToStorage(authUser);
         
+        // Pré-carregar dados antes de mostrar a tela
+        await preloadData(authUser);
+        
         setUser(authUser);
         setFamilyConfigured(isFamilyConfigured);
         setLoading(false);
@@ -189,6 +238,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.error('Erro ao processar autenticação:', error);
         setUser(authUser);
         setFamilyConfigured(!!authUser.familyId);
+        setIsDataReady(true);
         setLoading(false);
       }
     });
@@ -325,6 +375,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       familyConfigured,
       appIsReady,
       isAuthReady,
+      isDataReady,
       updateUserProfile,
       handleLogout,
       handleFamilySetup,
