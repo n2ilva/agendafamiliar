@@ -5,7 +5,8 @@
     "module": "esnext",
     "target": "esnext",
     "lib": [
-      "esnext"
+      "esnext",
+      "dom"
     ],
     "baseUrl": ".",
     "paths": {
@@ -27,8 +28,7 @@
     "**/*.tsx"
   ],
   "exclude": [
-    "node_modules",
-    "utils/holidays.ts"
+    "node_modules"
   ],
   "extends": "expo/tsconfig.base.json"
 }
