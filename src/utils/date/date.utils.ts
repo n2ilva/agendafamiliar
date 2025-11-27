@@ -142,6 +142,18 @@ export const getNextRecurrenceDate = (currentDate: Date, repeatType: string, cus
       console.log('📅 Próxima data (mensal):', nextDate);
       break;
 
+    case 'yearly':
+      // Para tarefa anual, adiciona 1 ano
+      nextDate.setFullYear(nextDate.getFullYear() + 1);
+      console.log('📅 Próxima data (anual):', nextDate);
+      break;
+
+    case 'biweekly':
+      // Para tarefa quinzenal, adiciona 15 dias
+      nextDate.setDate(nextDate.getDate() + 15);
+      console.log('📅 Próxima data (quinzenal):', nextDate);
+      break;
+
     case 'weekends':
       // Próximo fim de semana (sábado ou domingo)
       const currentDay = nextDate.getDay(); // 0 = domingo, 6 = sábado

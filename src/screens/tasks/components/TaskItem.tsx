@@ -30,12 +30,40 @@ const getRepeatText = (repeatConfig: RepeatConfig): string => {
         }
         case RepeatType.MONTHLY:
             return 'Mensal';
+        case RepeatType.YEARLY:
+            return 'Anual';
+        case RepeatType.BIWEEKLY:
+            return 'Quinzenal';
         case RepeatType.INTERVAL: {
             const interval = repeatConfig.intervalDays || 1;
             return `A cada ${interval} dia${interval > 1 ? 's' : ''}`;
         }
         default:
             return 'Recorrente';
+    }
+};
+
+// Helper para obter ícone e cor do tipo de recorrência
+const getRepeatIcon = (repeatConfig: RepeatConfig): { icon: string; label: string } => {
+    switch (repeatConfig.type) {
+        case RepeatType.NONE:
+            return { icon: '', label: '' };
+        case RepeatType.DAILY:
+            return { icon: 'today', label: 'Diário' };
+        case RepeatType.WEEKENDS:
+            return { icon: 'sunny', label: 'Fins de semana' };
+        case RepeatType.CUSTOM:
+            return { icon: 'calendar', label: 'Semanal' };
+        case RepeatType.MONTHLY:
+            return { icon: 'calendar-outline', label: 'Mensal' };
+        case RepeatType.YEARLY:
+            return { icon: 'gift', label: 'Anual' };
+        case RepeatType.BIWEEKLY:
+            return { icon: 'repeat', label: 'Quinzenal' };
+        case RepeatType.INTERVAL:
+            return { icon: 'time', label: 'Intervalo' };
+        default:
+            return { icon: 'repeat', label: 'Recorrente' };
     }
 };
 
@@ -51,6 +79,7 @@ interface TaskItemProps {
     onPostpone: () => void;
     onEdit: () => void;
     onDelete: () => void;
+    onSkipOccurrence?: () => void; // Pular ocorrência de tarefa recorrente
     activeTab: 'today' | 'upcoming';
     familyMembers: FamilyUser[];
     myEffectivePerms?: MemberPermissions | null;
@@ -68,12 +97,14 @@ export const TaskItem: React.FC<TaskItemProps> = ({
     onPostpone,
     onEdit,
     onDelete,
+    onSkipOccurrence,
     activeTab,
     familyMembers,
     myEffectivePerms,
 }) => {
     const styles = useMemo(() => getStyles(activeTheme), [activeTheme]);
     const repeatConfig = useMemo(() => getRepeat(item), [item]);
+    const repeatInfo = useMemo(() => getRepeatIcon(repeatConfig), [repeatConfig]);
 
     // Verificar se a tarefa está vencida
     const isOverdue = useMemo(() => {
@@ -196,12 +227,14 @@ return (
                     {categoryConfig.name}
                 </Text>
                 {repeatConfig.type !== RepeatType.NONE && (
-                    <Ionicons
-                        name="repeat"
-                        size={12}
-                        color={categoryConfig.color}
-                        style={{ marginLeft: 4 }}
-                    />
+                    <View style={styles.repeatBadge}>
+                        <Ionicons
+                            name={repeatInfo.icon as any}
+                            size={10}
+                            color={APP_COLORS.text.white}
+                        />
+                        <Text style={styles.repeatBadgeText}>{repeatInfo.label}</Text>
+                    </View>
                 )}
             </View>
             {/* Lado direito do header: cadeado (se privado) + botão de expandir */}
@@ -261,6 +294,20 @@ return (
                                         name={isTaskUnlocked ? "lock-open-outline" : "lock-closed-outline"}
                                         size={22}
                                         color={isTaskUnlocked ? APP_COLORS.primary.main : APP_COLORS.text.light}
+                                    />
+                                </Pressable>
+                            )}
+
+                            {/* Botão de Pular Ocorrência - visível apenas para tarefas recorrentes não concluídas */}
+                            {repeatConfig.type !== RepeatType.NONE && !item.completed && onSkipOccurrence && (
+                                <Pressable
+                                    onPress={onSkipOccurrence}
+                                    style={styles.unlockIconButton}
+                                >
+                                    <Ionicons
+                                        name="play-skip-forward-outline"
+                                        size={22}
+                                        color={APP_COLORS.text.light}
                                     />
                                 </Pressable>
                             )}
@@ -752,5 +799,20 @@ const getStyles = (activeTheme: string) => StyleSheet.create({
         justifyContent: 'center',
         flexDirection: 'row',
         gap: 4,
+    },
+    repeatBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: APP_COLORS.primary.main,
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: 10,
+        marginLeft: 6,
+        gap: 3,
+    },
+    repeatBadgeText: {
+        fontSize: 9,
+        fontWeight: '600',
+        color: APP_COLORS.text.white,
     },
 });

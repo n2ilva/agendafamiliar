@@ -20,6 +20,8 @@ export enum RepeatType {
   WEEKENDS = 'weekends',
   CUSTOM = 'custom',
   MONTHLY = 'monthly',
+  YEARLY = 'yearly',
+  BIWEEKLY = 'biweekly',
   INTERVAL = 'interval'
 }
 
@@ -28,6 +30,7 @@ export interface RepeatConfig {
   days?: number[];
   intervalDays?: number;
   durationMonths?: number;
+  endDate?: Date | string; // Data de término específica (alternativa a durationMonths)
 }
 
 export interface FamilyUser {
@@ -147,8 +150,9 @@ export interface Task {
   completedAt?: Date | string;
   dueDate?: Date;
   dueTime?: Date; // horário específico da tarefa
-  repeatOption?: 'nenhum' | 'diario' | 'semanal' | 'mensal' | 'intervalo';
+  repeatOption?: 'nenhum' | 'diario' | 'semanal' | 'mensal' | 'anual' | 'quinzenal' | 'intervalo';
   repeatDays?: number[]; // dias da semana (0-6) quando repeatOption for 'semanal'
+  repeatEndDate?: Date | string; // data de término específica
   // recorrência por intervalo
   repeatIntervalDays?: number; // a cada X dias
   repeatDurationMonths?: number; // duração em meses (0 = sem limite)

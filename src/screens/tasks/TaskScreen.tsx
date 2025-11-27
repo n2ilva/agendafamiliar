@@ -68,6 +68,18 @@ import { useTasks, taskToRemoteTask, remoteTaskToTask } from '../../hooks/use-ta
 import { getStyles } from './styles';
 import { HISTORY_DAYS_TO_KEEP, LocalTask, HistoryItem, TaskScreenProps } from './types';
 
+// Helper para mapear RepeatType para repeatOption
+const repeatTypeToOption = (rt: RepeatType): Task['repeatOption'] => {
+  switch (rt) {
+    case RepeatType.DAILY: return 'diario';
+    case RepeatType.MONTHLY: return 'mensal';
+    case RepeatType.YEARLY: return 'anual';
+    case RepeatType.BIWEEKLY: return 'quinzenal';
+    case RepeatType.CUSTOM: return 'semanal';
+    case RepeatType.INTERVAL: return 'intervalo';
+    default: return 'nenhum';
+  }
+};
 export const TaskScreen: React.FC<TaskScreenProps> = ({ 
   user: propUser, 
   onLogout, 
@@ -1742,6 +1754,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
     if (repeatType === RepeatType.NONE) return 'Não repetir';
     if (repeatType === RepeatType.DAILY) return 'Repetir diariamente';
     if (repeatType === RepeatType.MONTHLY) return 'Repetir mensalmente';
+    if (repeatType === RepeatType.YEARLY) return 'Repetir anualmente';
+    if (repeatType === RepeatType.BIWEEKLY) return 'Repetir quinzenalmente';
     if (repeatType === RepeatType.CUSTOM) {
       if (customDays.length === 0) return 'Repetir semanalmente';
       const dayNames = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -1766,6 +1780,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
     today.setHours(0, 0, 0, 0);
     if (rt === RepeatType.DAILY) return today;
     if (rt === RepeatType.MONTHLY) return today;
+    if (rt === RepeatType.YEARLY) return today;
+    if (rt === RepeatType.BIWEEKLY) return today;
     if (rt === RepeatType.WEEKENDS) {
       const dow = today.getDay(); // 0=Dom,6=Sáb
       if (dow === 6 || dow === 0) return today;
@@ -1907,7 +1923,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
         // Log dos valores de repetição ao editar tarefa
         logger.debug('REPEAT', {
           repeatType,
-          repeatOption: (repeatType === RepeatType.DAILY ? 'diario' : repeatType === RepeatType.MONTHLY ? 'mensal' : repeatType === RepeatType.CUSTOM ? 'semanal' : repeatType === RepeatType.INTERVAL ? 'intervalo' : 'nenhum'),
+          repeatOption: repeatTypeToOption(repeatType),
           customDays,
           intervalDays,
           durationMonths
@@ -1927,7 +1943,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
                 dueDate: finalDueDate,
                 dueTime: finalDueTime,
                 // Persistir recorrência (formato plano)
-                repeatOption: (repeatType === RepeatType.DAILY ? 'diario' : repeatType === RepeatType.MONTHLY ? 'mensal' : repeatType === RepeatType.CUSTOM ? 'semanal' : repeatType === RepeatType.INTERVAL ? 'intervalo' : 'nenhum') as Task['repeatOption'],
+                repeatOption: repeatTypeToOption(repeatType),
                 repeatDays: repeatType === RepeatType.CUSTOM ? customDays : undefined,
                 repeatIntervalDays: repeatType === RepeatType.INTERVAL ? intervalDays || 1 : undefined,
                 repeatDurationMonths: repeatType === RepeatType.INTERVAL ? durationMonths || 0 : undefined,
@@ -2153,7 +2169,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
           category: selectedCategory,
           dueDate: finalDueDate,
           dueTime: finalDueTime,
-          repeatOption: (repeatType === RepeatType.DAILY ? 'diario' : repeatType === RepeatType.MONTHLY ? 'mensal' : repeatType === RepeatType.CUSTOM ? 'semanal' : repeatType === RepeatType.INTERVAL ? 'intervalo' : 'nenhum') as Task['repeatOption'],
+          repeatOption: repeatTypeToOption(repeatType),
           repeatDays: repeatType === RepeatType.CUSTOM ? customDays : undefined,
           repeatIntervalDays: repeatType === RepeatType.INTERVAL ? intervalDays || 1 : undefined,
           repeatDurationMonths: repeatType === RepeatType.INTERVAL ? durationMonths || 0 : undefined,
@@ -2553,7 +2569,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
 
   // Funções do sistema de histórico
   const addToHistory = async (
-    action: 'created' | 'completed' | 'uncompleted' | 'edited' | 'deleted' | 'approval_requested' | 'approved' | 'rejected',
+    action: 'created' | 'completed' | 'uncompleted' | 'edited' | 'deleted' | 'approval_requested' | 'approved' | 'rejected' | 'skipped',
     taskTitle: string,
     taskId: string,
     details?: string,
@@ -3652,6 +3668,105 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
       task.id
     );
   }, [user.role, tasks]);
+
+  // Função para pular uma ocorrência de tarefa recorrente
+  const handleSkipOccurrence = useCallback(async (task: Task) => {
+    const repeatConfig = getRepeat(task);
+    
+    // Só funciona para tarefas recorrentes não concluídas
+    if (repeatConfig.type === RepeatType.NONE || task.completed) {
+      Alert.alert('Ação inválida', 'Esta ação só está disponível para tarefas recorrentes não concluídas.');
+      return;
+    }
+
+    // Confirmar ação
+    Alert.alert(
+      'Pular Ocorrência',
+      'Deseja pular esta ocorrência? A tarefa será reagendada para a próxima data sem ser marcada como concluída.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Pular',
+          onPress: async () => {
+            try {
+              // Calcular próxima data
+              let nextDate: Date;
+              if (repeatConfig.type === RepeatType.INTERVAL) {
+                const step = Math.max(1, repeatConfig.intervalDays || (task as any).repeatIntervalDays || 1);
+                nextDate = new Date(task.dueDate || new Date());
+                nextDate.setDate(nextDate.getDate() + step);
+              } else {
+                nextDate = getNextRecurrenceDate(
+                  task.dueDate || new Date(),
+                  repeatConfig.type,
+                  repeatConfig.days
+                );
+              }
+
+              // Preservar horário original
+              let nextDateTime: Date | undefined = undefined;
+              if (task.dueTime) {
+                const originalTime = safeToDate(task.dueTime);
+                if (originalTime) {
+                  nextDateTime = new Date(nextDate);
+                  nextDateTime.setHours(
+                    originalTime.getHours(),
+                    originalTime.getMinutes(),
+                    originalTime.getSeconds(),
+                    originalTime.getMilliseconds()
+                  );
+                }
+              }
+
+              // Atualizar tarefa com nova data
+              const updatedTask: Task = {
+                ...task,
+                dueDate: nextDate,
+                dueTime: nextDateTime,
+                editedBy: user.id,
+                editedByName: user.name,
+                editedAt: new Date()
+              };
+
+              // Atualizar estado local
+              const updatedTasks = tasks.map(t => t.id === task.id ? updatedTask : t);
+              setTasks(updatedTasks);
+
+              // Salvar e sincronizar
+              const remoteTask = taskToRemoteTask(updatedTask as any, currentFamily?.id);
+              await LocalStorageService.saveTask(remoteTask as any);
+              await SyncService.addOfflineOperation('update', 'tasks', remoteTask);
+
+              if (currentFamily && !isOffline) {
+                try {
+                  const toSave = { ...remoteTask, familyId: currentFamily.id } as any;
+                  await FirestoreService.saveTask(toSave);
+                  logger.debug('SYNC', `Ocorrência pulada e sincronizada: taskId=${task.id}`);
+                } catch (error) {
+                  logger.warn('SYNC', 'Erro ao sincronizar pulo de ocorrência', error);
+                }
+              }
+
+              // Reagendar notificação
+              try {
+                await NotificationService.rescheduleTaskReminder(updatedTask as any);
+              } catch (e) {
+                logger.warn('NOTIFY', 'rescheduleTaskReminder falhou', e);
+              }
+
+              // Adicionar ao histórico
+              await addToHistory('skipped', task.title, task.id);
+
+              logger.success('REPEAT', `Ocorrência pulada: ${task.title}, próxima data: ${nextDate}`);
+            } catch (error) {
+              logger.error('REPEAT', 'Erro ao pular ocorrência', error);
+              Alert.alert('Erro', 'Não foi possível pular a ocorrência.');
+            }
+          }
+        }
+      ]
+    );
+  }, [tasks, user, currentFamily, isOffline]);
 
   // Persistir alterações de subtarefas feitas no modal durante edição (salvar imediatamente)
   // FUNÇÃO DESABILITADA: Subtarefas agora só são salvas quando o botão Salvar/Adicionar da task principal é clicado
@@ -4943,14 +5058,30 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
             <Text style={[styles.categoryHeaderText, { color: categoryConfig.color }]}>
               {categoryConfig.name}
             </Text>
-            {/* Indicador de tarefa recorrente */}
+            {/* Badge de tarefa recorrente */}
             {isRecurring && (
-              <Ionicons 
-                name="repeat" 
-                size={12} 
-                color={categoryConfig.color} 
-                style={{ marginLeft: 4 }}
-              />
+              <View style={styles.repeatBadge}>
+                <Ionicons 
+                  name={
+                    repeatConfig.type === RepeatType.DAILY ? 'today' :
+                    repeatConfig.type === RepeatType.MONTHLY ? 'calendar-outline' :
+                    repeatConfig.type === RepeatType.YEARLY ? 'gift' :
+                    repeatConfig.type === RepeatType.BIWEEKLY ? 'repeat' :
+                    repeatConfig.type === RepeatType.INTERVAL ? 'time' :
+                    'calendar'
+                  } 
+                  size={10} 
+                  color={APP_COLORS.text.white} 
+                />
+                <Text style={styles.repeatBadgeText}>
+                  {repeatConfig.type === RepeatType.DAILY ? 'Diário' :
+                   repeatConfig.type === RepeatType.MONTHLY ? 'Mensal' :
+                   repeatConfig.type === RepeatType.YEARLY ? 'Anual' :
+                   repeatConfig.type === RepeatType.BIWEEKLY ? 'Quinzenal' :
+                   repeatConfig.type === RepeatType.INTERVAL ? 'Intervalo' :
+                   'Semanal'}
+                </Text>
+              </View>
             )}
           </View>
           {/* Lado direito do header: cadeado (se privado) + botão de expandir */}
@@ -5010,6 +5141,20 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
                         name={isTaskUnlocked ? "lock-open-outline" : "lock-closed-outline"} 
                         size={22} 
                         color={isTaskUnlocked ? APP_COLORS.primary.main : "#999"} 
+                      />
+                    </Pressable>
+                  )}
+                  
+                  {/* Botão de Pular Ocorrência - apenas para tarefas recorrentes */}
+                  {isRecurring && (
+                    <Pressable
+                      onPress={() => handleSkipOccurrence(item)}
+                      style={styles.unlockIconButton}
+                    >
+                      <Ionicons 
+                        name="play-skip-forward-outline" 
+                        size={22} 
+                        color="#999" 
                       />
                     </Pressable>
                   )}

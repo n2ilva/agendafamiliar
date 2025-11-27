@@ -195,6 +195,8 @@ export const TaskModal = ({
     switch (repeatType) {
       case RepeatType.DAILY: return 'Diariamente';
       case RepeatType.MONTHLY: return 'Mensalmente';
+      case RepeatType.YEARLY: return 'Anualmente';
+      case RepeatType.BIWEEKLY: return 'Quinzenalmente';
       case RepeatType.CUSTOM:
         if (customDays.length === 0) return 'Personalizado';
         const days = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -697,6 +699,34 @@ export const TaskModal = ({
                   />
                   <Text style={[styles.repeatButtonText, repeatType === RepeatType.MONTHLY && styles.repeatButtonTextActive]}>
                     Mensalmente
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  style={[styles.repeatButton, repeatType === RepeatType.YEARLY && styles.repeatButtonActive]}
+                  onPress={() => setRepeatType(RepeatType.YEARLY)}
+                >
+                  <Ionicons
+                    name="gift"
+                    size={14}
+                    color={repeatType === RepeatType.YEARLY ? APP_COLORS.text.white : APP_COLORS.text.secondary}
+                  />
+                  <Text style={[styles.repeatButtonText, repeatType === RepeatType.YEARLY && styles.repeatButtonTextActive]}>
+                    Anualmente
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  style={[styles.repeatButton, repeatType === RepeatType.BIWEEKLY && styles.repeatButtonActive]}
+                  onPress={() => setRepeatType(RepeatType.BIWEEKLY)}
+                >
+                  <Ionicons
+                    name="repeat"
+                    size={14}
+                    color={repeatType === RepeatType.BIWEEKLY ? APP_COLORS.text.white : APP_COLORS.text.secondary}
+                  />
+                  <Text style={[styles.repeatButtonText, repeatType === RepeatType.BIWEEKLY && styles.repeatButtonTextActive]}>
+                    Quinzenal
                   </Text>
                 </Pressable>
 

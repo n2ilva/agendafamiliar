@@ -13,7 +13,7 @@ export interface PendingOperation {
 
 export interface HistoryItem {
   id: string;
-  action: 'created' | 'completed' | 'uncompleted' | 'edited' | 'deleted' | 'approval_requested' | 'approved' | 'rejected';
+  action: 'created' | 'completed' | 'uncompleted' | 'edited' | 'deleted' | 'approval_requested' | 'approved' | 'rejected' | 'skipped';
   taskTitle: string;
   taskId: string;
   timestamp: Date;

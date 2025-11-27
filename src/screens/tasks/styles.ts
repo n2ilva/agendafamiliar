@@ -657,6 +657,21 @@ export const getStyles = (colors: any, activeTheme: any) => StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
+  repeatBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: APP_COLORS.primary.main,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
+    marginLeft: 2,
+    gap: 3,
+  },
+  repeatBadgeText: {
+    fontSize: 9,
+    fontWeight: '600',
+    color: APP_COLORS.text.white,
+  },
   categoryHeaderRight: {
     flexDirection: 'row',
     alignItems: 'center',

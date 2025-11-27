@@ -2,7 +2,13 @@ import { RepeatConfig, RepeatType, Task } from '../../types/family.types';
 import { AVAILABLE_EMOJIS } from '../../constants/task.constants';
 
 // Helper para converter RepeatConfig para repeatOption/repeatDays
-export const repeatConfigToOption = (repeat?: RepeatConfig): { repeatOption: 'nenhum' | 'diario' | 'semanal' | 'mensal' | 'intervalo'; repeatDays?: number[]; repeatIntervalDays?: number; repeatDurationMonths?: number } => {
+export const repeatConfigToOption = (repeat?: RepeatConfig): { 
+  repeatOption: 'nenhum' | 'diario' | 'semanal' | 'mensal' | 'anual' | 'quinzenal' | 'intervalo'; 
+  repeatDays?: number[]; 
+  repeatIntervalDays?: number; 
+  repeatDurationMonths?: number;
+  repeatEndDate?: Date | string;
+} => {
   if (!repeat || repeat.type === RepeatType.NONE) {
     return { repeatOption: 'nenhum' };
   }
@@ -15,14 +21,29 @@ export const repeatConfigToOption = (repeat?: RepeatConfig): { repeatOption: 'ne
   if (repeat.type === RepeatType.MONTHLY) {
     return { repeatOption: 'mensal' };
   }
+  if (repeat.type === RepeatType.YEARLY) {
+    return { repeatOption: 'anual' };
+  }
+  if (repeat.type === RepeatType.BIWEEKLY) {
+    return { repeatOption: 'quinzenal' };
+  }
   if (repeat.type === RepeatType.INTERVAL) {
-    return { repeatOption: 'intervalo', repeatIntervalDays: repeat.intervalDays, repeatDurationMonths: repeat.durationMonths };
+    return { 
+      repeatOption: 'intervalo', 
+      repeatIntervalDays: repeat.intervalDays, 
+      repeatDurationMonths: repeat.durationMonths,
+      repeatEndDate: repeat.endDate
+    };
   }
   return { repeatOption: 'nenhum' };
 };
 
 // Helper para criar RepeatConfig a partir de repeatOption/repeatDays
-export const optionToRepeatConfig = (repeatOption?: string, repeatDays?: number[], opts?: { repeatIntervalDays?: number; repeatDurationMonths?: number }): RepeatConfig => {
+export const optionToRepeatConfig = (
+  repeatOption?: string, 
+  repeatDays?: number[], 
+  opts?: { repeatIntervalDays?: number; repeatDurationMonths?: number; repeatEndDate?: Date | string }
+): RepeatConfig => {
   if (!repeatOption || repeatOption === 'nenhum') {
     return { type: RepeatType.NONE };
   }
@@ -35,8 +56,19 @@ export const optionToRepeatConfig = (repeatOption?: string, repeatDays?: number[
   if (repeatOption === 'mensal') {
     return { type: RepeatType.MONTHLY };
   }
+  if (repeatOption === 'anual') {
+    return { type: RepeatType.YEARLY };
+  }
+  if (repeatOption === 'quinzenal') {
+    return { type: RepeatType.BIWEEKLY };
+  }
   if (repeatOption === 'intervalo') {
-    return { type: RepeatType.INTERVAL, intervalDays: opts?.repeatIntervalDays || 1, durationMonths: opts?.repeatDurationMonths || 0 };
+    return { 
+      type: RepeatType.INTERVAL, 
+      intervalDays: opts?.repeatIntervalDays || 1, 
+      durationMonths: opts?.repeatDurationMonths || 0,
+      endDate: opts?.repeatEndDate
+    };
   }
   return { type: RepeatType.NONE };
 };
