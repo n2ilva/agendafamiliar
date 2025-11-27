@@ -127,6 +127,32 @@ class LocalStorageService {
     await this.saveOfflineData(data);
   }
 
+  // Deletar tarefa do cache local (mantém no Firebase para histórico)
+  static async deleteTaskFromCache(taskId: string): Promise<void> {
+    const data = await this.getOfflineData();
+    if (data.tasks[taskId]) {
+      delete data.tasks[taskId];
+      await this.saveOfflineData(data);
+      console.log('🗑️ Tarefa removida do cache local:', taskId);
+    }
+  }
+
+  // Deletar múltiplas tarefas do cache local
+  static async deleteTasksFromCache(taskIds: string[]): Promise<void> {
+    const data = await this.getOfflineData();
+    let count = 0;
+    for (const taskId of taskIds) {
+      if (data.tasks[taskId]) {
+        delete data.tasks[taskId];
+        count++;
+      }
+    }
+    if (count > 0) {
+      await this.saveOfflineData(data);
+      console.log(`🗑️ ${count} tarefas removidas do cache local`);
+    }
+  }
+
   // Salvar aprovação no cache
   static async saveApproval(approval: TaskApproval): Promise<void> {
     const data = await this.getOfflineData();

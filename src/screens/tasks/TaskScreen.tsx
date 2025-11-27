@@ -3375,6 +3375,10 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
             logger.debug('REPEAT', 'Recorrência por intervalo expirou pela duração definida.');
             const updated = tasks.map(t => t.id === task.id ? { ...t, completed: true, status: 'concluida' as TaskStatus } : t);
             setTasks(updated);
+            
+            // Remover do cache local pois está concluída
+            await LocalStorageService.deleteTaskFromCache(task.id);
+            console.log('🗑️ Tarefa recorrente expirada removida do cache local:', task.id);
             return;
           }
         }
@@ -3484,6 +3488,10 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
           logger.warn('NOTIFY', 'cancelTaskReminder falhou', e);
         }
         
+        // Remover tarefa concluída do cache local (mantém no Firebase para histórico)
+        await LocalStorageService.deleteTaskFromCache(task.id);
+        console.log('🗑️ Tarefa recorrente concluída removida do cache local:', task.id);
+        
         // Salvar nova tarefa no Firebase e na família imediatamente
             try {
             const remoteNextTask = taskToRemoteTask(nextTask as any, currentFamily?.id);
@@ -3550,6 +3558,10 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
         } catch (e) {
           logger.warn('NOTIFY', 'cancelTaskReminder falhou', e);
         }
+        
+        // Remover tarefa concluída do cache local (mantém no Firebase para histórico)
+        await LocalStorageService.deleteTaskFromCache(task.id);
+        console.log('🗑️ Tarefa normal concluída removida do cache local:', task.id);
       }
     } else {
       // Desmarcando como concluída (apenas para tarefas não recorrentes)
@@ -3594,7 +3606,14 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
     if (updatedTask) {
       try {
         const remoteTask = taskToRemoteTask(updatedTask as any, currentFamily?.id);
-        await LocalStorageService.saveTask(remoteTask as any);
+        
+        // Se a tarefa foi CONCLUÍDA, remover do cache local (mantém apenas no Firebase para histórico)
+        if (updatedTask.completed) {
+          await LocalStorageService.deleteTaskFromCache(updatedTask.id);
+          console.log('🗑️ Tarefa concluída removida do cache local:', updatedTask.id);
+        } else {
+          await LocalStorageService.saveTask(remoteTask as any);
+        }
         
         // Determinar se é create ou update baseado no ID
         const isTemporaryId = updatedTask.id.startsWith('temp_') || updatedTask.id === 'temp';
@@ -4038,13 +4057,16 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
           editedByName: user.name,
         };
         const remoteTask = taskToRemoteTask(updatedTask as any, currentFamily?.id);
-        await LocalStorageService.saveTask(remoteTask as any);
+        
+        // Tarefa aprovada/concluída: remover do cache local (mantém no Firebase para histórico)
+        await LocalStorageService.deleteTaskFromCache(updatedTask.id);
+        console.log('🗑️ Tarefa aprovada removida do cache local:', updatedTask.id);
+        
         await SyncService.addOfflineOperation('update', 'tasks', remoteTask);
         if (currentFamily && !isOffline) {
           try {
             const toSave = { ...remoteTask, familyId: currentFamily.id } as any;
-            const res = await FirestoreService.saveTask(toSave);
-            await LocalStorageService.saveTask({ ...toSave, id: toSave.id || (res && (res as any).id) } as any);
+            await FirestoreService.saveTask(toSave);
             } catch (e) {
               logger.warn('APPROVAL', 'Falha ao salvar aprovação/tarefa aprovada no Firestore, delegando ao FamilySyncHelper', e);
               try { await FamilySyncHelper.saveTaskToFamily(remoteTask as any, currentFamily.id, 'update'); } catch (_) {}

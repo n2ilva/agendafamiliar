@@ -132,12 +132,14 @@ export function useTasks(user: any, currentFamily: any, isOffline: boolean) {
     }
 
     try {
-      // 1. Cache Local
+      // 1. Cache Local (apenas tarefas pendentes)
       const cachedTasks = await LocalStorageService.getTasks();
       if (cachedTasks.length > 0) {
-        const localTasks = cachedTasks;
-        // Filtro de privacidade básico
-        const filtered = localTasks.filter(t => {
+        // Filtrar: apenas tarefas não concluídas + privacidade
+        const filtered = cachedTasks.filter(t => {
+          // Excluir tarefas concluídas
+          if (t.completed) return false;
+          // Filtro de privacidade
           const isPrivate = (t as any).private === true;
           return !(isPrivate && t.createdBy && t.createdBy !== user.id);
         });
@@ -149,15 +151,20 @@ export function useTasks(user: any, currentFamily: any, isOffline: boolean) {
         const familyTasks = await familyService.getFamilyTasks(currentFamily.id, user.id);
         const convertedTasks = familyTasks;
         
+        // Filtrar: não incluir tarefas concluídas na UI (vêm do Firebase apenas para sync)
+        const pendingTasks = convertedTasks.filter(t => !t.completed);
+        
         // Merge logic simplificada (pode ser refinada depois)
         setTasks(prev => {
-          const merged = new Map(prev.map(t => [t.id, t]));
-          convertedTasks.forEach(t => merged.set(t.id, t));
+          // Remover tarefas concluídas do estado anterior também
+          const pendingPrev = prev.filter(t => !t.completed);
+          const merged = new Map(pendingPrev.map(t => [t.id, t]));
+          pendingTasks.forEach(t => merged.set(t.id, t));
           return Array.from(merged.values());
         });
 
-        // Atualizar cache
-        for (const task of convertedTasks) {
+        // Atualizar cache apenas com tarefas NÃO concluídas
+        for (const task of pendingTasks) {
           await LocalStorageService.saveTask(taskToRemoteTask(task, currentFamily.id) as any);
         }
       }
