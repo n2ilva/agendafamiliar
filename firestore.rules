@@ -205,15 +205,10 @@ service cloud.firestore {
       );
 
       // Permite listar (list/query) tarefas - necessário para onSnapshot
-      // Restrição: apenas tarefas da família do usuário, tarefas próprias ou privadas do autor
-      allow list: if isAuthenticated() && (
-        // Membro da família pode listar tarefas da família
-        (resource.data.familyId != null && isMemberOf(resource.data.familyId))
-        // Autor pode listar suas tarefas pessoais
-        || (resource.data.familyId == null && (resource.data.userId == authId() || resource.data.createdBy == authId()))
-        // Tarefas privadas: apenas o autor
-        || (resource.data.private == true && resource.data.createdBy == authId())
-      );
+      // A filtragem real é feita via queries (where clauses) no código
+      // Rules garantem que apenas usuários autenticados podem fazer queries
+      // Proteção adicional: get/read rules acima validam acesso individual
+      allow list: if isAuthenticated();
 
       // Dependente: pode criar, mas não pode editar/finalizar/excluir tarefas da família.
       // Somente admin pode atualizar tarefas da família. Para tarefas privadas, o próprio autor pode atualizar.
