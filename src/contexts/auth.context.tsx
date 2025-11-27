@@ -57,6 +57,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // ============= FAMILY SYNC =============
   const syncUserFamily = async (userData: FamilyUser): Promise<boolean> => {
     try {
+      // Se já tem familyId salvo, considera configurado (otimização para abertura rápida)
+      if (userData.familyId) {
+        console.log('🏠 Usuário já possui familyId:', userData.familyId);
+        
+        // Tentar sincronizar em background, mas não bloquear
+        try {
+          const userFamily = await familyService.getUserFamily(userData.id);
+          if (userFamily) {
+            // Sincronizar role silenciosamente
+            const member = userFamily.members.find(m => m.id === userData.id);
+            if (member?.role && member.role !== userData.role) {
+              userData.role = member.role;
+              try {
+                await LocalAuthService.updateUserRole(userData.id, member.role);
+              } catch {}
+            }
+          }
+        } catch (error) {
+          console.warn('⚠️ Sync em background falhou, usando dados locais');
+        }
+        
+        return true;
+      }
+
+      // Sem familyId local, buscar no Firebase
       const userFamily = await familyService.getUserFamily(userData.id);
       
       if (!userFamily) {
@@ -65,11 +90,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       console.log('🏠 Família encontrada:', userFamily.name);
-      
-      // Atualizar familyId se necessário
-      if (!userData.familyId || userData.familyId !== userFamily.id) {
-        userData.familyId = userFamily.id;
-      }
+      userData.familyId = userFamily.id;
 
       // Sincronizar role silenciosamente
       const member = userFamily.members.find(m => m.id === userData.id);
@@ -83,6 +104,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return true;
     } catch (error) {
       console.error('❌ Erro ao sincronizar família:', error);
+      // Se já tinha familyId, considera configurado mesmo com erro
       return !!userData.familyId;
     }
   };
