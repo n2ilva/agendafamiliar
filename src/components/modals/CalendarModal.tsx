@@ -377,6 +377,10 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
                     const today = new Date();
                     today.setHours(0, 0, 0, 0);
                     
+                    // Obter mês/ano do calendário para filtrar concluídas
+                    const calendarYear = calendarMonth.getFullYear();
+                    const calendarMonthNum = calendarMonth.getMonth();
+                    
                     // Função helper para parsear data
                     const parseDate = (dueDate: any): Date | undefined => {
                       if (dueDate instanceof Date) return dueDate;
@@ -385,7 +389,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
                       return undefined;
                     };
                     
-                    // Separar tarefas por status
+                    // Pendentes: não concluídas E com data >= hoje
                     const pendingTasks = monthTasks.filter((t: any) => {
                       if (t.completed) return false;
                       const d = parseDate(t.dueDate);
@@ -395,7 +399,9 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
                       return taskDate >= today;
                     });
                     
+                    // Vencidas: não concluídas E com data < hoje
                     const overdueTasks = monthTasks.filter((t: any) => {
+                      // Só tarefas NÃO concluídas podem estar vencidas
                       if (t.completed) return false;
                       const d = parseDate(t.dueDate);
                       if (!d) return false;
@@ -404,7 +410,29 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
                       return taskDate < today;
                     });
                     
-                    const completedTasks = monthTasks.filter((t: any) => t.completed);
+                    // Concluídas: somente tarefas concluídas NO mês selecionado do calendário
+                    // (baseado na data de conclusão, não na data de vencimento)
+                    const completedTasks = monthTasks.filter((t: any) => {
+                      if (!t.completed) return false;
+                      
+                      // Verificar se foi concluída no mês do calendário
+                      const completedAt = parseDate(t.completedAt);
+                      if (completedAt) {
+                        // Se tem completedAt, verificar se está no mês do calendário
+                        return completedAt.getFullYear() === calendarYear && 
+                               completedAt.getMonth() === calendarMonthNum;
+                      }
+                      
+                      // Se não tem completedAt, usar dueDate como fallback
+                      // (tarefas antigas que foram concluídas mas sem registro de quando)
+                      const dueDate = parseDate(t.dueDate);
+                      if (dueDate) {
+                        return dueDate.getFullYear() === calendarYear && 
+                               dueDate.getMonth() === calendarMonthNum;
+                      }
+                      
+                      return false;
+                    });
                     
                     // Função para renderizar uma tarefa
                     const renderTask = (task: any) => {
