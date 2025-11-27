@@ -223,6 +223,47 @@ class LocalStorageService {
     await this.saveOfflineData(data);
   }
 
+  // Limpar tarefas concluídas há mais de X dias do cache (mesma lógica do Firestore)
+  static async clearOldCompletedTasks(daysToKeep: number = 7): Promise<number> {
+    const data = await this.getOfflineData();
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - daysToKeep);
+    
+    let removedCount = 0;
+    const filteredTasks: Record<string, Task> = {};
+    
+    Object.entries(data.tasks).forEach(([id, task]) => {
+      // Se não está concluída, mantém
+      if (!task.completed) {
+        filteredTasks[id] = task;
+        return;
+      }
+      
+      // Se está concluída, verificar data de conclusão
+      const completedAt = safeToDate((task as any).completedAt);
+      if (!completedAt) {
+        // Sem data de conclusão, mantém por segurança
+        filteredTasks[id] = task;
+        return;
+      }
+      
+      // Mantém apenas se foi concluída nos últimos X dias
+      if (completedAt >= cutoffDate) {
+        filteredTasks[id] = task;
+      } else {
+        removedCount++;
+      }
+    });
+    
+    if (removedCount > 0) {
+      data.tasks = filteredTasks;
+      await this.saveOfflineData(data);
+      console.log(`🧹 Cache: ${removedCount} tarefas antigas removidas`);
+    }
+    
+    return removedCount;
+  }
+
   static async getHistoryByUserId(userId: string, limit?: number): Promise<HistoryItem[]> {
     const allHistory = await this.getHistory();
     const userHistory = allHistory.filter(item => item.userId === userId);

@@ -1177,6 +1177,9 @@ class SyncService {
       // Depois processar operações pendentes
       await this.processPendingOperations();
       
+      // Limpar tarefas antigas do cache (mesma lógica do Firestore: > 7 dias)
+      await LocalStorageService.clearOldCompletedTasks(7);
+      
       this.updateSyncStatus({ 
         lastSync: Date.now(),
         isSyncing: false 
