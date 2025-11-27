@@ -47,12 +47,13 @@ service cloud.firestore {
 
     // Verifica se o usuário (authId) possui determinada permissão (create/edit/delete)
     // Armazenada em families/{familyId}/members/{userId}.permissions.{perm} == true
+    // Retorna false de forma segura se permissions não existir
     function hasFamilyPermission(familyId, perm) {
       let userId = authId();
       return familyId != null && userId != null
         && exists(/databases/$(database)/documents/families/$(familyId)/members/$(userId))
         && get(/databases/$(database)/documents/families/$(familyId)/members/$(userId)).data.permissions != null
-        && get(/databases/$(database)/documents/families/$(familyId)/members/$(userId)).data.permissions.keys().hasAny([perm])
+        && perm in get(/databases/$(database)/documents/families/$(familyId)/members/$(userId)).data.permissions
         && get(/databases/$(database)/documents/families/$(familyId)/members/$(userId)).data.permissions[perm] == true;
     }
 
@@ -228,10 +229,12 @@ service cloud.firestore {
           (resource.data.familyId == null || resource.data.familyId == '') 
           && (resource.data.userId == authId() || resource.data.createdBy == authId())
         )
-        // Tarefa de família: admin OU membro com permissão delete
+        // Tarefa de família: admin OU membro com permissão delete OU criador da tarefa
         || (
           resource.data.familyId != null && resource.data.familyId != '' && (
-            isFamilyAdmin(resource.data.familyId) || hasFamilyPermission(resource.data.familyId, 'delete')
+            isFamilyAdmin(resource.data.familyId) 
+            || hasFamilyPermission(resource.data.familyId, 'delete')
+            || resource.data.createdBy == authId()
           )
         )
       );
