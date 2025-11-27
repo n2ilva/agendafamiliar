@@ -148,7 +148,7 @@ npm install
 2. Ative Authentication (Email/Password)
 3. Crie um banco Firestore
 4. Configure as regras de segurança (`firestore.rules`)
-5. Adicione suas credenciais em `config/firebase.ts`
+5. Adicione suas credenciais em `src/config/firebase.config.ts`
 
 ### Executar o App
 
@@ -170,36 +170,150 @@ npm run web
 
 ```
 agendafamiliar/
-├── App.tsx                      # Componente raiz
-├── components/
-│   └── Header.tsx              # Cabeçalho com menu e controles
-├── screens/
-│   ├── LoginScreen.tsx         # Tela de autenticação
-│   ├── FamilySetupScreen.tsx   # Criação/entrada em família
-│   └── TaskScreen.tsx          # Tela principal de tarefas
-├── services/
-│   ├── FirebaseAuthService.ts  # Autenticação remota
-│   ├── FirestoreService.ts     # CRUD Firestore
-│   ├── LocalAuthService.ts     # Autenticação local/fallback
-│   ├── LocalFamilyService.ts   # Gerenciamento de família
-│   ├── LocalStorageService.ts  # Persistência AsyncStorage
-│   ├── SyncService.ts          # Sincronização online/offline
-│   ├── FamilySyncHelper.ts     # Auxiliar de sincronização
-│   ├── ConnectivityService.ts  # Detecção de conectividade
-│   ├── NotificationService.ts  # Notificações push
-│   └── BackgroundSyncService.ts # Sincronização em background
-├── contexts/
-│   └── ThemeContext.tsx        # Gerenciamento de tema
-├── types/
-│   └── FamilyTypes.ts          # Definições de tipos
-├── utils/
-│   ├── colors.ts               # Paletas e temas
-│   ├── DateUtils.ts            # Helpers de data
-│   ├── Holidays.ts             # Feriados brasileiros
-│   └── Alert.ts                # Wrapper de alertas
-├── firestore.rules             # Regras de segurança Firestore
-├── firebase.json               # Configuração Firebase
+├── index.ts                          # Entry point da aplicação
+├── src/
+│   ├── App.tsx                       # Componente raiz
+│   │
+│   ├── components/                   # Componentes reutilizáveis
+│   │   ├── common/                   # Componentes comuns
+│   │   │   ├── EmptyState.tsx        # Estado vazio de listas
+│   │   │   ├── LoadingScreen.tsx     # Tela de carregamento
+│   │   │   └── SyncSystemBars.tsx    # Sincronização de barras do sistema
+│   │   │
+│   │   ├── header/                   # Componentes do cabeçalho
+│   │   │   ├── Header.tsx            # Cabeçalho principal
+│   │   │   ├── HeaderAvatar.tsx      # Avatar do usuário
+│   │   │   ├── HeaderMenu.tsx        # Menu dropdown
+│   │   │   ├── HeaderUserInfo.tsx    # Informações do usuário
+│   │   │   └── header.styles.ts      # Estilos do cabeçalho
+│   │   │
+│   │   └── modals/                   # Todos os modais do app
+│   │       ├── AddCategoryModal.tsx  # Adicionar categoria
+│   │       ├── ApprovalModal.tsx     # Aprovação de tarefas
+│   │       ├── AvatarActionsModal.tsx
+│   │       ├── AvatarPickerModal.tsx
+│   │       ├── CalendarModal.tsx     # Calendário
+│   │       ├── EditNameModal.tsx
+│   │       ├── JoinFamilyModal.tsx
+│   │       ├── PostponeModal.tsx     # Adiar tarefas
+│   │       ├── ProfileSettingsModal.tsx
+│   │       └── RepeatConfigModal.tsx # Configurar recorrência
+│   │
+│   ├── config/                       # Configurações
+│   │   └── firebase.config.ts        # Configuração do Firebase
+│   │
+│   ├── constants/                    # Constantes da aplicação
+│   │   ├── colors.ts                 # Paletas e temas de cores
+│   │   └── task.constants.ts         # Constantes de tarefas/categorias
+│   │
+│   ├── contexts/                     # Contexts do React
+│   │   ├── auth.context.tsx          # Contexto de autenticação
+│   │   └── theme.context.tsx         # Contexto de tema (claro/escuro)
+│   │
+│   ├── hooks/                        # Custom hooks
+│   │   ├── use-calendar.ts           # Lógica do calendário
+│   │   ├── use-family.ts             # Gerenciamento de família
+│   │   ├── use-header.ts             # Lógica do cabeçalho
+│   │   └── use-tasks.ts              # Gerenciamento de tarefas
+│   │
+│   ├── screens/                      # Telas da aplicação
+│   │   ├── login/
+│   │   │   └── LoginScreen.tsx       # Tela de autenticação
+│   │   │
+│   │   ├── family-setup/
+│   │   │   ├── FamilySetupScreen.tsx # Criação/entrada em família
+│   │   │   ├── styles.ts
+│   │   │   └── types.ts
+│   │   │
+│   │   └── tasks/
+│   │       ├── TaskScreen.tsx        # Tela principal de tarefas
+│   │       ├── styles.ts
+│   │       ├── types.ts
+│   │       └── components/           # Componentes específicos da tela
+│   │           ├── CategorySelector.tsx
+│   │           ├── TaskFilter.tsx
+│   │           ├── TaskItem.tsx
+│   │           └── TaskModal.tsx
+│   │
+│   ├── services/                     # Serviços (organizados por domínio)
+│   │   ├── auth/                     # Serviços de autenticação
+│   │   │   ├── firebase-auth.service.ts
+│   │   │   └── local-auth.service.ts
+│   │   │
+│   │   ├── family/                   # Serviços de família
+│   │   │   ├── firebase-family.service.ts
+│   │   │   ├── local-family.service.ts
+│   │   │   └── family-sync.helper.ts
+│   │   │
+│   │   ├── tasks/                    # Serviços de tarefas
+│   │   │   └── firestore.service.ts
+│   │   │
+│   │   ├── sync/                     # Serviços de sincronização
+│   │   │   ├── sync.service.ts
+│   │   │   ├── background-sync.service.ts
+│   │   │   └── connectivity.service.ts
+│   │   │
+│   │   ├── storage/                  # Serviços de armazenamento
+│   │   │   └── local-storage.service.ts
+│   │   │
+│   │   └── notifications/            # Serviços de notificações
+│   │       └── notification.service.ts
+│   │
+│   ├── types/                        # Definições de tipos TypeScript
+│   │   ├── family.types.ts           # Tipos de família, usuários, tarefas
+│   │   └── react-native-calendars.d.ts
+│   │
+│   └── utils/                        # Utilitários (organizados por função)
+│       ├── date/                     # Utilitários de data
+│       │   ├── date.utils.ts         # Helpers de manipulação de datas
+│       │   └── holidays.ts           # Feriados brasileiros
+│       │
+│       ├── helpers/                  # Helpers genéricos
+│       │   ├── alert.ts              # Wrapper de alertas cross-platform
+│       │   └── logger.ts             # Logger com níveis de log
+│       │
+│       └── validators/               # Validadores
+│           ├── family.utils.ts       # Validação de família/códigos
+│           └── task.utils.ts         # Validação de tarefas
+│
+├── assets/                           # Recursos estáticos
+│   ├── icons/                        # Ícones do app
+│   └── *.png                         # Imagens e logos
+│
+├── functions/                        # Firebase Cloud Functions
+│   └── index.js
+│
+├── firestore.rules                   # Regras de segurança Firestore
+├── storage.rules                     # Regras de segurança Storage
+├── firebase.json                     # Configuração Firebase
+├── app.json                          # Configuração Expo
+├── eas.json                          # Configuração EAS Build
+├── tsconfig.json                     # Configuração TypeScript
 └── package.json
+```
+
+### Convenções de Nomenclatura
+
+| Tipo | Padrão | Exemplo |
+|------|--------|---------|
+| **Pastas** | kebab-case | `family-setup/`, `local-storage/` |
+| **Componentes** | PascalCase | `TaskScreen.tsx`, `Header.tsx` |
+| **Serviços** | kebab-case + `.service.ts` | `firebase-auth.service.ts` |
+| **Contextos** | kebab-case + `.context.tsx` | `auth.context.tsx` |
+| **Hooks** | `use-` + kebab-case | `use-calendar.ts` |
+| **Estilos** | kebab-case + `.styles.ts` | `header.styles.ts` |
+| **Tipos** | kebab-case + `.types.ts` | `family.types.ts` |
+| **Utils** | kebab-case + `.utils.ts` | `date.utils.ts` |
+
+### Barrel Exports
+
+Cada diretório possui um arquivo `index.ts` para exports centralizados:
+
+```typescript
+// Exemplo de uso com barrel exports
+import { AuthProvider, useAuth } from './contexts';
+import { TaskScreen, LoginScreen } from './screens';
+import { Header, LoadingScreen } from './components';
 ```
 
 ## 🔒 Segurança
