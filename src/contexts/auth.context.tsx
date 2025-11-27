@@ -20,6 +20,7 @@ interface AuthContextData {
   loading: boolean;
   familyConfigured: boolean;
   appIsReady: boolean;
+  isAuthReady: boolean; // Indica se Firebase Auth está totalmente inicializado
   updateUserProfile: (payload: UserUpdatePayload) => Promise<void>;
   handleLogout: () => Promise<void>;
   handleFamilySetup: (familyId: string) => Promise<void>;
@@ -34,6 +35,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
   const [familyConfigured, setFamilyConfigured] = useState(false);
   const [appIsReady, setAppIsReady] = useState(false);
+  const [isAuthReady, setIsAuthReady] = useState(false); // Firebase Auth inicializado
 
   // ============= STORAGE OPERATIONS =============
   const saveUserToStorage = useCallback(async (userData: FamilyUser) => {
@@ -158,6 +160,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     
     const unsubscribe = LocalAuthService.onAuthStateChange(async (authUser) => {
       clearTimeout(safetyTimeout);
+      
+      // Marcar que o Firebase Auth está pronto (emitiu primeiro evento)
+      setIsAuthReady(true);
       
       if (!authUser) {
         console.log('🚪 Auth indica logout');
@@ -319,6 +324,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       loading,
       familyConfigured,
       appIsReady,
+      isAuthReady,
       updateUserProfile,
       handleLogout,
       handleFamilySetup,

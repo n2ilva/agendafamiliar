@@ -6,6 +6,7 @@ import LocalStorageService from '../services/storage/local-storage.service';
 import { familyService } from '../services/family/local-family.service';
 import SyncService from '../services/sync/sync.service';
 import logger from '../utils/helpers/logger';
+import { useAuth } from '../contexts/auth.context';
 
 // Funções de conversão (extraídas para fora do componente para serem puras/reutilizáveis)
 export const taskToRemoteTask = (task: Task, familyId: string | undefined): RemoteTask => {
@@ -120,10 +121,15 @@ export const remoteTaskToTask = (remoteTask: RemoteTask): Task => {
 export function useTasks(user: any, currentFamily: any, isOffline: boolean) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [pendingSyncIds, setPendingSyncIds] = useState<string[]>([]);
+  const { isAuthReady } = useAuth();
   
   // Carregar tarefas
   const loadTasks = useCallback(async () => {
-    if (!user?.id) return;
+    // Aguardar Firebase Auth estar pronto antes de carregar
+    if (!user?.id || !isAuthReady) {
+      logger.debug('TASKS_LOAD', 'Aguardando autenticação completa antes de carregar tarefas');
+      return;
+    }
 
     try {
       // 1. Cache Local
@@ -158,12 +164,14 @@ export function useTasks(user: any, currentFamily: any, isOffline: boolean) {
     } catch (error) {
       logger.error('TASKS_LOAD', 'Erro ao carregar tarefas', error);
     }
-  }, [user?.id, currentFamily?.id, isOffline]);
+  }, [user?.id, currentFamily?.id, isOffline, isAuthReady]);
 
   // Recarregar quando dependências mudam
   useEffect(() => {
-    loadTasks();
-  }, [loadTasks]);
+    if (isAuthReady) {
+      loadTasks();
+    }
+  }, [loadTasks, isAuthReady]);
 
   return {
     tasks,
