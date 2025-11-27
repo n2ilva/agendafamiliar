@@ -231,6 +231,91 @@ import LocalStorageService from '../services/LocalStorageService';
   }
 };
 
+// ============ DIAGNÓSTICO DE SINCRONIZAÇÃO ============
+
+// Função para diagnosticar operações pendentes
+(global as any).diagnosePendingOperations = async function() {
+  console.log('🔄 Diagnosticando operações pendentes...');
+  
+  try {
+    const offlineData = await LocalStorageService.getOfflineData();
+    const allOps = offlineData.pendingOperations;
+    
+    console.log(`📊 Total de operações na fila: ${allOps.length}`);
+    
+    if (allOps.length === 0) {
+      console.log('✅ Nenhuma operação pendente');
+      return { success: true, count: 0, operations: [] };
+    }
+    
+    // Categorizar operações
+    const byStatus = {
+      valid: allOps.filter(op => op.retry < 5),
+      exhausted: allOps.filter(op => op.retry >= 5),
+      old: allOps.filter(op => Date.now() - op.timestamp > 7 * 24 * 60 * 60 * 1000)
+    };
+    
+    console.log('📋 Detalhes:');
+    console.log(`   ✅ Válidas (podem ser processadas): ${byStatus.valid.length}`);
+    console.log(`   ❌ Esgotadas (muitos retries): ${byStatus.exhausted.length}`);
+    console.log(`   🕐 Antigas (>7 dias): ${byStatus.old.length}`);
+    
+    allOps.forEach((op, i) => {
+      const age = Math.floor((Date.now() - op.timestamp) / (1000 * 60));
+      const status = op.retry >= 5 ? '❌' : '✅';
+      console.log(`   ${i + 1}. ${status} ${op.type} ${op.collection} - retry: ${op.retry}, idade: ${age}min`);
+      if (op.data) {
+        console.log(`      ID: ${op.data.id || 'N/A'}, FamilyId: ${op.data.familyId || 'N/A'}`);
+      }
+    });
+    
+    return { 
+      success: true, 
+      count: allOps.length,
+      valid: byStatus.valid.length,
+      exhausted: byStatus.exhausted.length,
+      operations: allOps 
+    };
+  } catch (error) {
+    console.error('💥 Erro no diagnóstico:', error);
+    return { success: false, error };
+  }
+};
+
+// Função para limpar operações pendentes problemáticas
+(global as any).clearPendingOperations = async function() {
+  console.log('🧹 Limpando todas as operações pendentes...');
+  
+  try {
+    await LocalStorageService.clearAllPendingOperations();
+    
+    // Forçar atualização do status através de uma sincronização
+    const SyncService = (await import('../services/SyncService')).default;
+    await SyncService.syncWithRemote();
+    
+    console.log('✅ Todas as operações pendentes foram removidas');
+    return { success: true };
+  } catch (error) {
+    console.error('💥 Erro ao limpar:', error);
+    return { success: false, error };
+  }
+};
+
+// Função para forçar sincronização
+(global as any).forceSync = async function() {
+  console.log('🔄 Forçando sincronização...');
+  
+  try {
+    const SyncService = (await import('../services/SyncService')).default;
+    await SyncService.syncWithRemote();
+    console.log('✅ Sincronização forçada concluída');
+    return { success: true };
+  } catch (error) {
+    console.error('💥 Erro na sincronização:', error);
+    return { success: false, error };
+  }
+};
+
 console.log(`
 🔧 Utilitários de diagnóstico carregados!
 
@@ -244,7 +329,12 @@ Use no console:
 - testNotification() - Enviar notificação imediata
 - testScheduledNotification(30) - Agendar notificação em 30 segundos
 
+🔄 Diagnóstico de Sincronização:
+- diagnosePendingOperations() - Ver operações pendentes
+- clearPendingOperations() - Limpar operações pendentes
+- forceSync() - Forçar sincronização
+
 Exemplo:
-> await diagnoseNotifications()
-> await testScheduledNotification(10) // Depois FECHE O APP
+> await diagnosePendingOperations()
+> await clearPendingOperations()
 `);

@@ -368,12 +368,14 @@ class SyncService {
       // Obter status inicial (após limpeza)
       const connectivityState = ConnectivityService.getCurrentState();
       const offlineData = await LocalStorageService.getOfflineData();
+      // Usar getPendingOperations para contar apenas operações que ainda podem ser processadas
+      const validPendingOps = await LocalStorageService.getPendingOperations();
 
       this.syncStatus = {
         isOnline: connectivityState.isConnected,
         isSyncing: false,
         lastSync: offlineData.lastSync,
-        pendingOperations: offlineData.pendingOperations.length,
+        pendingOperations: validPendingOps.length,
         hasError: false
       };
 
@@ -483,12 +485,12 @@ class SyncService {
     }
   }
 
-      // 7. Atualizar status
-      const offlineData = await LocalStorageService.getOfflineData();
+      // 7. Atualizar status - usar getPendingOperations para contar apenas operações válidas
+      const validPendingOps = await LocalStorageService.getPendingOperations();
       this.updateSyncStatus({
         isSyncing: false,
         lastSync: Date.now(),
-        pendingOperations: offlineData.pendingOperations.length
+        pendingOperations: validPendingOps.length
       });
 
       console.log('✅ Sincronização remota concluída com sucesso');
