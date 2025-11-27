@@ -351,16 +351,46 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
               {monthTasks.length > 0 && !selectedDate && (
                 <View>
                   <Text style={styles.sectionTitle}>📋 Tarefas do Mês</Text>
-                  {monthTasks.slice(0, 10).map((task: any) => {
-                    let dateObj: Date | undefined;
-                    if (task.dueDate instanceof Date) {
-                      dateObj = task.dueDate;
-                    } else if (task.dueDate.toDate && typeof task.dueDate.toDate === 'function') {
-                      dateObj = task.dueDate.toDate();
-                    } else if (typeof task.dueDate === 'string' || typeof task.dueDate === 'number') {
-                      dateObj = new Date(task.dueDate);
-                    }
-                    if (dateObj && !isNaN(dateObj.getTime())) {
+                  
+                  {/* Separar tarefas por status */}
+                  {(() => {
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    
+                    // Função helper para parsear data
+                    const parseDate = (dueDate: any): Date | undefined => {
+                      if (dueDate instanceof Date) return dueDate;
+                      if (dueDate?.toDate) return dueDate.toDate();
+                      if (typeof dueDate === 'string' || typeof dueDate === 'number') return new Date(dueDate);
+                      return undefined;
+                    };
+                    
+                    // Separar tarefas por status
+                    const pendingTasks = monthTasks.filter((t: any) => {
+                      if (t.completed) return false;
+                      const d = parseDate(t.dueDate);
+                      if (!d) return false;
+                      const taskDate = new Date(d);
+                      taskDate.setHours(0, 0, 0, 0);
+                      return taskDate >= today;
+                    });
+                    
+                    const overdueTasks = monthTasks.filter((t: any) => {
+                      if (t.completed) return false;
+                      const d = parseDate(t.dueDate);
+                      if (!d) return false;
+                      const taskDate = new Date(d);
+                      taskDate.setHours(0, 0, 0, 0);
+                      return taskDate < today;
+                    });
+                    
+                    const completedTasks = monthTasks.filter((t: any) => t.completed);
+                    
+                    // Função para renderizar uma tarefa
+                    const renderTask = (task: any) => {
+                      const dateObj = parseDate(task.dueDate);
+                      if (!dateObj || isNaN(dateObj.getTime())) return null;
+                      
                       const ddmm = `${String(dateObj.getDate()).padStart(2,'0')}/${String(dateObj.getMonth()+1).padStart(2,'0')}`;
                       const time = `${String(dateObj.getHours()).padStart(2,'0')}:${String(dateObj.getMinutes()).padStart(2,'0')}`;
                       const categoryConfig = CATEGORY_COLORS[task.category as keyof typeof CATEGORY_COLORS];
@@ -389,14 +419,60 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
                           </View>
                         </View>
                       );
-                    }
-                    return null;
-                  })}
-                  {monthTasks.length > 10 && (
-                    <Text style={localStyles.moreTasksText}>
-                      + {monthTasks.length - 10} outras tarefas
-                    </Text>
-                  )}
+                    };
+                    
+                    return (
+                      <>
+                        {/* Pendentes (em primeiro) */}
+                        {pendingTasks.length > 0 && (
+                          <View style={localStyles.taskSection}>
+                            <View style={localStyles.taskSectionHeader}>
+                              <MaterialCommunityIcons name="clock-outline" size={16} color="#4CAF50" />
+                              <Text style={[localStyles.taskSectionTitle, { color: '#4CAF50' }]}>
+                                Pendentes ({pendingTasks.length})
+                              </Text>
+                            </View>
+                            {pendingTasks.slice(0, 5).map(renderTask)}
+                            {pendingTasks.length > 5 && (
+                              <Text style={localStyles.moreTasksText}>+ {pendingTasks.length - 5} outras</Text>
+                            )}
+                          </View>
+                        )}
+                        
+                        {/* Vencidas */}
+                        {overdueTasks.length > 0 && (
+                          <View style={localStyles.taskSection}>
+                            <View style={localStyles.taskSectionHeader}>
+                              <MaterialCommunityIcons name="alert-circle" size={16} color={APP_COLORS.status.error} />
+                              <Text style={[localStyles.taskSectionTitle, { color: APP_COLORS.status.error }]}>
+                                Vencidas ({overdueTasks.length})
+                              </Text>
+                            </View>
+                            {overdueTasks.slice(0, 5).map(renderTask)}
+                            {overdueTasks.length > 5 && (
+                              <Text style={localStyles.moreTasksText}>+ {overdueTasks.length - 5} outras</Text>
+                            )}
+                          </View>
+                        )}
+                        
+                        {/* Concluídas */}
+                        {completedTasks.length > 0 && (
+                          <View style={localStyles.taskSection}>
+                            <View style={localStyles.taskSectionHeader}>
+                              <MaterialCommunityIcons name="check-circle" size={16} color="#2196F3" />
+                              <Text style={[localStyles.taskSectionTitle, { color: '#2196F3' }]}>
+                                Concluídas ({completedTasks.length})
+                              </Text>
+                            </View>
+                            {completedTasks.slice(0, 5).map(renderTask)}
+                            {completedTasks.length > 5 && (
+                              <Text style={localStyles.moreTasksText}>+ {completedTasks.length - 5} outras</Text>
+                            )}
+                          </View>
+                        )}
+                      </>
+                    );
+                  })()}
                 </View>
               )}
               {monthHolidays.length === 0 && monthTasks.length === 0 && (
@@ -598,6 +674,22 @@ const getLocalStyles = (colors: any) => StyleSheet.create({
     fontStyle: 'italic',
     textAlign: 'center',
     marginTop: 8,
+  },
+  taskSection: {
+    marginBottom: 16,
+  },
+  taskSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    paddingBottom: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    gap: 6,
+  },
+  taskSectionTitle: {
+    fontSize: 13,
+    fontWeight: '600',
   },
 });
 
