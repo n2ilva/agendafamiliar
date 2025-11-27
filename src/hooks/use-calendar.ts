@@ -63,18 +63,24 @@ export const useCalendarLogic = (
   // Filtrar tarefas baseado no filtro selecionado
   const filteredTasks = useMemo(() => {
     return tasks.filter((task: any) => {
+      // Ignorar tarefas excluídas (caso exista a flag)
+      if (task.deleted || task.isDeleted) return false;
+      
       const dateObj = parseDueDate(task.dueDate);
       if (!dateObj) return false;
       
       const taskDate = new Date(dateObj);
       taskDate.setHours(0, 0, 0, 0);
-      const isOverdue = taskDate < todayDate && !task.completed;
+      
+      // Verificar se está concluída (pelo campo completed OU pelo status)
+      const isCompleted = task.completed === true || task.status === 'concluida';
+      const isOverdue = taskDate < todayDate && !isCompleted;
       
       switch (filter) {
         case 'pending':
-          return !task.completed && !isOverdue;
+          return !isCompleted && !isOverdue;
         case 'completed':
-          return task.completed;
+          return isCompleted;
         case 'overdue':
           return isOverdue;
         case 'all':
@@ -167,40 +173,78 @@ export const useCalendarLogic = (
     });
     
     // Marcar dias com tarefas com borda circular
+    // Primeiro, agrupar tarefas por dia para determinar a cor correta
+    const tasksByDay: Record<string, any[]> = {};
     filteredTasks.forEach((task: any) => {
       const dateObj = parseDueDate(task.dueDate);
       if (!dateObj) return;
+      const ymd = formatDateKey(dateObj);
+      if (!tasksByDay[ymd]) tasksByDay[ymd] = [];
+      tasksByDay[ymd].push(task);
+    });
+    
+    // Agora processar cada dia
+    Object.entries(tasksByDay).forEach(([taskYmd, dayTasks]) => {
+      // Determinar a cor baseado nas tarefas do dia
+      // Prioridade: vermelho (vencida ativa) > laranja (concluída atrasada) > categoria > verde
+      let taskColor: string = '#4CAF50'; // padrão verde
+      let hasActiveOverdue = false;
+      let hasCompletedLate = false;
+      let activeCategoryColor: string | null = null;
       
-      const taskDate = new Date(dateObj);
-      taskDate.setHours(0, 0, 0, 0);
-      
-      // Obter cor da categoria da tarefa
-      const categoryConfig = CATEGORY_COLORS[task.category as keyof typeof CATEGORY_COLORS];
-      const categoryColor = categoryConfig?.color || '#4CAF50';
-      
-      // Determinar a cor baseado no status da tarefa
-      let taskColor: string;
-      
-      if (task.completed) {
-        // Verificar se foi completada no prazo ou vencida
-        const completedDate = parseDueDate(task.completedAt);
+      dayTasks.forEach((task: any) => {
+        const dateObj = parseDueDate(task.dueDate);
+        if (!dateObj) return;
         
-        if (completedDate) {
-          const completedDateOnly = new Date(completedDate);
-          completedDateOnly.setHours(0, 0, 0, 0);
-          
-          // Verde: completada no prazo, Laranja: completada vencida
-          taskColor = completedDateOnly <= taskDate ? '#4CAF50' : '#FF9800';
+        const taskDate = new Date(dateObj);
+        taskDate.setHours(0, 0, 0, 0);
+        
+        // Verificar se está concluída (pelo campo completed OU pelo status)
+        const isCompleted = task.completed === true || task.status === 'concluida';
+        
+        if (isCompleted) {
+          // Tarefa concluída - verificar se foi no prazo ou atrasada
+          const completedDate = parseDueDate(task.completedAt);
+          if (completedDate) {
+            const completedDateOnly = new Date(completedDate);
+            completedDateOnly.setHours(0, 0, 0, 0);
+            if (completedDateOnly > taskDate) {
+              hasCompletedLate = true;
+            }
+          } else {
+            // Se não tem completedAt mas a data já passou, considerar atrasada
+            if (taskDate < todayDate) {
+              hasCompletedLate = true;
+            }
+          }
         } else {
-          taskColor = '#4CAF50';
+          // Tarefa NÃO concluída
+          const isOverdue = taskDate < todayDate;
+          if (isOverdue) {
+            hasActiveOverdue = true;
+          } else {
+            // Tarefa ativa futura - usar cor da categoria
+            const categoryConfig = CATEGORY_COLORS[task.category as keyof typeof CATEGORY_COLORS];
+            activeCategoryColor = categoryConfig?.color || '#4CAF50';
+          }
         }
+      });
+      
+      // Definir cor final baseada na prioridade
+      if (hasActiveOverdue) {
+        // Se há tarefa ATIVA vencida, mostrar vermelho
+        taskColor = APP_COLORS.status.error;
+      } else if (activeCategoryColor) {
+        // Se há tarefa ativa futura, usar cor da categoria
+        taskColor = activeCategoryColor;
+      } else if (hasCompletedLate) {
+        // Se só tem tarefas concluídas e alguma foi atrasada, laranja
+        taskColor = '#FF9800';
       } else {
-        // Tarefa não completada - usar cor da categoria ou vermelho se vencida
-        const isOverdue = taskDate < todayDate;
-        taskColor = isOverdue ? APP_COLORS.status.error : categoryColor;
+        // Todas concluídas no prazo, verde
+        taskColor = '#4CAF50';
       }
       
-      const taskYmd = formatDateKey(dateObj);
       const existingMarker = map[taskYmd];
       
       if (existingMarker?.isHoliday) {

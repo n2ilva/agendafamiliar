@@ -120,6 +120,7 @@ export const remoteTaskToTask = (remoteTask: RemoteTask): Task => {
 
 export function useTasks(user: any, currentFamily: any, isOffline: boolean) {
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [allTasks, setAllTasks] = useState<Task[]>([]); // Todas as tarefas incluindo concluídas
   const [pendingSyncIds, setPendingSyncIds] = useState<string[]>([]);
   const { isAuthReady, isDataReady } = useAuth();
   
@@ -151,7 +152,10 @@ export function useTasks(user: any, currentFamily: any, isOffline: boolean) {
         const familyTasks = await familyService.getFamilyTasks(currentFamily.id, user.id);
         const convertedTasks = familyTasks;
         
-        // Filtrar: não incluir tarefas concluídas na UI (vêm do Firebase apenas para sync)
+        // Salvar TODAS as tarefas para o calendário
+        setAllTasks(convertedTasks);
+        
+        // Filtrar: não incluir tarefas concluídas na UI principal (vêm do Firebase apenas para sync)
         const pendingTasks = convertedTasks.filter(t => !t.completed);
         
         // Merge logic simplificada (pode ser refinada depois)
@@ -180,9 +184,34 @@ export function useTasks(user: any, currentFamily: any, isOffline: boolean) {
     }
   }, [loadTasks, isAuthReady, isDataReady]);
 
+  // Sincronizar allTasks quando tasks muda (para refletir conclusões/alterações)
+  useEffect(() => {
+    setAllTasks(prev => {
+      // Criar mapa das tarefas atuais
+      const tasksMap = new Map(tasks.map(t => [t.id, t]));
+      
+      // Atualizar allTasks: manter tarefas existentes e atualizar as que mudaram
+      const updatedAllTasks = prev.map(t => {
+        const updatedTask = tasksMap.get(t.id);
+        return updatedTask || t; // Se encontrou atualização, usa ela; senão mantém a original
+      });
+      
+      // Adicionar novas tarefas que não existiam em allTasks
+      tasks.forEach(t => {
+        if (!prev.find(p => p.id === t.id)) {
+          updatedAllTasks.push(t);
+        }
+      });
+      
+      return updatedAllTasks;
+    });
+  }, [tasks]);
+
   return {
     tasks,
     setTasks,
+    allTasks,
+    setAllTasks,
     loadTasks,
     pendingSyncIds,
     setPendingSyncIds

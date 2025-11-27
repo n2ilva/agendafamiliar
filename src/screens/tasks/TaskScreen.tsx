@@ -118,6 +118,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
   const { 
     tasks, 
     setTasks, 
+    allTasks,
+    setAllTasks,
     loadTasks,
     pendingSyncIds, 
     setPendingSyncIds 
@@ -5459,7 +5461,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
             setApprovalModalVisible(true);
           } : undefined}
           onManageFamily={user.role === 'admin' ? handleManageFamily : undefined}
-          tasks={tasks}
+          tasks={allTasks.length > 0 ? allTasks : tasks}
           onCalendarDaySelect={(date: Date) => {
             try { Keyboard.dismiss(); } catch {}
             // Preparar criação de tarefa com data selecionada
