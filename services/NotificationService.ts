@@ -6,6 +6,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // definição). Aceitamos 'any' nas assinaturas públicas para compatibilidade.
 import { safeToDate } from '../utils/DateUtils';
 
+// Declarar window para ambiente web
+declare const window: any;
+
 const STORAGE_KEY = 'notification_task_map';
 const STORAGE_KEY_WEB = 'notification_task_map_web';
 
