@@ -1,19 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Modal, View, Text, ScrollView, Pressable } from 'react-native';
+import { Modal, View, Text, ScrollView, Pressable, TouchableOpacity, StyleSheet } from 'react-native';
 import { Calendar, LocaleConfig } from 'react-native-calendars';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../../contexts/theme.context';
 import { getHeaderStyles } from '../header/header.styles';
-import { useCalendarLogic } from '../../hooks/use-calendar';
-import { APP_COLORS } from '../../constants/colors';
-
-const THEME = {
-    primary: APP_COLORS.primary.main,
-    danger: APP_COLORS.status.error,
-    success: APP_COLORS.status.success,
-    warning: APP_COLORS.status.warning,
-    textPrimary: APP_COLORS.text.primary,
-    textSecondary: APP_COLORS.text.secondary,
-};
+import { useCalendarLogic, CalendarFilter } from '../../hooks/use-calendar';
+import { APP_COLORS, CATEGORY_COLORS } from '../../constants/colors';
+import { RepeatType } from '../../types/family.types';
 
 // Configuração do Locale PT-BR
 LocaleConfig.locales['pt-br'] = {
@@ -24,6 +17,41 @@ LocaleConfig.locales['pt-br'] = {
   today: 'Hoje'
 };
 LocaleConfig.defaultLocale = 'pt-br';
+
+// Tipo para nomes de ícones do MaterialCommunityIcons
+type IconName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
+
+// Labels e cores dos filtros
+const FILTER_OPTIONS: { key: CalendarFilter; label: string; icon: IconName; color: string }[] = [
+  { key: 'all', label: 'Todas', icon: 'format-list-bulleted', color: APP_COLORS.primary.main },
+  { key: 'pending', label: 'Pendentes', icon: 'clock-outline', color: '#4CAF50' },
+  { key: 'completed', label: 'Concluídas', icon: 'check-circle', color: '#2196F3' },
+  { key: 'overdue', label: 'Vencidas', icon: 'alert-circle', color: APP_COLORS.status.error },
+];
+
+// Helper para label de recorrência
+const getRepeatLabel = (type: RepeatType): string => {
+  switch (type) {
+    case RepeatType.DAILY: return 'Diário';
+    case RepeatType.WEEKENDS: return 'Fins de semana';
+    case RepeatType.MONTHLY: return 'Mensal';
+    case RepeatType.YEARLY: return 'Anual';
+    case RepeatType.BIWEEKLY: return 'Quinzenal';
+    case RepeatType.INTERVAL: return 'Intervalo';
+    case RepeatType.CUSTOM: return 'Personalizado';
+    default: return '';
+  }
+};
+
+// Helper para ícone de prioridade
+const getPriorityIcon = (priority?: string): { icon: IconName; color: string } | null => {
+  switch (priority) {
+    case 'high': return { icon: 'arrow-up-bold', color: APP_COLORS.status.error };
+    case 'medium': return { icon: 'minus', color: '#FF9800' };
+    case 'low': return { icon: 'arrow-down-bold', color: '#4CAF50' };
+    default: return null;
+  }
+};
 
 interface CalendarModalProps {
   visible: boolean;
@@ -40,16 +68,120 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
 }) => {
   const { colors, themeMode } = useTheme();
   const styles = getHeaderStyles(colors);
+  const localStyles = getLocalStyles(colors);
   const [calendarMonth, setCalendarMonth] = useState(new Date());
+  const [filter, setFilter] = useState<CalendarFilter>('all');
   
-  const { markedDates, monthHolidays, monthTasks } = useCalendarLogic(calendarMonth, tasks, colors);
+  const { 
+    markedDates, 
+    monthHolidays, 
+    monthTasks,
+    selectedDate,
+    selectedDayTasks,
+    handleDayPress,
+    taskCountByDay,
+    hasRecurringByDay,
+  } = useCalendarLogic(calendarMonth, tasks, colors, filter);
 
-  // Reset month when opening modal
+  // Reset month and filter when opening modal
   useEffect(() => {
     if (visible) {
       setCalendarMonth(new Date());
+      setFilter('all');
     }
   }, [visible]);
+
+  // Renderizar filtros
+  const renderFilters = () => (
+    <View style={localStyles.filterContainer}>
+      {FILTER_OPTIONS.map((opt) => (
+        <TouchableOpacity
+          key={opt.key}
+          style={[
+            localStyles.filterButton,
+            filter === opt.key && { backgroundColor: opt.color + '20', borderColor: opt.color },
+          ]}
+          onPress={() => setFilter(opt.key)}
+        >
+          <MaterialCommunityIcons 
+            name={opt.icon} 
+            size={14} 
+            color={filter === opt.key ? opt.color : colors.textSecondary} 
+          />
+          <Text 
+            style={[
+              localStyles.filterText, 
+              filter === opt.key && { color: opt.color, fontWeight: '600' }
+            ]}
+          >
+            {opt.label}
+          </Text>
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+
+  // Renderizar tarefa do dia selecionado
+  const renderSelectedDayTask = (task: any) => {
+    const priorityInfo = getPriorityIcon(task.priority);
+    const repeatLabel = task.isRecurring ? getRepeatLabel(task.repeatType) : null;
+    
+    return (
+      <View key={task.id} style={localStyles.taskDetailCard}>
+        <View style={[localStyles.taskColorBar, { backgroundColor: task.categoryColor }]} />
+        <View style={localStyles.taskDetailContent}>
+          <View style={localStyles.taskDetailHeader}>
+            <View style={localStyles.taskTitleRow}>
+              {task.formattedTime && task.formattedTime !== '00:00' && (
+                <View style={localStyles.timeContainer}>
+                  <MaterialCommunityIcons name="clock-outline" size={12} color={colors.textSecondary} />
+                  <Text style={localStyles.timeText}>{task.formattedTime}</Text>
+                </View>
+              )}
+              {priorityInfo && (
+                <MaterialCommunityIcons name={priorityInfo.icon} size={14} color={priorityInfo.color} style={{ marginLeft: 6 }} />
+              )}
+              {task.isRecurring && (
+                <MaterialCommunityIcons name="repeat" size={14} color={APP_COLORS.primary.main} style={{ marginLeft: 6 }} />
+              )}
+            </View>
+            {task.completed && (
+              <MaterialCommunityIcons name="check-circle" size={16} color="#4CAF50" />
+            )}
+          </View>
+          <Text style={[
+            localStyles.taskDetailTitle,
+            task.completed && localStyles.taskCompleted
+          ]}>
+            {task.title}
+          </Text>
+          <View style={localStyles.taskMetaRow}>
+            <View style={localStyles.categoryBadge}>
+              <MaterialCommunityIcons name={task.categoryIcon} size={12} color={task.categoryColor} />
+              <Text style={[localStyles.categoryText, { color: task.categoryColor }]}>
+                {CATEGORY_COLORS[task.category as keyof typeof CATEGORY_COLORS]?.label || task.category}
+              </Text>
+            </View>
+            {repeatLabel && (
+              <View style={localStyles.repeatBadge}>
+                <MaterialCommunityIcons name="repeat" size={10} color={APP_COLORS.primary.main} />
+                <Text style={localStyles.repeatBadgeText}>{repeatLabel}</Text>
+              </View>
+            )}
+          </View>
+        </View>
+      </View>
+    );
+  };
+
+  // Formatar data selecionada
+  const formatSelectedDate = () => {
+    if (!selectedDate) return '';
+    const [year, month, day] = selectedDate.split('-');
+    const date = new Date(Number(year), Number(month) - 1, Number(day));
+    const weekDay = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'][date.getDay()];
+    return `${weekDay}, ${day}/${month}`;
+  };
 
   return (
     <Modal
@@ -63,6 +195,9 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
         <Pressable style={styles.fullscreenOverlay} onPress={onClose} />
 
         <View style={styles.calendarModalCard}>
+          {/* Filtros de status */}
+          {renderFilters()}
+          
           <Calendar
             current={calendarMonth.toISOString().slice(0,10)}
             onMonthChange={(m:any) => {
@@ -70,12 +205,51 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
               setCalendarMonth(d);
             }}
             onDayPress={(day:any) => {
-              onClose();
-              if (onDaySelect) {
+              handleDayPress(day);
+              // Se já está selecionado, permite navegar
+              if (selectedDate === day.dateString && onDaySelect) {
+                onClose();
                 const parts = day.dateString.split('-');
                 const selected = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
                 onDaySelect(selected);
               }
+            }}
+            dayComponent={({ date, state, marking }: any) => {
+              const isSelected = selectedDate === date?.dateString;
+              const count = taskCountByDay[date?.dateString] || 0;
+              const hasRecurring = hasRecurringByDay[date?.dateString] || false;
+              const customStyles = marking?.customStyles || {};
+              
+              return (
+                <TouchableOpacity
+                  onPress={() => handleDayPress(date)}
+                  style={[
+                    localStyles.dayContainer,
+                    customStyles.container,
+                    isSelected && localStyles.selectedDay,
+                  ]}
+                >
+                  <Text style={[
+                    localStyles.dayText,
+                    customStyles.text,
+                    state === 'disabled' && localStyles.disabledText,
+                    isSelected && localStyles.selectedDayText,
+                  ]}>
+                    {date?.day}
+                  </Text>
+                  {/* Indicadores abaixo do número */}
+                  <View style={localStyles.dayIndicators}>
+                    {count > 0 && (
+                      <View style={localStyles.countBadge}>
+                        <Text style={localStyles.countText}>{count > 9 ? '9+' : count}</Text>
+                      </View>
+                    )}
+                    {hasRecurring && (
+                      <MaterialCommunityIcons name="repeat" size={8} color={APP_COLORS.primary.main} />
+                    )}
+                  </View>
+                </TouchableOpacity>
+              );
             }}
             markedDates={markedDates}
             markingType={'custom'}
@@ -100,12 +274,41 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
               textDayHeaderFontSize: 12,
             }}
           />
+          
           <ScrollView 
             style={styles.eventsScrollContainer}
             contentContainerStyle={{ padding: 12 }}
             showsVerticalScrollIndicator={true}
           >
             <View style={styles.holidayListContainer}>
+              {/* Dia selecionado com detalhes */}
+              {selectedDate && (
+                <View style={localStyles.selectedDaySection}>
+                  <Text style={localStyles.selectedDayTitle}>
+                    📅 {formatSelectedDate()}
+                  </Text>
+                  {selectedDayTasks.length > 0 ? (
+                    selectedDayTasks.map(renderSelectedDayTask)
+                  ) : (
+                    <Text style={localStyles.noTasksText}>Nenhuma tarefa neste dia</Text>
+                  )}
+                  <TouchableOpacity 
+                    style={localStyles.viewAllButton}
+                    onPress={() => {
+                      if (onDaySelect) {
+                        onClose();
+                        const parts = selectedDate.split('-');
+                        const selected = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+                        onDaySelect(selected);
+                      }
+                    }}
+                  >
+                    <Text style={localStyles.viewAllButtonText}>Ver todas as tarefas</Text>
+                    <MaterialCommunityIcons name="chevron-right" size={16} color={APP_COLORS.primary.main} />
+                  </TouchableOpacity>
+                </View>
+              )}
+              
               {/* Legenda de cores */}
               <View style={styles.legendContainer}>
                 <Text style={styles.legendTitle}>Legenda:</Text>
@@ -145,10 +348,10 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
                   })}
                 </View>
               )}
-              {monthTasks.length > 0 && (
+              {monthTasks.length > 0 && !selectedDate && (
                 <View>
-                  <Text style={styles.sectionTitle}>📋 Tarefas</Text>
-                  {monthTasks.map((task: any) => {
+                  <Text style={styles.sectionTitle}>📋 Tarefas do Mês</Text>
+                  {monthTasks.slice(0, 10).map((task: any) => {
                     let dateObj: Date | undefined;
                     if (task.dueDate instanceof Date) {
                       dateObj = task.dueDate;
@@ -159,19 +362,41 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
                     }
                     if (dateObj && !isNaN(dateObj.getTime())) {
                       const ddmm = `${String(dateObj.getDate()).padStart(2,'0')}/${String(dateObj.getMonth()+1).padStart(2,'0')}`;
-                      const taskColor = '#4CAF50'; // Verde para tarefas futuras
+                      const time = `${String(dateObj.getHours()).padStart(2,'0')}:${String(dateObj.getMinutes()).padStart(2,'0')}`;
+                      const categoryConfig = CATEGORY_COLORS[task.category as keyof typeof CATEGORY_COLORS];
+                      const taskColor = categoryConfig?.color || '#4CAF50';
+                      const priorityInfo = getPriorityIcon(task.priority);
+                      
                       return (
                         <View key={task.id} style={styles.eventCard}>
                           <View style={[styles.eventIndicator, { backgroundColor: taskColor }]} />
                           <View style={styles.eventContent}>
-                            <Text style={styles.eventDate}>{ddmm}</Text>
-                            <Text style={styles.eventTitle}>{task.title}</Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                              <Text style={styles.eventDate}>{ddmm}</Text>
+                              {time !== '00:00' && (
+                                <Text style={[styles.eventDate, { marginLeft: 4 }]}>{time}</Text>
+                              )}
+                              {priorityInfo && (
+                                <MaterialCommunityIcons name={priorityInfo.icon} size={12} color={priorityInfo.color} style={{ marginLeft: 4 }} />
+                              )}
+                            </View>
+                            <Text style={[
+                              styles.eventTitle,
+                              task.completed && { textDecorationLine: 'line-through', opacity: 0.6 }
+                            ]}>
+                              {task.title}
+                            </Text>
                           </View>
                         </View>
                       );
                     }
                     return null;
                   })}
+                  {monthTasks.length > 10 && (
+                    <Text style={localStyles.moreTasksText}>
+                      + {monthTasks.length - 10} outras tarefas
+                    </Text>
+                  )}
                 </View>
               )}
               {monthHolidays.length === 0 && monthTasks.length === 0 && (
@@ -184,4 +409,195 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
     </Modal>
   );
 };
+
+// Estilos locais do CalendarModal
+const getLocalStyles = (colors: any) => StyleSheet.create({
+  filterContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  filterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  filterText: {
+    fontSize: 11,
+    marginLeft: 4,
+    color: colors.textSecondary,
+  },
+  dayContainer: {
+    width: 36,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    paddingTop: 4,
+  },
+  dayText: {
+    fontSize: 14,
+    color: colors.textPrimary,
+  },
+  disabledText: {
+    color: colors.textSecondary,
+    opacity: 0.4,
+  },
+  selectedDay: {
+    backgroundColor: APP_COLORS.primary.main + '30',
+    borderRadius: 8,
+  },
+  selectedDayText: {
+    color: APP_COLORS.primary.main,
+    fontWeight: 'bold',
+  },
+  dayIndicators: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+    gap: 2,
+  },
+  countBadge: {
+    backgroundColor: APP_COLORS.primary.main,
+    borderRadius: 6,
+    minWidth: 12,
+    height: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 2,
+  },
+  countText: {
+    color: '#fff',
+    fontSize: 8,
+    fontWeight: 'bold',
+  },
+  selectedDaySection: {
+    marginBottom: 16,
+    padding: 12,
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: APP_COLORS.primary.main + '40',
+  },
+  selectedDayTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: colors.textPrimary,
+    marginBottom: 12,
+  },
+  taskDetailCard: {
+    flexDirection: 'row',
+    backgroundColor: colors.background,
+    borderRadius: 10,
+    marginBottom: 8,
+    overflow: 'hidden',
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+  },
+  taskColorBar: {
+    width: 4,
+  },
+  taskDetailContent: {
+    flex: 1,
+    padding: 10,
+  },
+  taskDetailHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  taskTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  timeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  timeText: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginLeft: 3,
+  },
+  taskDetailTitle: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.textPrimary,
+    marginBottom: 6,
+  },
+  taskCompleted: {
+    textDecorationLine: 'line-through',
+    opacity: 0.6,
+  },
+  taskMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  categoryBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  categoryText: {
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  repeatBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: APP_COLORS.primary.main + '15',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    gap: 3,
+  },
+  repeatBadgeText: {
+    fontSize: 10,
+    color: APP_COLORS.primary.main,
+    fontWeight: '500',
+  },
+  noTasksText: {
+    color: colors.textSecondary,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    paddingVertical: 12,
+  },
+  viewAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  viewAllButtonText: {
+    color: APP_COLORS.primary.main,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  moreTasksText: {
+    color: colors.textSecondary,
+    fontSize: 12,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    marginTop: 8,
+  },
+});
 

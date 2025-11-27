@@ -80,31 +80,37 @@ export const CATEGORY_COLORS = {
     color: '#2196F3',
     bgColor: '#E3F2FD',
     icon: 'briefcase',
+    label: 'Trabalho',
   },
   pessoal: {
     color: '#9C27B0',
     bgColor: '#F3E5F5',
-    icon: 'person',
+    icon: 'account',
+    label: 'Pessoal',
   },
   compras: {
     color: '#FF9800',
     bgColor: '#FFF3E0',
     icon: 'cart',
+    label: 'Compras',
   },
   saude: {
     color: '#F44336',
     bgColor: '#FFEBEE',
-    icon: 'fitness',
+    icon: 'heart-pulse',
+    label: 'Saúde',
   },
   estudos: {
     color: '#009688',
     bgColor: '#E0F2F1',
     icon: 'school',
+    label: 'Estudos',
   },
   lazer: {
     color: '#FFC107',
     bgColor: '#FFF8E1',
-    icon: 'game-controller',
+    icon: 'gamepad-variant',
+    label: 'Lazer',
   },
 };
 
