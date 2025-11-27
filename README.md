@@ -35,12 +35,6 @@ npm install
 npm start
 ```
 
-### Configurar Firebase
-
-1. Crie um projeto no [Firebase Console](https://console.firebase.google.com)
-2. Ative Authentication (Email/Password) e Firestore
-3. Adicione as credenciais em `src/config/firebase.config.ts`
-
 ## 📂 Estrutura
 
 ```

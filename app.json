@@ -4,7 +4,7 @@
     "slug": "task-app",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon_natal.jpeg",
+    "icon": "./assets/icon_azul.jpeg",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "scheme": "taskapp",
@@ -30,7 +30,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/icon_natal.jpeg",
+        "foregroundImage": "./assets/icon_azul.jpeg",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
@@ -66,7 +66,7 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/icon_natal.jpeg",
+          "icon": "./assets/icon_azul.jpeg",
           "color": "#4A90D9",
           "sounds": [],
           "enableBackgroundRemoteNotifications": true
