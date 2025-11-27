@@ -3465,6 +3465,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
           ...task,
           id: uuidv4(),
           completed: false,
+          completedAt: undefined, // Limpar data de conclusão da tarefa anterior
           status: 'pendente',
           dueDate: nextDate,
           dueTime: nextDateTime,
