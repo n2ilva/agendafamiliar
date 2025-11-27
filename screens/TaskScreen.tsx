@@ -1181,7 +1181,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
         taskId: approval.taskId,
         taskTitle: tasks.find(t => t.id === approval.taskId)?.title || 'Tarefa',
         dependenteName: approval.dependenteName || 'Dependente',
-        read: approval.read || false,
+        read: false,
       }));
 
     setNotifications(validNotifications as any);

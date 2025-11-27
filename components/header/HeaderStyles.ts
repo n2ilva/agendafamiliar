@@ -270,7 +270,7 @@ export const getHeaderStyles = (colors: any) => StyleSheet.create({
     borderColor: APP_COLORS.background.lightGray,
   },
   iconAvatar: {
-    backgroundColor: APP_COLORS.primary.mainBg,
+    backgroundColor: APP_COLORS.primary.light,
     borderColor: '#d3e6ff',
   },
   avatarEmoji: {
@@ -317,7 +317,7 @@ export const getHeaderStyles = (colors: any) => StyleSheet.create({
     borderColor: '#dce3ea'
   },
   iconOptionSelected: {
-    backgroundColor: APP_COLORS.primary.mainBg,
+    backgroundColor: APP_COLORS.primary.light,
     borderColor: APP_COLORS.primary.main,
     borderWidth: 2,
   },
