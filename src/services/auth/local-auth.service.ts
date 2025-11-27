@@ -91,10 +91,11 @@ class LocalAuthService {
             };
           }
 
-          // Carregar picture do Auth ou Firestore
+          // Carregar picture e profileIcon do Auth ou Firestore
           try {
             const authPhoto = (firebaseUser as any).photoURL;
             let firestorePhoto: string | undefined;
+            let firestoreProfileIcon: string | undefined;
             try {
               const db = firebaseFirestore() as any;
               const userRef = doc(db, 'users', firebaseUser.uid);
@@ -102,6 +103,7 @@ class LocalAuthService {
               if (snap.exists()) {
                 const data = snap.data();
                 firestorePhoto = data?.picture;
+                firestoreProfileIcon = data?.profileIcon;
                 if (data?.name && !raw) {
                   // se primeiro login e Firestore tem nome mais atual
                   familyUser.name = data.name;
@@ -113,6 +115,11 @@ class LocalAuthService {
             const finalPhoto = firestorePhoto || authPhoto;
             if (finalPhoto) {
               (familyUser as any).picture = finalPhoto;
+            }
+            // Sincronizar profileIcon do Firestore
+            if (firestoreProfileIcon) {
+              familyUser.profileIcon = firestoreProfileIcon;
+              console.log('🎨 ProfileIcon sincronizado do Firebase:', firestoreProfileIcon);
             }
           } catch (e) {
             console.warn('[LocalAuthService.onAuthStateChange] Falha ao resolver foto de perfil:', e);

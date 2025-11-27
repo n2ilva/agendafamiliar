@@ -65,13 +65,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         try {
           const userFamily = await familyService.getUserFamily(userData.id);
           if (userFamily) {
-            // Sincronizar role silenciosamente
+            // Sincronizar role e profileIcon silenciosamente
             const member = userFamily.members.find(m => m.id === userData.id);
-            if (member?.role && member.role !== userData.role) {
-              userData.role = member.role;
-              try {
-                await LocalAuthService.updateUserRole(userData.id, member.role);
-              } catch {}
+            if (member) {
+              // Sincronizar role
+              if (member.role && member.role !== userData.role) {
+                userData.role = member.role;
+                try {
+                  await LocalAuthService.updateUserRole(userData.id, member.role);
+                } catch {}
+              }
+              // Sincronizar profileIcon
+              if (member.profileIcon && member.profileIcon !== userData.profileIcon) {
+                userData.profileIcon = member.profileIcon;
+                console.log('🎨 ProfileIcon sincronizado da família:', member.profileIcon);
+              }
             }
           }
         } catch (error) {
@@ -92,13 +100,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.log('🏠 Família encontrada:', userFamily.name);
       userData.familyId = userFamily.id;
 
-      // Sincronizar role silenciosamente
+      // Sincronizar role e profileIcon silenciosamente
       const member = userFamily.members.find(m => m.id === userData.id);
-      if (member?.role && member.role !== userData.role) {
-        userData.role = member.role;
-        try {
-          await LocalAuthService.updateUserRole(userData.id, member.role);
-        } catch {}
+      if (member) {
+        // Sincronizar role
+        if (member.role && member.role !== userData.role) {
+          userData.role = member.role;
+          try {
+            await LocalAuthService.updateUserRole(userData.id, member.role);
+          } catch {}
+        }
+        // Sincronizar profileIcon
+        if (member.profileIcon && member.profileIcon !== userData.profileIcon) {
+          userData.profileIcon = member.profileIcon;
+          console.log('🎨 ProfileIcon sincronizado da família:', member.profileIcon);
+        }
       }
 
       return true;
