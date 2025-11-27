@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { APP_COLORS } from '../utils/colors';
 
 interface EmptyStateProps {
   activeTab: 'today' | 'upcoming';
@@ -12,7 +13,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({ activeTab }) => {
       <Ionicons 
         name={activeTab === 'today' ? 'checkmark-circle-outline' : 'calendar-outline'} 
         size={64} 
-        color="#ccc" 
+        color={APP_COLORS.border.light} 
       />
       <Text style={styles.emptyText}>
         {activeTab === 'today' 
@@ -41,13 +42,13 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#666',
+    color: APP_COLORS.text.secondary,
     marginTop: 16,
     textAlign: 'center',
   },
   emptySubtext: {
     fontSize: 14,
-    color: '#999',
+    color: APP_COLORS.text.light,
     marginTop: 8,
     textAlign: 'center',
   },

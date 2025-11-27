@@ -2,8 +2,18 @@ import React, { useState, useMemo, useCallback } from 'react';
 import { View, Text, StyleSheet, Pressable, Image, TextInput, ActivityIndicator, Platform, ScrollView, Modal, KeyboardAvoidingView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { THEME } from '../utils/colors';
+import { APP_COLORS } from '../utils/colors';
 import { useTheme } from '../contexts/ThemeContext';
+
+const THEME = {
+    primary: APP_COLORS.primary.main,
+    danger: APP_COLORS.status.error,
+    success: APP_COLORS.status.success,
+    warning: APP_COLORS.status.warning,
+    textPrimary: APP_COLORS.text.primary,
+    textSecondary: APP_COLORS.text.secondary,
+};
+
 import LocalAuthService from '../services/LocalAuthService';
 import FirebaseAuthService from '../services/FirebaseAuthService';
 import ConnectivityService from '../services/ConnectivityService';
@@ -215,7 +225,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
         >
           <View style={styles.content}>
             <View style={styles.header}>
-              <Image source={require('../assets/icon_natal.jpeg')} style={styles.logo} />
               <Text style={styles.title}>Bem-vindo ao</Text>
               <Text style={styles.appName}>Agenda Familiar</Text>
             </View>
@@ -250,7 +259,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
             <View style={styles.authForm}>
               {!form.isLogin && (
                 <View style={styles.inputContainer}>
-                  <Ionicons name="person-outline" size={20} color={THEME.textSecondary} style={styles.inputIcon} />
+                  <Ionicons name="person-outline" size={20} color={APP_COLORS.text.secondary} style={styles.inputIcon} />
                   <TextInput
                     style={styles.input}
                     placeholder="Nome completo"
@@ -263,7 +272,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
               )}
 
               <View style={styles.inputContainer}>
-                <Ionicons name="mail-outline" size={20} color={THEME.textSecondary} style={styles.inputIcon} />
+                <Ionicons name="mail-outline" size={20} color={APP_COLORS.text.secondary} style={styles.inputIcon} />
                 <TextInput
                   style={styles.input}
                   placeholder="Email"
@@ -277,7 +286,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
               </View>
 
               <View style={styles.inputContainer}>
-                <Ionicons name="lock-closed-outline" size={20} color={THEME.textSecondary} style={styles.inputIcon} />
+                <Ionicons name="lock-closed-outline" size={20} color={APP_COLORS.text.secondary} style={styles.inputIcon} />
                 <TextInput
                   style={styles.input}
                   placeholder="Senha"
@@ -296,7 +305,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
                   <Ionicons 
                     name={showPassword ? "eye-off-outline" : "eye-outline"} 
                     size={20} 
-                    color={THEME.textSecondary} 
+                    color={APP_COLORS.text.secondary} 
                   />
                 </Pressable>
               </View>
@@ -337,7 +346,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
             </View>
             
             <View style={styles.infoNote}>
-              <Ionicons name="information-circle-outline" size={16} color={THEME.textSecondary} />
+              <Ionicons name="information-circle-outline" size={16} color={APP_COLORS.text.secondary} />
               <Text style={styles.infoText}>
                 Você pode alterar seu perfil e configurações após fazer login
               </Text>
@@ -501,7 +510,7 @@ const getStyles = (colors: any) => StyleSheet.create({
   },
   infoText: {
     fontSize: 12,
-    color: THEME.textSecondary,
+    color: APP_COLORS.text.secondary,
     textAlign: 'center',
     flex: 1,
   },
@@ -521,12 +530,12 @@ const getStyles = (colors: any) => StyleSheet.create({
     borderRadius: 6,
   },
   toggleButtonActive: {
-    backgroundColor: THEME.primary,
+    backgroundColor: APP_COLORS.primary.main,
   },
   toggleText: {
     fontSize: 14,
     fontWeight: '600',
-    color: THEME.textSecondary,
+    color: APP_COLORS.text.secondary,
   },
   toggleTextActive: {
     color: '#fff',
@@ -539,10 +548,10 @@ const getStyles = (colors: any) => StyleSheet.create({
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: THEME.surface,
+    backgroundColor: APP_COLORS.background.lightGray,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: THEME.border,
+    borderColor: APP_COLORS.border.light,
     paddingLeft: 15,
     paddingRight: 8, // Menos padding à direita para o botão de senha
     paddingVertical: 12,
@@ -568,10 +577,10 @@ const getStyles = (colors: any) => StyleSheet.create({
   input: {
     flex: 1,
     fontSize: 16,
-    color: THEME.textPrimary,
+    color: APP_COLORS.text.primary,
   },
   primaryButton: {
-    backgroundColor: THEME.primary,
+    backgroundColor: APP_COLORS.primary.main,
   },
   buttonDisabled: {
     backgroundColor: '#ccc',
@@ -584,7 +593,7 @@ const getStyles = (colors: any) => StyleSheet.create({
   },
   forgotPasswordText: {
     fontSize: 14,
-    color: THEME.primary,
+    color: APP_COLORS.primary.main,
     textDecorationLine: 'underline',
   },
   modalContainer: {
@@ -594,7 +603,7 @@ const getStyles = (colors: any) => StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
   },
   modalContent: {
-    backgroundColor: THEME.surface,
+    backgroundColor: APP_COLORS.background.lightGray,
     borderRadius: 20,
     padding: 25,
     margin: 20,
@@ -611,13 +620,13 @@ const getStyles = (colors: any) => StyleSheet.create({
   modalTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: THEME.textPrimary,
+    color: APP_COLORS.text.primary,
     marginBottom: 10,
     textAlign: 'center',
   },
   modalSubtitle: {
     fontSize: 14,
-    color: THEME.textSecondary,
+    color: APP_COLORS.text.secondary,
     textAlign: 'center',
     marginBottom: 20,
     lineHeight: 20,
@@ -641,7 +650,7 @@ const getStyles = (colors: any) => StyleSheet.create({
     backgroundColor: '#6c757d',
   },
   sendButton: {
-    backgroundColor: THEME.primary,
+    backgroundColor: APP_COLORS.primary.main,
   },
   cancelButtonText: {
     color: '#fff',
@@ -654,3 +663,4 @@ const getStyles = (colors: any) => StyleSheet.create({
     fontSize: 16,
   },
 });
+

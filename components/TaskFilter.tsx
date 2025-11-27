@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, Pressable, ScrollView, StyleSheet, Dimensions, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { CategoryConfig } from '../types/FamilyTypes';
-import { THEME } from '../utils/colors';
+import { APP_COLORS } from '../utils/colors';
 
 interface TaskFilterButtonProps {
   onPress: () => void;
@@ -15,9 +15,9 @@ export const TaskFilterButton: React.FC<TaskFilterButtonProps> = ({ onPress, but
       ref={buttonRef}
       style={styles.filterButton}
       onPress={onPress}
-      android_ripple={{ color: 'rgba(0, 122, 255, 0.1)', borderless: false }}
+      android_ripple={{ color: `${APP_COLORS.primary.main}1A`, borderless: false }}
     >
-      <Ionicons name="filter" size={18} color={THEME.primary} />
+      <Ionicons name="filter" size={18} color={APP_COLORS.primary.main} />
     </Pressable>
   );
 };
@@ -80,14 +80,14 @@ export const TaskFilterDropdown: React.FC<TaskFilterDropdownProps> = ({
                 width: 32, 
                 height: 32, 
                 borderRadius: 8,
-                backgroundColor: selectedCategory === category.id ? `${THEME.primary}15` : category.bgColor,
+                backgroundColor: selectedCategory === category.id ? `${APP_COLORS.primary.main}15` : category.bgColor,
                 justifyContent: 'center',
                 alignItems: 'center'
               }}>
                 <Ionicons 
                   name={category.icon as any} 
                   size={18} 
-                  color={selectedCategory === category.id ? THEME.primary : category.color} 
+                  color={selectedCategory === category.id ? APP_COLORS.primary.main : category.color} 
                 />
               </View>
               <Text style={[
@@ -102,11 +102,11 @@ export const TaskFilterDropdown: React.FC<TaskFilterDropdownProps> = ({
                   width: 24,
                   height: 24,
                   borderRadius: 12,
-                  backgroundColor: `${THEME.primary}15`,
+                  backgroundColor: `${APP_COLORS.primary.main}15`,
                   justifyContent: 'center',
                   alignItems: 'center'
                 }}>
-                  <Ionicons name="checkmark" size={16} color={THEME.primary} />
+                  <Ionicons name="checkmark" size={16} color={APP_COLORS.primary.main} />
                 </View>
               )}
               
@@ -119,7 +119,7 @@ export const TaskFilterDropdown: React.FC<TaskFilterDropdownProps> = ({
                   }}
                   hitSlop={8}
                 >
-                  <Ionicons name="trash-outline" size={14} color="#9ca3af" />
+                  <Ionicons name="trash-outline" size={14} color={APP_COLORS.text.light} />
                 </Pressable>
               )}
             </Pressable>
@@ -135,16 +135,16 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#fff',
+    backgroundColor: APP_COLORS.background.white,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
+    shadowColor: APP_COLORS.shadow.dark,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
     shadowRadius: 4,
     elevation: 2,
     borderWidth: 1,
-    borderColor: '#f0f0f0',
+    borderColor: APP_COLORS.border.light,
   },
   dropdownOverlay: {
     position: 'absolute',
@@ -158,17 +158,17 @@ const styles = StyleSheet.create({
   filterDropdownMenuFloating: {
     position: 'absolute',
     width: 220,
-    backgroundColor: '#fff',
+    backgroundColor: APP_COLORS.background.white,
     borderRadius: 16,
     padding: 8,
-    shadowColor: '#000',
+    shadowColor: APP_COLORS.shadow.dark,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.15,
     shadowRadius: 12,
     elevation: 8,
     zIndex: 999,
     borderWidth: 1,
-    borderColor: '#f0f0f0',
+    borderColor: APP_COLORS.border.light,
   },
   filterDropdownItem: {
     flexDirection: 'row',
@@ -178,17 +178,17 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   filterDropdownItemActive: {
-    backgroundColor: '#f8f9fa',
+    backgroundColor: APP_COLORS.background.lightGray,
   },
   filterDropdownItemText: {
     flex: 1,
     fontSize: 14,
-    color: '#4b5563',
+    color: APP_COLORS.text.secondary,
     marginLeft: 12,
     fontWeight: '500',
   },
   filterDropdownItemTextActive: {
-    color: THEME.primary,
+    color: APP_COLORS.primary.main,
     fontWeight: '600',
   },
   deleteCategoryButton: {

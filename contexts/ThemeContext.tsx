@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useColorScheme } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { APP_COLORS, THEMES } from '../utils/colors';
 
 export type ThemeMode = 'light' | 'dark' | 'auto';
 export type ActiveTheme = 'light' | 'dark';
@@ -58,68 +59,68 @@ export interface ThemeColors {
 }
 
 const lightColors: ThemeColors = {
-  primary: '#4A90E2',
-  primaryLight: '#6FA8F0',
-  primaryDark: '#3A7BC8',
+  primary: APP_COLORS.primary.main,
+  primaryLight: APP_COLORS.primary.light,
+  primaryDark: APP_COLORS.primary.dark,
   
-  background: '#F5F7FA',
-  surface: '#FFFFFF',
-  surfaceSecondary: '#F8F9FA',
-  card: '#FFFFFF',
+  background: APP_COLORS.background.lightGray,
+  surface: APP_COLORS.background.white,
+  surfaceSecondary: APP_COLORS.background.gray,
+  card: APP_COLORS.background.white,
   
-  textPrimary: '#1A1A1A',
-  textSecondary: '#666666',
-  textTertiary: '#999999',
-  textInverse: '#FFFFFF',
+  textPrimary: APP_COLORS.text.primary,
+  textSecondary: APP_COLORS.text.secondary,
+  textTertiary: APP_COLORS.text.light,
+  textInverse: APP_COLORS.text.white,
   
-  border: '#E0E0E0',
-  divider: '#F0F0F0',
+  border: APP_COLORS.border.light,
+  divider: APP_COLORS.border.light,
   
-  success: '#4CAF50',
-  warning: '#FF9800',
-  error: '#F44336',
-  info: '#2196F3',
+  success: APP_COLORS.status.success,
+  warning: APP_COLORS.status.warning,
+  error: APP_COLORS.status.error,
+  info: APP_COLORS.status.info,
   
   overlay: 'rgba(0, 0, 0, 0.5)',
   modalBackground: 'rgba(0, 0, 0, 0.5)',
   
-  inputBackground: '#F8F9FA',
-  inputBorder: '#E0E0E0',
-  inputPlaceholder: '#999999',
+  inputBackground: APP_COLORS.background.gray,
+  inputBorder: APP_COLORS.border.light,
+  inputPlaceholder: APP_COLORS.text.muted,
   
   shadowColor: '#000000',
   statusBarStyle: 'dark-content',
 };
 
 const darkColors: ThemeColors = {
-  primary: '#5BA3FF',
-  primaryLight: '#7AB8FF',
-  primaryDark: '#4A8FE6',
+  primary: APP_COLORS.primary.light,
+  primaryLight: APP_COLORS.primary.lighter,
+  primaryDark: APP_COLORS.primary.main,
   
-  background: '#121212',
-  surface: '#1E1E1E',
+  background: APP_COLORS.background.dark,
+  surface: APP_COLORS.background.darkGray,
   surfaceSecondary: '#2A2A2A',
-  card: '#1E1E1E',
+  card: '#2C2C2C',
   
-  textPrimary: '#FFFFFF',
-  textSecondary: '#B0B0B0',
-  textTertiary: '#808080',
-  textInverse: '#1A1A1A',
+  textPrimary: APP_COLORS.text.white,
+  textSecondary: APP_COLORS.text.light,
+  textTertiary: APP_COLORS.text.muted,
+  textInverse: APP_COLORS.text.primary,
   
-  border: '#3A3A3A',
+  border: '#424242',
   divider: '#2A2A2A',
   
   success: '#66BB6A',
   warning: '#FFA726',
   error: '#EF5350',
-  info: '#42A5F5',
+  info: APP_COLORS.secondary.light,
   
   overlay: 'rgba(0, 0, 0, 0.7)',
   modalBackground: 'rgba(0, 0, 0, 0.7)',
   
   inputBackground: '#2A2A2A',
-  inputBorder: '#3A3A3A',
-  inputPlaceholder: '#808080',
+  inputBorder: '#424242',
+  inputPlaceholder: APP_COLORS.text.muted,
   
   shadowColor: '#000000',
   statusBarStyle: 'light-content',

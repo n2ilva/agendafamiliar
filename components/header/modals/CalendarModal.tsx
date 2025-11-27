@@ -4,7 +4,16 @@ import { Calendar, LocaleConfig } from 'react-native-calendars';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { getHeaderStyles } from '../HeaderStyles';
 import { useCalendarLogic } from '../../../hooks/useCalendarLogic';
-import { THEME } from '../../../utils/colors';
+import { APP_COLORS } from '../../../utils/colors';
+
+const THEME = {
+    primary: APP_COLORS.primary.main,
+    danger: APP_COLORS.status.error,
+    success: APP_COLORS.status.success,
+    warning: APP_COLORS.status.warning,
+    textPrimary: APP_COLORS.text.primary,
+    textSecondary: APP_COLORS.text.secondary,
+};
 
 // Configuração do Locale PT-BR
 LocaleConfig.locales['pt-br'] = {
@@ -75,14 +84,14 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
               backgroundColor: colors.surface,
               calendarBackground: colors.surface,
               textSectionTitleColor: colors.textSecondary,
-              selectedDayBackgroundColor: THEME.primary,
+              selectedDayBackgroundColor: APP_COLORS.primary.main,
               selectedDayTextColor: '#ffffff',
-              todayTextColor: THEME.primary,
+              todayTextColor: APP_COLORS.primary.main,
               dayTextColor: colors.textPrimary,
               textDisabledColor: themeMode === 'dark' ? '#555' : '#C0C0C0',
               monthTextColor: colors.textPrimary,
-              indicatorColor: THEME.primary,
-              arrowColor: THEME.primary,
+              indicatorColor: APP_COLORS.primary.main,
+              arrowColor: APP_COLORS.primary.main,
               textDayFontWeight: '400',
               textMonthFontWeight: 'bold',
               textDayHeaderFontWeight: '600',
@@ -109,7 +118,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
                   <Text style={styles.legendText}>Tarefa completada com atraso</Text>
                 </View>
                 <View style={styles.legendRow}>
-                  <View style={[styles.legendDot, { backgroundColor: THEME.danger }]} />
+                  <View style={[styles.legendDot, { backgroundColor: APP_COLORS.status.error }]} />
                   <Text style={styles.legendText}>Tarefa vencida não completada</Text>
                 </View>
                 <View style={styles.legendRow}>
@@ -175,3 +184,4 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
     </Modal>
   );
 };
+

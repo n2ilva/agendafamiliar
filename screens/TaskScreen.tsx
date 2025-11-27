@@ -25,15 +25,14 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { v4 as uuidv4 } from 'uuid';
-import { 
-  THEME
-} from '../utils/colors';
+import { APP_COLORS } from '../utils/colors';
 import { 
   DEFAULT_CATEGORIES, 
   AVAILABLE_ICONS, 
   AVAILABLE_COLORS, 
   AVAILABLE_EMOJIS 
 } from '../utils/TaskConstants';
+
 import { 
   repeatConfigToOption, 
   optionToRepeatConfig, 
@@ -57,44 +56,16 @@ import FamilySyncHelper from '../services/FamilySyncHelper';
 import NotificationService from '../services/NotificationService';
 import Alert from '../utils/Alert';
 import { Header } from '../components/Header';
+import { AddCategoryModal } from '../components/taskscreen/AddCategoryModal';
+import { RepeatConfigModal } from '../components/taskscreen/RepeatConfigModal';
+import { ApprovalModal } from '../components/taskscreen/ApprovalModal';
 import * as Notifications from 'expo-notifications';
 import logger from '../utils/Logger';
 import { useAuth } from '../contexts/AuthContext';
 import { useFamily } from '../hooks/useFamily';
 import { useTasks, taskToRemoteTask, remoteTaskToTask } from '../hooks/useTasks';
-
-const HISTORY_DAYS_TO_KEEP = 7;
-
-// RepeatType and RepeatConfig moved to FamilyTypes.ts
-
-// CategoryConfig interface moved to FamilyTypes.ts
-
-// LocalTask type definition
-type LocalTask = Task & {
-  repeat?: RepeatConfig; // compatibilidade com código antigo
-};
-
-interface HistoryItem {
-  id: string;
-  action: 'created' | 'completed' | 'uncompleted' | 'edited' | 'deleted' | 'approval_requested' | 'approved' | 'rejected';
-  taskTitle: string;
-  taskId: string;
-  timestamp: Date;
-  details?: string;
-  // Informações de autoria
-  userId: string;
-  userName: string;
-  userRole?: string;
-}
-
-interface TaskScreenProps {
-  user: FamilyUser; // Mantendo user prop por compatibilidade com tipos, mas idealmente usaria só context
-  onLogout: () => Promise<void>;
-  onUserNameChange: (newName: string) => void;
-  onUserImageChange?: (newImageUrl: string) => void;
-  onUserProfileIconChange?: (newProfileIcon: string) => void;
-  onUserRoleChange?: (newRole: UserRole, opts?: { silent?: boolean }) => void;
-}
+import { getStyles } from './TaskScreen/styles';
+import { HISTORY_DAYS_TO_KEEP, LocalTask, HistoryItem, TaskScreenProps } from './TaskScreen/types';
 
 export const TaskScreen: React.FC<TaskScreenProps> = ({ 
   user: propUser, 
@@ -2659,7 +2630,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
   const getActionColor = (action: string): string => {
     switch (action) {
       case 'created': return '#27ae60';
-      case 'completed': return THEME.primary;
+      case 'completed': return APP_COLORS.primary.main;
       case 'uncompleted': return '#f39c12';
       case 'edited': return '#9b59b6';
       case 'deleted': return '#e74c3c';
@@ -4876,7 +4847,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
           styles.taskItem, 
           item.completed && styles.taskCompleted,
           isOverdue && styles.taskOverdue,
-          { borderColor: isOverdue ? THEME.danger : categoryConfig.color }
+          { borderColor: isOverdue ? APP_COLORS.status.error : categoryConfig.color }
         ]}
       >
         {/* Header da Categoria - Topo do Card */}
@@ -4906,7 +4877,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
           {/* Lado direito do header: cadeado (se privado) + botão de expandir */}
           <View style={styles.categoryHeaderRight}>
             {((item as any).private === true) && item.createdBy === user.id && (
-              <Ionicons name="lock-closed" size={14} color={THEME.textSecondary} />
+              <Ionicons name="lock-closed" size={14} color={APP_COLORS.text.secondary} />
             )}
             <Ionicons 
               name={collapsedCards.has(item.id) ? "chevron-down-outline" : "chevron-up-outline"} 
@@ -4959,7 +4930,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
                       <Ionicons 
                         name={isTaskUnlocked ? "lock-open-outline" : "lock-closed-outline"} 
                         size={22} 
-                        color={isTaskUnlocked ? THEME.primary : "#999"} 
+                        color={isTaskUnlocked ? APP_COLORS.primary.main : "#999"} 
                       />
                     </Pressable>
                   )}
@@ -4988,7 +4959,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
               <Ionicons 
                 name="time-outline" 
                 size={14} 
-                color={isOverdue ? THEME.danger : THEME.textSecondary} 
+                color={isOverdue ? APP_COLORS.status.error : APP_COLORS.text.secondary} 
               />
               <Text style={[styles.scheduleText, isOverdue && styles.overdueText]}>
                 {item.dueDate ? `${formatDate(item.dueDate)} ` : ''}{formatTime(item.dueTime)}
@@ -4999,7 +4970,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
           {/* Indicador de tarefa vencida na mesma linha dos chips de data */}
           {isOverdue && (
             <View style={styles.overdueIndicator}>
-              <Ionicons name="warning" size={14} color={THEME.danger} />
+              <Ionicons name="warning" size={14} color={APP_COLORS.status.error} />
               <Text style={styles.overdueLabel}>VENCIDA</Text>
             </View>
           )}
@@ -5009,7 +4980,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
               <Ionicons 
                 name="repeat-outline" 
                 size={14} 
-                color={THEME.textSecondary} 
+                color={APP_COLORS.text.secondary} 
               />
               <Text style={styles.scheduleText}>
                 {getRepeatText(repeatConfig)}
@@ -5157,19 +5128,19 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
             {/* Indicador de status de aprovação */}
             {item.status === 'pendente_aprovacao' && (
               <View style={styles.approvalStatus}>
-                <Ionicons name="hourglass-outline" size={16} color={THEME.warning} />
+                <Ionicons name="hourglass-outline" size={16} color={APP_COLORS.status.warning} />
                 <Text style={styles.approvalStatusText}>Pendente Aprovação</Text>
               </View>
             )}
             {item.status === 'aprovada' && (
               <View style={[styles.approvalStatus, styles.approvalStatusApproved]}>
-                <Ionicons name="checkmark-circle" size={16} color={THEME.success} />
+                <Ionicons name="checkmark-circle" size={16} color={APP_COLORS.status.success} />
                 <Text style={[styles.approvalStatusText, styles.approvalStatusTextApproved]}>Aprovada</Text>
               </View>
             )}
             {item.status === 'rejeitada' && (
               <View style={[styles.approvalStatus, styles.approvalStatusRejected]}>
-                <Ionicons name="close-circle" size={16} color={THEME.danger} />
+                <Ionicons name="close-circle" size={16} color={APP_COLORS.status.error} />
                 <Text style={[styles.approvalStatusText, styles.approvalStatusTextRejected]}>Rejeitada</Text>
               </View>
             )}
@@ -5210,7 +5181,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
                         onPress={() => editTask(item)}
                         style={[styles.scheduleActionButton, !visualCanEdit && { opacity: 0.5 }]}
                       >
-                        <Ionicons name="pencil-outline" size={14} color={visualCanEdit ? THEME.primary : '#999'} />
+                        <Ionicons name="pencil-outline" size={14} color={visualCanEdit ? APP_COLORS.primary.main : '#999'} />
                       </Pressable>
                       <Pressable
                         onPress={() => deleteTask(item.id)}
@@ -5332,15 +5303,6 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
         />
         
         {/* Árvore de Natal decorativa no background - ocupa tela toda */}
-        <Image 
-          source={activeTheme === 'dark' 
-            ? require('../assets/arvore_dark.png')
-            : require('../assets/arvore_claro.png')
-          } 
-          style={styles.christmasTree}
-          resizeMode="cover"
-        />
-        
         {/* Wrapper centralizado (apenas Web aplica largura 70%) */}
         <View style={[styles.pageContainer, Platform.OS === 'web' && styles.pageContainerWeb]}>
           <PanGestureHandler
@@ -5562,12 +5524,12 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
                         style={[
                           styles.scheduleActionButton,
                           { flex: 1, minWidth: 140 },
-                          subtaskMode === 'simple' && { backgroundColor: THEME.primary }
+                          subtaskMode === 'simple' && { backgroundColor: APP_COLORS.primary.main }
                         ]}
                       >
-                        <Ionicons name="add" size={16} color={subtaskMode === 'simple' ? "#fff" : THEME.primary} />
+                        <Ionicons name="add" size={16} color={subtaskMode === 'simple' ? "#fff" : APP_COLORS.primary.main} />
                         <Text style={{ 
-                          color: subtaskMode === 'simple' ? '#fff' : THEME.primary, 
+                          color: subtaskMode === 'simple' ? '#fff' : APP_COLORS.primary.main, 
                           fontSize: 12, 
                           marginLeft: 4 
                         }}>
@@ -5580,12 +5542,12 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
                         style={[
                           styles.scheduleActionButton,
                           { flex: 1, minWidth: 140 },
-                          subtaskMode === 'category' && { backgroundColor: THEME.primary }
+                          subtaskMode === 'category' && { backgroundColor: APP_COLORS.primary.main }
                         ]}
                       >
-                        <Ionicons name="add" size={16} color={subtaskMode === 'category' ? "#fff" : THEME.primary} />
+                        <Ionicons name="add" size={16} color={subtaskMode === 'category' ? "#fff" : APP_COLORS.primary.main} />
                         <Text style={{ 
-                          color: subtaskMode === 'category' ? '#fff' : THEME.primary, 
+                          color: subtaskMode === 'category' ? '#fff' : APP_COLORS.primary.main, 
                           fontSize: 12, 
                           marginLeft: 4 
                         }}>
@@ -5667,7 +5629,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
                                 <Ionicons 
                                   name="calendar-outline" 
                                   size={14} 
-                                  color={st.dueDate ? "#fff" : THEME.primary} 
+                                  color={st.dueDate ? "#fff" : APP_COLORS.primary.main} 
                                 />
                                 {st.dueDate && (
                                   <Text style={styles.scheduleActionButtonText}>
@@ -5724,7 +5686,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
                                 <Ionicons 
                                   name="time-outline" 
                                   size={14} 
-                                  color={st.dueTime ? "#fff" : THEME.primary} 
+                                  color={st.dueTime ? "#fff" : APP_COLORS.primary.main} 
                                 />
                                 {st.dueTime && (
                                   <Text style={styles.scheduleActionButtonText}>
@@ -5801,7 +5763,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
                           <Ionicons 
                             name="calendar-outline" 
                             size={12} 
-                            color={newSubtaskDate ? "#fff" : THEME.primary} 
+                            color={newSubtaskDate ? "#fff" : APP_COLORS.primary.main} 
                           />
                           {newSubtaskDate && (
                             <Text style={[styles.scheduleActionButtonText, { fontSize: 10 }]}>
@@ -5854,7 +5816,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
                           <Ionicons 
                             name="time-outline" 
                             size={12} 
-                            color={newSubtaskTime ? "#fff" : THEME.primary} 
+                            color={newSubtaskTime ? "#fff" : APP_COLORS.primary.main} 
                           />
                           {newSubtaskTime && (
                             <Text style={[styles.scheduleActionButtonText, { fontSize: 10 }]}>
@@ -5883,7 +5845,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
                           }}
                           style={[styles.scheduleActionButton, { marginBottom: 0, flexShrink: 0 }]}
                         >
-                          <Ionicons name="add" size={18} color={THEME.primary} />
+                          <Ionicons name="add" size={18} color={APP_COLORS.primary.main} />
                         </Pressable>
                       </View>
                     </View>
@@ -5934,7 +5896,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
                               setNewCategoryTitle('');
                               setIsAddingCategory(false);
                             }}
-                            style={[styles.scheduleActionButton, { backgroundColor: THEME.primary, marginBottom: 0 }]}
+                            style={[styles.scheduleActionButton, { backgroundColor: APP_COLORS.primary.main, marginBottom: 0 }]}
                           >
                             <Ionicons name="checkmark" size={18} color="#fff" />
                           </Pressable>
@@ -5954,7 +5916,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
                       {!isAddingCategory && (
                         <Pressable
                           onPress={() => setIsAddingCategory(true)}
-                          style={[styles.scheduleActionButton, { backgroundColor: THEME.primary, marginBottom: 12 }]}
+                          style={[styles.scheduleActionButton, { backgroundColor: APP_COLORS.primary.main, marginBottom: 12 }]}
                         >
                           <Ionicons name="add" size={16} color="#fff" />
                           <Text style={{ color: '#fff', fontSize: 12, marginLeft: 4 }}>Nova Categoria</Text>
@@ -6071,7 +6033,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
                                       <Ionicons
                                         name={subtask.done ? "checkbox" : "square-outline"}
                                         size={20}
-                                        color={subtask.done ? THEME.primary : (activeTheme === 'dark' ? '#666' : '#999')}
+                                        color={subtask.done ? APP_COLORS.primary.main : (activeTheme === 'dark' ? '#666' : '#999')}
                                       />
                                     </Pressable>
                                     <Text style={{ 
@@ -6153,7 +6115,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
                                       <Ionicons 
                                         name="calendar-outline" 
                                         size={12} 
-                                        color={subtask.dueDate ? "#fff" : THEME.primary} 
+                                        color={subtask.dueDate ? "#fff" : APP_COLORS.primary.main} 
                                       />
                                       {subtask.dueDate && (
                                         <Text style={[styles.scheduleActionButtonText, { fontSize: 10 }]}>
@@ -6210,7 +6172,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
                                       <Ionicons 
                                         name="time-outline" 
                                         size={12} 
-                                        color={subtask.dueTime ? "#fff" : THEME.primary} 
+                                        color={subtask.dueTime ? "#fff" : APP_COLORS.primary.main} 
                                       />
                                       {subtask.dueTime && (
                                         <Text style={[styles.scheduleActionButtonText, { fontSize: 10 }]}>
@@ -6287,7 +6249,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
                                   <Ionicons 
                                     name="calendar-outline" 
                                     size={12} 
-                                    color={newCategorySubtaskDate ? "#fff" : THEME.primary} 
+                                    color={newCategorySubtaskDate ? "#fff" : APP_COLORS.primary.main} 
                                   />
                                   {newCategorySubtaskDate && (
                                     <Text style={[styles.scheduleActionButtonText, { fontSize: 10 }]}>
@@ -6341,7 +6303,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
                                   <Ionicons 
                                     name="time-outline" 
                                     size={12} 
-                                    color={newCategorySubtaskTime ? "#fff" : THEME.primary} 
+                                    color={newCategorySubtaskTime ? "#fff" : APP_COLORS.primary.main} 
                                   />
                                   {newCategorySubtaskTime && (
                                     <Text style={[styles.scheduleActionButtonText, { fontSize: 10 }]}>
@@ -6376,7 +6338,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
                                   }}
                                   style={[styles.scheduleActionButton, { marginBottom: 0, flexShrink: 0 }]}
                                 >
-                                  <Ionicons name="add" size={16} color={THEME.primary} />
+                                  <Ionicons name="add" size={16} color={APP_COLORS.primary.main} />
                                 </Pressable>
                               </View>
 
@@ -6391,7 +6353,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
                                     )
                                   );
                                 }}
-                                style={{ marginTop: 12, padding: 8, backgroundColor: THEME.primary, borderRadius: 6, alignItems: 'center' }}
+                                style={{ marginTop: 12, padding: 8, backgroundColor: APP_COLORS.primary.main, borderRadius: 6, alignItems: 'center' }}
                               >
                                 <Text style={{ color: '#fff', fontWeight: '600' }}>OK</Text>
                               </Pressable>
@@ -6538,7 +6500,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
                   <Text style={styles.categoryLabel}>Repetir:</Text>
                   <Text style={{ 
                     fontSize: 13, 
-                    color: repeatType === RepeatType.NONE ? '#999' : THEME.primary,
+                    color: repeatType === RepeatType.NONE ? '#999' : APP_COLORS.primary.main,
                     fontWeight: repeatType === RepeatType.NONE ? 'normal' : '500'
                   }}>
                     {getRepeatLabel()}
@@ -6587,7 +6549,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
                       <Ionicons 
                         name={option.icon as any} 
                         size={18} 
-                        color={repeatType === option.type ? THEME.primary : '#666'} 
+                        color={repeatType === option.type ? APP_COLORS.primary.main : '#666'} 
                       />
                     </Pressable>
                   ))}
@@ -6859,7 +6821,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
                     <Ionicons 
                       name={icon as any} 
                       size={22} 
-                      color={selectedIcon === icon ? THEME.primary : '#666'} 
+                      color={selectedIcon === icon ? APP_COLORS.primary.main : '#666'} 
                     />
                   </Pressable>
                 ))}
@@ -6939,139 +6901,36 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
         
 
         {/* Mini modal para configurar Semanal/Intervalo - usado quando NÃO está com modal de tarefa aberto no iOS, e sempre no Android/Web */}
-        {repeatModalVisible && isTopModal('repeat') && (
-          <Modal
-            key="repeat-modal"
-            visible={true}
-            transparent
-            animationType="fade"
-            onRequestClose={() => { setRepeatModalVisible(false); closeManagedModal('repeat'); }}
-          >
-            <Pressable 
-              style={styles.smallModalBackdrop}
-              onPress={() => { setRepeatModalVisible(false); closeManagedModal('repeat'); }}
-            >
-              <Pressable style={styles.smallModalContent} onPress={(e) => e.stopPropagation()}>
-                <Text style={styles.smallModalTitle}>
-                  {repeatType === RepeatType.CUSTOM ? 'Repetir semanalmente' : 'Sistema de Repetição'}
-                </Text>
-                {repeatType === RepeatType.CUSTOM && (
-                  <View style={styles.customDaysSelector}>
-                    {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((day, index) => (
-                      <Pressable
-                        key={index}
-                        style={[
-                          styles.dayButton,
-                          tempCustomDays.includes(index) && styles.dayButtonActive
-                        ]}
-                        onPress={() => toggleTempCustomDay(index)}
-                      >
-                        <Text style={[
-                          styles.dayButtonText,
-                          tempCustomDays.includes(index) && styles.dayButtonTextActive
-                        ]}>
-                          {day}
-                        </Text>
-                      </Pressable>
-                    ))}
-                  </View>
-                )}
-                {repeatType === RepeatType.INTERVAL && (
-                  <View style={{ gap: 12 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-                      <Pressable
-                        style={[styles.toggleButton, !tempWeekly && styles.toggleButtonActive]}
-                        onPress={() => setTempWeekly(false)}
-                      >
-                        <Text style={[styles.toggleButtonText, !tempWeekly && styles.toggleButtonTextActive]}>Dias</Text>
-                      </Pressable>
-                      <Pressable
-                        style={[styles.toggleButton, tempWeekly && styles.toggleButtonActive]}
-                        onPress={() => {
-                          setTempWeekly(true);
-                          const currentDays = tempIntervalDays || 7;
-                          const weeks = Math.max(1, Math.round(currentDays / 7));
-                          setTempWeeksCount(weeks);
-                          setTempIntervalDays(weeks * 7);
-                        }}
-                      >
-                        <Text style={[styles.toggleButtonText, tempWeekly && styles.toggleButtonTextActive]}>Semanas</Text>
-                      </Pressable>
-                    </View>
-                    {!tempWeekly && (
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        <Text style={[styles.customDaysLabel, { flex: 0, minWidth: 60 }]}>A cada</Text>
-                        <TextInput
-                          style={[styles.input, { width: 80, textAlign: 'center' }]}
-                          keyboardType="number-pad"
-                          value={String(tempIntervalDays || '')}
-                          onChangeText={(v) => setTempIntervalDays(Math.max(1, parseInt(v || '0', 10) || 0))}
-                          placeholder="dias"
-                          placeholderTextColor={activeTheme === 'dark' ? '#888' : '#999'}
-                        />
-                        <Text style={styles.customDaysLabel}>dias</Text>
-                      </View>
-                    )}
-                    {tempWeekly && (
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        <Text style={[styles.customDaysLabel, { flex: 0, minWidth: 60 }]}>A cada</Text>
-                        <TextInput
-                          style={[styles.input, { width: 80, textAlign: 'center' }]}
-                          keyboardType="number-pad"
-                          value={String(tempWeeksCount || '')}
-                          onChangeText={(v) => {
-                            const w = Math.max(1, parseInt(v || '0', 10) || 0);
-                            setTempWeeksCount(w);
-                            setTempIntervalDays(w * 7);
-                          }}
-                          placeholder="semanas"
-                          placeholderTextColor={activeTheme === 'dark' ? '#888' : '#999'}
-                        />
-                        <Text style={styles.customDaysLabel}>semana(s)</Text>
-                      </View>
-                    )}
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      <Text style={[styles.customDaysLabel, { flex: 0, minWidth: 60 }]}>Duração</Text>
-                      <TextInput
-                        style={[styles.input, { width: 80, textAlign: 'center' }]}
-                        keyboardType="number-pad"
-                        value={String(tempDurationMonths || '')}
-                        onChangeText={(v) => setTempDurationMonths(Math.max(0, parseInt(v || '0', 10) || 0))}
-                        placeholder="meses"
-                        placeholderTextColor={activeTheme === 'dark' ? '#888' : '#999'}
-                      />
-                      <Text style={styles.customDaysLabel}>meses</Text>
-                    </View>
-                  </View>
-                )}
-                <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 12, marginTop: 16 }}>
-                  <Pressable style={[styles.button, styles.cancelButton]} onPress={() => { setRepeatModalVisible(false); closeManagedModal('repeat'); }}>
-                    <Text style={styles.cancelButtonText}>Cancelar</Text>
-                  </Pressable>
-                  <Pressable
-                    style={[styles.button, styles.saveButton]}
-                    onPress={() => {
-                      if (repeatType === RepeatType.CUSTOM) {
-                        setCustomDays(tempCustomDays);
-                        logger.success('REPEAT', `Dias customizados salvos: ${JSON.stringify(tempCustomDays)}`);
-                      } else if (repeatType === RepeatType.INTERVAL) {
-                        const calculatedIntervalDays = Math.max(1, (tempWeekly ? (Math.max(1, tempWeeksCount || 1) * 7) : (tempIntervalDays || 1)));
-                        const calculatedDurationMonths = Math.max(0, tempDurationMonths || 0);
-                        setIntervalDays(calculatedIntervalDays);
-                        setDurationMonths(calculatedDurationMonths);
-                        logger.success('REPEAT', `Intervalo salvo: intervalDays=${calculatedIntervalDays}, durationMonths=${calculatedDurationMonths}`);
-                      }
-                      setRepeatModalVisible(false);
-                      closeManagedModal('repeat');
-                    }}
-                  >
-                    <Text style={styles.saveButtonText}>OK</Text>
-                  </Pressable>
-                </View>
-              </Pressable>
-            </Pressable>
-          </Modal>
-        )}
+        <RepeatConfigModal
+          visible={repeatModalVisible && isTopModal('repeat')}
+          onClose={() => { setRepeatModalVisible(false); closeManagedModal('repeat'); }}
+          onSave={() => {
+            if (repeatType === RepeatType.CUSTOM) {
+              setCustomDays(tempCustomDays);
+              logger.success('REPEAT', `Dias customizados salvos: ${JSON.stringify(tempCustomDays)}`);
+            } else if (repeatType === RepeatType.INTERVAL) {
+              const calculatedIntervalDays = Math.max(1, (tempWeekly ? (Math.max(1, tempWeeksCount || 1) * 7) : (tempIntervalDays || 1)));
+              const calculatedDurationMonths = Math.max(0, tempDurationMonths || 0);
+              setIntervalDays(calculatedIntervalDays);
+              setDurationMonths(calculatedDurationMonths);
+              logger.success('REPEAT', `Intervalo salvo: intervalDays=${calculatedIntervalDays}, durationMonths=${calculatedDurationMonths}`);
+            }
+            setRepeatModalVisible(false);
+            closeManagedModal('repeat');
+          }}
+          repeatType={repeatType}
+          tempCustomDays={tempCustomDays}
+          onToggleDay={toggleTempCustomDay}
+          tempIntervalDays={tempIntervalDays}
+          setTempIntervalDays={setTempIntervalDays}
+          tempDurationMonths={tempDurationMonths}
+          setTempDurationMonths={setTempDurationMonths}
+          tempWeekly={tempWeekly}
+          setTempWeekly={setTempWeekly}
+          tempWeeksCount={tempWeeksCount}
+          setTempWeeksCount={setTempWeeksCount}
+          activeTheme={activeTheme}
+        />
 
       {/* DateTimePickers nativos para iOS e Android */}
       {Platform.OS !== 'web' && (
@@ -7264,21 +7123,21 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
               </Text>
 
               <Text style={styles.manualSubtitle}>📱 Header do App</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="person-circle" size={16} color={THEME.primary} /> <Text style={{fontWeight: '600'}}>Ícone do Perfil:</Text> Toque no ícone para escolher um emoji como foto de perfil. Selecione entre diversos emojis disponíveis.</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="pencil" size={16} color={THEME.primary} /> <Text style={{fontWeight: '600'}}>Nome:</Text> Toque no nome para editá-lo. Digite seu nome e confirme para salvar.</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="notifications" size={16} color={THEME.primary} /> <Text style={{fontWeight: '600'}}>Notificações:</Text> Campainha mostra o número de aprovações pendentes. Toque para ver solicitações de conclusão de tarefas.</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="calendar" size={16} color={THEME.primary} /> <Text style={{fontWeight: '600'}}>Calendário:</Text> Visualize feriados brasileiros (amarelo) e tarefas agendadas (verde). Tarefas vencidas aparecem em vermelho. Toque em um dia para criar tarefa rápida.</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="arrow-undo" size={16} color={THEME.primary} /> <Text style={{fontWeight: '600'}}>Desfazer:</Text> Reverte a última ação (concluir, excluir ou editar tarefa). Aparece temporariamente após cada ação.</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="settings" size={16} color={THEME.primary} /> <Text style={{fontWeight: '600'}}>Menu (Configurações):</Text> Acesso às configurações, histórico, manual, atualizar dados e logout.</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="person-circle" size={16} color={APP_COLORS.primary.main} /> <Text style={{fontWeight: '600'}}>Ícone do Perfil:</Text> Toque no ícone para escolher um emoji como foto de perfil. Selecione entre diversos emojis disponíveis.</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="pencil" size={16} color={APP_COLORS.primary.main} /> <Text style={{fontWeight: '600'}}>Nome:</Text> Toque no nome para editá-lo. Digite seu nome e confirme para salvar.</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="notifications" size={16} color={APP_COLORS.primary.main} /> <Text style={{fontWeight: '600'}}>Notificações:</Text> Campainha mostra o número de aprovações pendentes. Toque para ver solicitações de conclusão de tarefas.</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="calendar" size={16} color={APP_COLORS.primary.main} /> <Text style={{fontWeight: '600'}}>Calendário:</Text> Visualize feriados brasileiros (amarelo) e tarefas agendadas (verde). Tarefas vencidas aparecem em vermelho. Toque em um dia para criar tarefa rápida.</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="arrow-undo" size={16} color={APP_COLORS.primary.main} /> <Text style={{fontWeight: '600'}}>Desfazer:</Text> Reverte a última ação (concluir, excluir ou editar tarefa). Aparece temporariamente após cada ação.</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="settings" size={16} color={APP_COLORS.primary.main} /> <Text style={{fontWeight: '600'}}>Menu (Configurações):</Text> Acesso às configurações, histórico, manual, atualizar dados e logout.</Text>
 
               <Text style={styles.manualSubtitle}>� Navegação e Filtros</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="today" size={16} color={THEME.primary} /> <Text style={{fontWeight: '600'}}>Abas Hoje/Próximas:</Text> Alterne entre tarefas do dia atual e tarefas futuras tocando nas abas.</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="today" size={16} color={APP_COLORS.primary.main} /> <Text style={{fontWeight: '600'}}>Abas Hoje/Próximas:</Text> Alterne entre tarefas do dia atual e tarefas futuras tocando nas abas.</Text>
               <Text style={styles.manualListItem}>• <Ionicons name="filter" size={16} color="#6c757d" /> <Text style={{fontWeight: '600'}}>Filtros:</Text> Ao lado do texto "Próximas", o botão de filtro permite filtrar tarefas por categoria específica.</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="add" size={16} color={THEME.primary} /> <Text style={{fontWeight: '600'}}>Criar Tarefa:</Text> Botão fixo no canto inferior direito abre o modal para criar uma nova tarefa com todos os detalhes.</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="add" size={16} color={APP_COLORS.primary.main} /> <Text style={{fontWeight: '600'}}>Criar Tarefa:</Text> Botão fixo no canto inferior direito abre o modal para criar uma nova tarefa com todos os detalhes.</Text>
 
               <Text style={styles.manualSubtitle}>📋 Funcionamento das Tarefas</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="chevron-down" size={16} color={THEME.primary} /> <Text style={{fontWeight: '600'}}>Expandir/Colapsar:</Text> Tarefas vêm colapsadas por padrão. Toque no cabeçalho colorido para expandir e ver detalhes completos.</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="create" size={16} color={THEME.primary} /> <Text style={{fontWeight: '600'}}>Criando Tarefas:</Text> Use o botão + para criar. Escolha categoria, defina data/hora, configure recorrência e marque como privada se desejar.</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="chevron-down" size={16} color={APP_COLORS.primary.main} /> <Text style={{fontWeight: '600'}}>Expandir/Colapsar:</Text> Tarefas vêm colapsadas por padrão. Toque no cabeçalho colorido para expandir e ver detalhes completos.</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="create" size={16} color={APP_COLORS.primary.main} /> <Text style={{fontWeight: '600'}}>Criando Tarefas:</Text> Use o botão + para criar. Escolha categoria, defina data/hora, configure recorrência e marque como privada se desejar.</Text>
               <Text style={styles.manualListItem}>• <Ionicons name="checkmark-circle" size={16} color="#4CAF50" /> <Text style={{fontWeight: '600'}}>Concluindo Tarefas:</Text> Toque no círculo da tarefa para marcar como concluída. Dependentes precisam de aprovação do admin.</Text>
               <Text style={styles.manualListItem}>• <Ionicons name="pencil" size={16} color="#FF9500" /> <Text style={{fontWeight: '600'}}>Editando Tarefas:</Text> Toque na tarefa para abrir detalhes e editar. Só o criador pode editar suas tarefas.</Text>
               <Text style={styles.manualListItem}>• <Ionicons name="list" size={16} color="#9C27B0" /> <Text style={{fontWeight: '600'}}>Subtarefas:</Text> Adicione subtarefas com datas/horários individuais. Marque como concluídas independentemente.</Text>
@@ -7290,15 +7149,15 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
               <Text style={styles.manualSubtitle}>📅 Calendário</Text>
               <Text style={styles.manualListItem}>• <Ionicons name="ellipse" size={16} color="#FFD700" /> <Text style={{fontWeight: '600'}}>Feriados (Amarelo):</Text> Todos os feriados nacionais brasileiros do ano são marcados automaticamente.</Text>
               <Text style={styles.manualListItem}>• <Ionicons name="ellipse" size={16} color="#4CAF50" /> <Text style={{fontWeight: '600'}}>Tarefas (Verde):</Text> Dias com tarefas pendentes são marcados com ponto verde.</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="ellipse" size={16} color={THEME.danger} /> <Text style={{fontWeight: '600'}}>Vencidas (Vermelho):</Text> Tarefas com data passada aparecem em vermelho no calendário e na lista.</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="add-circle" size={16} color={THEME.primary} /> <Text style={{fontWeight: '600'}}>Criar do Calendário:</Text> Toque em qualquer dia para criar tarefa já com aquela data preenchida.</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="list" size={16} color={THEME.primary} /> <Text style={{fontWeight: '600'}}>Lista do Mês:</Text> Abaixo do calendário aparecem feriados e tarefas do mês selecionado com scroll automático.</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="ellipse" size={16} color={APP_COLORS.status.error} /> <Text style={{fontWeight: '600'}}>Vencidas (Vermelho):</Text> Tarefas com data passada aparecem em vermelho no calendário e na lista.</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="add-circle" size={16} color={APP_COLORS.primary.main} /> <Text style={{fontWeight: '600'}}>Criar do Calendário:</Text> Toque em qualquer dia para criar tarefa já com aquela data preenchida.</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="list" size={16} color={APP_COLORS.primary.main} /> <Text style={{fontWeight: '600'}}>Lista do Mês:</Text> Abaixo do calendário aparecem feriados e tarefas do mês selecionado com scroll automático.</Text>
 
               <Text style={styles.manualSubtitle}>👨‍👩‍👧‍👦 Gerenciar Família</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="pencil" size={16} color={THEME.secondary} /> <Text style={{fontWeight: '600'}}>Alterar Nome:</Text> Apenas admins podem editar o nome da família através do menu de configurações.</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="people" size={16} color={THEME.secondary} /> <Text style={{fontWeight: '600'}}>Ver Membros:</Text> Lista todos os membros com foto, nome, função e data de entrada.</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="swap-horizontal" size={16} color={THEME.accent} /> <Text style={{fontWeight: '600'}}>Alterar Funções:</Text> Admins podem promover dependentes a administradores ou reverter.</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="key" size={16} color={THEME.highlight} /> <Text style={{fontWeight: '600'}}>Código de Convite:</Text> Código único para convidar novos membros. Copie e compartilhe com quem quiser adicionar.</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="pencil" size={16} color={APP_COLORS.secondary.main} /> <Text style={{fontWeight: '600'}}>Alterar Nome:</Text> Apenas admins podem editar o nome da família através do menu de configurações.</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="people" size={16} color={APP_COLORS.secondary.main} /> <Text style={{fontWeight: '600'}}>Ver Membros:</Text> Lista todos os membros com foto, nome, função e data de entrada.</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="swap-horizontal" size={16} color={APP_COLORS.secondary.dark} /> <Text style={{fontWeight: '600'}}>Alterar Funções:</Text> Admins podem promover dependentes a administradores ou reverter.</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="key" size={16} color={APP_COLORS.primary.dark} /> <Text style={{fontWeight: '600'}}>Código de Convite:</Text> Código único para convidar novos membros. Copie e compartilhe com quem quiser adicionar.</Text>
               <Text style={styles.manualListItem}>• <Ionicons name="trash" size={16} color="#e74c3c" /> <Text style={{fontWeight: '600'}}>Remover Membros:</Text> Admins podem remover membros da família (exceto si mesmos).</Text>
 
               <Text style={styles.manualSubtitle}>🚪 Entrar em Outra Família</Text>
@@ -7307,7 +7166,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
               <Text style={styles.manualListItem}>• <Ionicons name="checkmark" size={16} color="#4CAF50" /> <Text style={{fontWeight: '600'}}>Confirmação:</Text> Após inserir o código válido, você será adicionado à família e poderá ver suas tarefas.</Text>
 
               <Text style={styles.manualSubtitle}>📜 Histórico</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="time" size={16} color={THEME.extra} /> <Text style={{fontWeight: '600'}}>Acesso:</Text> Acesse através do menu de configurações, opção Histórico.</Text>
+              <Text style={styles.manualListItem}>• <Ionicons name="time" size={16} color={APP_COLORS.primary.light} /> <Text style={{fontWeight: '600'}}>Acesso:</Text> Acesse através do menu de configurações, opção Histórico.</Text>
               <Text style={styles.manualListItem}>• <Ionicons name="list" size={16} color="#007AFF" /> <Text style={{fontWeight: '600'}}>Conteúdo:</Text> Mostra todas as ações realizadas nas tarefas nos últimos 7 dias.</Text>
               <Text style={styles.manualListItem}>• <Ionicons name="information-circle" size={16} color="#007AFF" /> <Text style={{fontWeight: '600'}}>Detalhes:</Text> Inclui quem criou/editou/concluiu tarefas, com data e hora de cada ação.</Text>
 
@@ -7573,133 +7432,25 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
       </Modal>
 
       {/* Modal de Aprovação para Admins */}
-      <Modal
-        animationType="fade"
-        transparent={true}
+      <ApprovalModal
         visible={approvalModalVisible}
-        onRequestClose={() => setApprovalModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, styles.approvalModalContent]}>
-            <Text style={styles.modalTitle}>Solicitações de Aprovação</Text>
-            {user.role === 'admin' && (
-              <>
-                {/* Seção: Solicitações para virar Admin */}
-                <View style={{ paddingHorizontal: 4, marginBottom: 12 }}>
-                  <Text style={{ fontSize: 16, fontWeight: '600', color: colors.textPrimary, marginBottom: 8 }}>
-                   {adminRoleRequests.length > 0 ? `(${adminRoleRequests.length})` : ''}
-                  </Text>
-                    {adminRoleRequests.length === 0 ? (
-                    <Text style={{ color: colors.textPrimary }}></Text>
-                  ) : (
-                    <View style={{ gap: 10 }}>
-                      {adminRoleRequests.map((req: any) => (
-                        <View key={req.id} style={{ backgroundColor: colors.surface, borderRadius: 10, padding: 12, borderWidth: 1, borderColor: colors.border }}>
-                          <Text style={{ fontSize: 15, fontWeight: '600', color: colors.textPrimary }}>{req.requesterName}</Text>
-                          <Text style={{ fontSize: 13, color: colors.textPrimary, marginTop: 2 }}>pediu para se tornar administrador</Text>
-                          <Text style={{ fontSize: 12, color: colors.textPrimary, marginTop: 6 }}>
-                            {req.requestedAt ? new Date(req.requestedAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}
-                          </Text>
-                          <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
-                            <Pressable
-                              disabled={!!resolvingAdminRequestId}
-                              onPress={() => resolveAdminRoleRequest(req.id, false)}
-                              style={[styles.approvalButton, styles.rejectButton, resolvingAdminRequestId === req.id && { opacity: 0.6 }]}
-                            >
-                              <Ionicons name="close-circle" size={20} color="#fff" />
-                              <Text style={styles.approvalButtonText}>{resolvingAdminRequestId === req.id ? 'Processando...' : 'Rejeitar'}</Text>
-                            </Pressable>
-                            <Pressable
-                              disabled={!!resolvingAdminRequestId}
-                              onPress={() => resolveAdminRoleRequest(req.id, true)}
-                              style={[styles.approvalButton, styles.approveButton, resolvingAdminRequestId === req.id && { opacity: 0.6 }]}
-                            >
-                              <Ionicons name="checkmark-circle" size={20} color="#fff" />
-                              <Text style={styles.approvalButtonText}>{resolvingAdminRequestId === req.id ? 'Processando...' : 'Aprovar'}</Text>
-                            </Pressable>
-                          </View>
-                        </View>
-                      ))}
-                    </View>
-                  )}
-                </View>
-                <View style={{ height: 1, backgroundColor: '#eee', marginHorizontal: 4, marginBottom: 12 }} />
-              </>
-            )}
-            
-            {notifications.length === 0 ? (
-              <Text style={styles.noNotificationsText}>Nenhuma solicitação pendente</Text>
-            ) : (
-              <ScrollView 
-                style={styles.notificationsList}
-                contentContainerStyle={{ paddingBottom: 80 }}
-                showsVerticalScrollIndicator={true}
-              >
-                {notifications.map(notification => {
-                  const approval = approvals.find(a => a.taskId === notification.taskId);
-                  const task = tasks.find(t => t.id === notification.taskId);
-                  
-                  if (!approval || !task) return null;
-                  
-                  return (
-                    <View key={notification.id} style={styles.notificationItem}>
-                      <Text style={styles.notificationTitle}>
-                        {notification.dependenteName} quer completar:
-                      </Text>
-                      <Text style={styles.notificationTaskTitle}>
-                        "{notification.taskTitle}"
-                      </Text>
-                      <Text style={styles.notificationTime}>
-                        {approval.requestedAt ? new Date(approval.requestedAt).toLocaleDateString('pt-BR', {
-                          day: '2-digit',
-                          month: '2-digit',
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        }) : 'Data não disponível'}
-                      </Text>
-                      
-                      <View style={styles.approvalActions}>
-                        <Pressable
-                          style={[styles.approvalButton, styles.rejectButton]}
-                          onPress={() => {
-                            rejectTask(approval.id, 'Rejeitado pelo administrador');
-                            setNotifications(notifications.map(n => 
-                              n.id === notification.id ? { ...n, read: true } : n
-                            ));
-                          }}
-                        >
-                          <Ionicons name="close-circle" size={20} color="#fff" />
-                          <Text style={styles.approvalButtonText}>Rejeitar</Text>
-                        </Pressable>
-                        
-                        <Pressable
-                          style={[styles.approvalButton, styles.approveButton]}
-                          onPress={() => {
-                            approveTask(approval.id, 'Aprovado pelo administrador');
-                            setNotifications(notifications.map(n => 
-                              n.id === notification.id ? { ...n, read: true } : n
-                            ));
-                          }}
-                        >
-                          <Ionicons name="checkmark-circle" size={20} color="#fff" />
-                          <Text style={styles.approvalButtonText}>Aprovar</Text>
-                        </Pressable>
-                      </View>
-                    </View>
-                  );
-                })}
-              </ScrollView>
-            )}
-            
-            <Pressable
-              style={[styles.closeButton, styles.closeButtonFixed, Platform.OS === 'web' && styles.closeButtonFixedWeb]}
-              onPress={() => setApprovalModalVisible(false)}
-            >
-              <Text style={styles.closeButtonText}>Fechar</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
+        onClose={() => setApprovalModalVisible(false)}
+        userRole={user.role}
+        adminRoleRequests={adminRoleRequests}
+        notifications={notifications}
+        approvals={approvals}
+        tasks={tasks}
+        resolvingAdminRequestId={resolvingAdminRequestId}
+        onResolveAdminRequest={resolveAdminRoleRequest}
+        onRejectTask={rejectTask}
+        onApproveTask={approveTask}
+        onMarkNotificationRead={(notificationId) => {
+          setNotifications(notifications.map(n => 
+            n.id === notificationId ? { ...n, read: true } : n
+          ));
+        }}
+        colors={colors}
+      />
 
       {/* Modal de Gerenciamento de Família */}
       <Modal
@@ -7717,13 +7468,13 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, styles.familyModalContent]}>
             <View style={styles.familyModalHeader}>
-              <Text style={[styles.modalTitle, { color: THEME.primary }]}>
+              <Text style={[styles.modalTitle, { color: APP_COLORS.primary.main }]}>
                 {isCreatingFamilyMode ? 'Criar Família' : 'Gerenciar Família'}
               </Text>
               {familySyncBanner && (
                 <View style={styles.familySyncBanner} accessibilityLabel="Indicador de sincronização da família">
-                  <ActivityIndicator size="small" color={THEME.secondary} style={{ marginRight: 8 }} />
-                  <Text style={[styles.familySyncBannerText, { color: THEME.secondary }]}>{familySyncBanner}</Text>
+                  <ActivityIndicator size="small" color={APP_COLORS.secondary.main} style={{ marginRight: 8 }} />
+                  <Text style={[styles.familySyncBannerText, { color: APP_COLORS.secondary.main }]}>{familySyncBanner}</Text>
                 </View>
               )}
             </View>
@@ -7735,7 +7486,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
                 contentContainerStyle={[styles.familyContentContainer, Platform.OS === 'web' && styles.familyContentContainerWeb]}
               >
                 <View style={[styles.familyCard, isWeb ? styles.familyCardWeb : styles.familyCardMobile]}>
-                  <Ionicons name="people" size={60} color={THEME.primary} style={styles.createFamilyIcon} />
+                  <Ionicons name="people" size={60} color={APP_COLORS.primary.main} style={styles.createFamilyIcon} />
                   <Text style={styles.createFamilyTitle}>Criar Nova Família</Text>
                   <Text style={styles.createFamilySubtitle}>
                     Você precisa estar em uma família para gerenciar tarefas em grupo.
@@ -7776,7 +7527,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
                   </Pressable>
 
                   <View style={[styles.createFamilyNote, Platform.OS === 'web' && styles.createFamilyNoteWeb]}>
-                    <Ionicons name="information-circle" size={20} color={THEME.textSecondary} />
+                    <Ionicons name="information-circle" size={20} color={APP_COLORS.text.secondary} />
                     <Text style={styles.createFamilyNoteText}>
                       Após criar a família, você receberá um código para compartilhar com outros membros.
                     </Text>
@@ -7845,7 +7596,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
                               style={styles.editFamilyNameIconButton}
                               onPress={startEditingFamilyName}
                             >
-                              <Ionicons name="pencil" size={16} color={THEME.primary} />
+                              <Ionicons name="pencil" size={16} color={APP_COLORS.primary.main} />
                             </Pressable>
                           )}
                         </View>
@@ -7860,7 +7611,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
                             style={styles.familyCardActionButton}
                             onPress={startEditingFamilyName}
                           >
-                            <Ionicons name="pencil" size={18} color={THEME.primary} />
+                            <Ionicons name="pencil" size={18} color={APP_COLORS.primary.main} />
                             <Text style={styles.familyCardActionText}>Editar</Text>
                           </Pressable>
                         )}
@@ -8058,7 +7809,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
                               <Ionicons 
                                 name={member.role === 'admin' ? 'shield-checkmark' : 'person'} 
                                 size={14} 
-                                color={member.role === 'admin' ? THEME.primary : THEME.textSecondary} 
+                                color={member.role === 'admin' ? APP_COLORS.primary.main : APP_COLORS.text.secondary} 
                               />
                               <Text style={[
                                 styles.memberRoleText,
@@ -8085,7 +7836,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
                               openManagedModal('editMember');
                             }}
                           >
-                            <Ionicons name="create-outline" size={20} color={THEME.primary} />
+                            <Ionicons name="create-outline" size={20} color={APP_COLORS.primary.main} />
                             <Text style={styles.editMemberButtonText}>Editar</Text>
                           </Pressable>
                         )}
@@ -8210,7 +7961,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
                             <Ionicons 
                               name={labelMap[key].icon} 
                               size={24} 
-                              color={has ? THEME.primary : THEME.textSecondary} 
+                              color={has ? APP_COLORS.primary.main : APP_COLORS.text.secondary} 
                             />
                             <Text style={[styles.permissionEditLabel, has && styles.permissionEditLabelActive]}>
                               {labelMap[key].label}
@@ -8248,7 +7999,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
                       changeMemberRole(selectedMemberForEdit.id);
                     }}
                   >
-                    <Ionicons name="swap-horizontal" size={20} color={THEME.primary} />
+                    <Ionicons name="swap-horizontal" size={20} color={APP_COLORS.primary.main} />
                     <Text style={styles.changeRoleButtonText}>
                       {selectedMemberForEdit.role === 'admin' ? 'Tornar Dependente' : 'Tornar Administrador'}
                     </Text>
@@ -8308,7 +8059,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
         >
           <View style={styles.syncLoadingOverlay}>
             <View style={styles.syncLoadingContainer}>
-              <ActivityIndicator size="large" color={THEME.primary} />
+              <ActivityIndicator size="large" color={APP_COLORS.primary.main} />
               <Text style={styles.syncLoadingText}>{syncMessage}</Text>
             </View>
           </View>
@@ -8429,2666 +8180,4 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
   );
 };
 
-const getStyles = (colors: any, activeTheme: 'light' | 'dark') => StyleSheet.create({
-  // Árvore de Natal decorativa - ocupa tela toda
-  christmasTree: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    width: '100%',
-    height: '100%',
-    opacity: activeTheme === 'dark' ? 0.15 : 0.2, // Menos opaca no dark para não escurecer demais
-    zIndex: -1, // Atrás de todo o conteúdo
-  },
-  // Wrapper de página: mantém o layout atual no mobile; na web centraliza e limita largura
-  pageContainer: {
-    flex: 1,
-    alignSelf: 'stretch',
-  },
-  pageContainerWeb: {
-    width: '100%',
-    maxWidth: 1100, // Limita a largura máxima em pixels para desktop
-    minWidth: 320,
-    alignSelf: 'center',
-  },
-  familyContentContainer: {
-    paddingHorizontal: 0,
-    paddingTop: 16,
-    paddingBottom: 40,
-    width: '100%',
-  },
-  familyContentContainerWeb: {
-    paddingHorizontal: 20,
-  },
-  familyCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 0,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderLeftWidth: 0,
-    borderRightWidth: 0,
-    borderColor: colors.border,
-    padding: 20,
-    marginBottom: 12,
-    width: '100%',
-  },
-  familyCardMobile: {
-    paddingHorizontal: 20,
-    paddingVertical: 18,
-    marginBottom: 20,
-  },
-  familyCardWeb: {
-    borderRadius: 12,
-    borderWidth: 1,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderLeftWidth: 1,
-    borderRightWidth: 1,
-    marginHorizontal: 0,
-    marginBottom: 16,
-    shadowColor: colors.shadowColor,
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 3,
-  },
-  familyCardRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  familyCardHeaderText: {
-    flex: 1,
-    gap: 4,
-  },
-  familyCardActionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(0, 122, 255, 0.12)',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-    gap: 6,
-  },
-  familyCardActionText: {
-    color: THEME.primary,
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  familyCardValueRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-    marginTop: 12,
-    backgroundColor: colors.inputBackground,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  familyCardBadge: {
-    backgroundColor: THEME.primary + '20',
-    color: THEME.primary,
-    fontWeight: '600',
-    fontSize: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-  },
-  familyMemberCard: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 2,
-    borderColor: THEME.primary,
-    marginBottom: 12,
-    width: '100%',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  familyMemberCardMobile: {
-    flexDirection: 'column',
-    gap: 16,
-    padding: 18,
-  },
-  // Container para centralizar a lista de membros
-  familyMemberCardWeb: {
-    flexDirection: 'column',
-    gap: 16,
-    padding: 18,
-  },
-  inviteCodeBoxWeb: {
-    borderRadius: 10,
-    borderWidth: 2,
-    borderTopWidth: 2,
-    borderBottomWidth: 2,
-    borderLeftWidth: 2,
-    borderRightWidth: 2,
-    marginHorizontal: 0,
-    marginVertical: 12,
-    shadowColor: THEME.primary,
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  inviteCodeBoxMobile: {
-    paddingVertical: 20,
-    paddingHorizontal: 24,
-    marginVertical: 12,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: '#2196F3',
-    marginHorizontal: 4,
-  },
-  copyButtonMobile: {
-    marginLeft: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-  },
-  inviteCodeMetaRow: {
-    marginTop: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-    flexWrap: 'wrap',
-  },
-  inviteCodeMetaMobile: {
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: '100%',
-    gap: 10,
-  },
-  inviteCodeExpiryMobile: {
-    textAlign: 'center',
-    width: '100%',
-  },
-  regenCodeButtonMobile: {
-    alignSelf: 'center',
-    marginLeft: 0,
-    paddingHorizontal: 18,
-    paddingVertical: 12,
-  },
-  createFamilyNoteWeb: {
-    borderRadius: 10,
-    borderWidth: 1,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderLeftWidth: 1,
-    borderRightWidth: 1,
-    marginHorizontal: 0,
-  },
-  closeModalButtonWeb: {
-    borderRadius: 8,
-    marginTop: 16,
-    marginHorizontal: 16,
-    alignSelf: 'center',
-    width: '90%',
-    maxWidth: 480,
-  },
-  closeButtonFixedWeb: {
-    position: 'relative',
-    left: undefined as unknown as number,
-    right: undefined as unknown as number,
-    bottom: 0,
-    alignSelf: 'center',
-    width: '90%',
-    maxWidth: 480,
-    marginTop: 16,
-    marginBottom: 16,
-  },
-  // Bloco esquerdo: avatar + detalhes (ocupa o espaço disponível)
-  memberLeftContainer: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    flex: 1,
-    paddingRight: 12,
-  },
-  memberLeftContainerMobile: {
-    paddingRight: 0,
-    width: '100%',
-  },
-  // Coluna direita: ações (mantém à direita)
-  memberRightColumn: {
-    justifyContent: 'center',
-    alignItems: 'flex-end',
-  },
-  // Alinhamento à direita para o grupo de ações
-  memberActionsRight: {
-    justifyContent: 'flex-end',
-  },
-  container: {
-    flex: 1,
-    zIndex: 1, // Garante que o conteúdo fique acima do background
-  },
-  content: {
-    flex: 1,
-    paddingHorizontal: 8, // padding menor no mobile
-    paddingTop: 12, // Reduzir padding superior
-    paddingBottom: 100, // Aumentar padding inferior para os botões flutuantes
-  },
-  categoryFiltersContainer: {
-    marginBottom: 20,
-  },
-  categoryScrollView: {
-    flexGrow: 0,
-  },
-  categoryFilters: {
-    paddingHorizontal: 4,
-    paddingRight: 20,
-  },
-  categoryFilter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginRight: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-    backgroundColor: colors.surface,
-    minWidth: 80,
-  },
-  categoryFilterActive: {
-    backgroundColor: THEME.primary,
-    borderColor: THEME.primary,
-  },
-  categoryFilterText: {
-    fontSize: 12,
-    fontWeight: '600',
-    marginLeft: 4,
-  },
-  categoryFilterTextActive: {
-    color: '#fff',
-  },
-  addCategoryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: THEME.primary,
-    backgroundColor: colors.surface,
-    borderStyle: 'dashed',
-    minWidth: 80,
-  },
-  addCategoryText: {
-    fontSize: 12,
-    fontWeight: '600',
-    marginLeft: 4,
-    color: THEME.primary,
-  },
-  horizontalScrollContainer: {
-    marginBottom: 20,
-    maxHeight: 70,
-    ...Platform.select({
-      web: {
-        overflowX: 'scroll' as any,
-        overflowY: 'hidden' as any,
-        WebkitOverflowScrolling: 'touch' as any,
-      },
-    }),
-  },
-  iconSelectorContainer: {
-    flexDirection: 'row',
-    gap: 12,
-    paddingRight: 16,
-    ...Platform.select({
-      web: {
-        flexWrap: 'nowrap' as any,
-      },
-    }),
-  },
-  iconSelector: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: colors.surfaceSecondary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  iconSelectorActive: {
-    borderColor: THEME.primary,
-    backgroundColor: THEME.primaryBg,
-  },
-  colorSelectorContainer: {
-    flexDirection: 'row',
-    gap: 12,
-    paddingRight: 16,
-    ...Platform.select({
-      web: {
-        flexWrap: 'nowrap' as any,
-      },
-    }),
-  },
-  colorSelector: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 3,
-    borderColor: 'transparent',
-  },
-  colorSelectorActive: {
-    borderColor: colors.textPrimary,
-  },
-  categoryPreview: {
-    marginBottom: 20,
-  },
-  previewLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.textPrimary,
-    marginBottom: 8,
-  },
-  privateToggleContainer: {
-    marginTop: 12,
-    marginBottom: 6,
-    alignItems: 'flex-start'
-  },
-  privateToggleButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#ccc',
-    backgroundColor: colors.surface
-  },
-  privateToggleButtonCompact: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#ccc',
-    backgroundColor: colors.surface,
-    gap: 4,
-  },
-  privateToggleButtonActive: {
-    backgroundColor: THEME.primary,
-    borderColor: THEME.primary
-  },
-  privateToggleText: {
-    marginRight: 8,
-    color: colors.textPrimary
-  },
-  privateToggleTextCompact: {
-    fontSize: 13,
-    color: colors.textPrimary,
-    fontWeight: '500',
-  },
-  privateToggleTextActive: {
-    color: '#fff'
-  },
-  privateHint: {
-    marginTop: 6,
-    fontSize: 12,
-    color: '#888'
-  },
-  categoryPreviewItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 16,
-    borderWidth: 1,
-    alignSelf: 'flex-start',
-  },
-  categoryPreviewText: {
-    fontSize: 12,
-    fontWeight: '600',
-    marginLeft: 4,
-  },
-  dateTimeContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 16, // Reduzir margem
-    gap: 8, // Reduzir gap
-  },
-  dateTimeButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 10, // Reduzir padding
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
-    backgroundColor: colors.surfaceSecondary,
-  },
-  dateTimeButtonText: {
-    fontSize: 13, // Reduzir tamanho da fonte
-    color: colors.textSecondary,
-    marginLeft: 6,
-    flex: 1,
-  },
-  // Web: manter um pouco mais de respiro lateral
-  contentWeb: {
-    paddingHorizontal: 16,
-  },
-  // Estilos específicos para Web para centralizar os botões de Data/Hora
-  dateTimeContainerWeb: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  dateTimeButtonWeb: {
-    flexGrow: 0,
-    flexShrink: 0,
-    minWidth: 160,
-    marginHorizontal: 6,
-  },
-  repeatContainer: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 12,
-  },
-  repeatIconButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surfaceSecondary,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  repeatIconButtonActive: {
-    borderColor: THEME.primary,
-    backgroundColor: THEME.primaryBg,
-  },
-  customDaysContainer: {
-    marginBottom: 16, // Reduzir margem
-  },
-  customDaysLabel: {
-    fontSize: 13, // Reduzir tamanho da fonte
-    fontWeight: '600',
-    color: colors.textPrimary,
-    marginBottom: 6, // Reduzir margem
-  },
-  customDaysSelector: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  chipButton: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surfaceSecondary,
-  },
-  chipButtonActive: {
-    backgroundColor: THEME.primaryBg,
-    borderColor: THEME.primary,
-  },
-  chipText: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    fontWeight: '600',
-  },
-  chipTextActive: {
-    color: THEME.primary,
-  },
-  dayButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.surfaceSecondary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  dayButtonActive: {
-    backgroundColor: THEME.primary,
-    borderColor: THEME.primary,
-  },
-  dayButtonText: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    fontWeight: '600',
-  },
-  dayButtonTextActive: {
-    color: '#fff',
-  },
-  toggleButton: {
-    flex: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    backgroundColor: colors.surfaceSecondary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  toggleButtonActive: {
-    backgroundColor: THEME.primary,
-    borderColor: THEME.primary,
-  },
-  toggleButtonText: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    fontWeight: '600',
-  },
-  toggleButtonTextActive: {
-    color: '#fff',
-  },
-  summaryContainer: {
-    marginBottom: 16, // Reduzir margem
-  },
-  summaryText: {
-    fontSize: 13, // Reduzir tamanho da fonte
-    color: colors.textSecondary,
-    textAlign: 'center',
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 30, // Reduzir padding horizontal
-  },
-  emptyText: {
-    fontSize: 16, // Reduzir tamanho da fonte
-    fontWeight: 'bold',
-    color: colors.textSecondary,
-    marginTop: 16, // Reduzir margem superior
-    marginBottom: 6, // Reduzir margem inferior
-  },
-  emptySubtext: {
-    fontSize: 13, // Reduzir tamanho da fonte
-    color: colors.textTertiary,
-    textAlign: 'center',
-    lineHeight: 18, // Reduzir line height
-  },
-  smallModalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 16,
-  },
-  smallModalContent: {
-    width: '95%',
-    maxWidth: 500,
-    borderRadius: 12,
-    backgroundColor: colors.surface,
-    padding: 16,
-    maxHeight: '75%',
-  },
-  smallModalTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#111',
-    marginBottom: 12,
-    textAlign: 'center',
-  },
-  taskList: {
-    flex: 1,
-    minHeight: '100%',
-  },
-  taskListContent: {
-    paddingBottom: 100, // Espaço para o botão fixo
-    flexGrow: 0,
-    alignItems: 'stretch',
-  },
-  taskItem: {
-    backgroundColor: colors.surface,
-    borderRadius: 12, // Reduzir border radius
-    marginHorizontal: 0, // ocupar 100% do container
-    marginBottom: 12, // Reduzir margem inferior
-    padding: 0,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-    borderWidth: 1,
-    borderColor: colors.border,
-    overflow: 'hidden',
-    alignSelf: 'stretch',
-    width: '100%',
-  },
-  taskCompleted: {
-    opacity: 0.6,
-    backgroundColor: colors.surfaceSecondary,
-  },
-  // Category Header - New Styles
-  categoryHeader: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderBottomWidth: activeTheme === 'dark' ? 0 : 1,
-    borderBottomColor: activeTheme === 'dark' ? 'transparent' : 'rgba(0,0,0,0.05)',
-  },
-  categoryHeaderContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  categoryHeaderRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  privateIndicatorRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 10,
-    backgroundColor: 'rgba(0,0,0,0.03)'
-  },
-  privateIndicatorRightText: {
-    marginLeft: 4,
-    fontSize: 10,
-    color: colors.textSecondary,
-    fontWeight: '700'
-  },
-  privateIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginLeft: 6,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 10,
-    backgroundColor: 'rgba(0,0,0,0.03)'
-  },
-  privateIndicatorText: {
-    marginLeft: 4,
-    fontSize: 10,
-    color: colors.textSecondary,
-    fontWeight: '700'
-  },
-  categoryHeaderText: {
-    fontSize: 12,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  taskCardHeader: {
-    padding: 12, // Reduzir padding
-    paddingBottom: 8, // Reduzir padding inferior
-  },
-  taskMainContent: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-  },
-  checkboxContainer: {
-    marginRight: 12, // Reduzir margem
-    marginTop: 2,
-  },
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: activeTheme === 'dark' ? '#fff' : THEME.primary,
-    backgroundColor: activeTheme === 'dark' ? 'transparent' : colors.surface,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  checkboxCompleted: {
-    backgroundColor: THEME.primary,
-    borderColor: THEME.primary,
-  },
-  checkboxDisabled: {
-    backgroundColor: activeTheme === 'dark' ? 'transparent' : colors.background,
-    borderColor: activeTheme === 'dark' ? '#555' : '#ccc',
-  },
-  unlockIconButton: {
-    padding: 8,
-    marginLeft: 8,
-  },
-  taskTextContent: {
-    flex: 1,
-  },
-  taskTitle: {
-    fontSize: 16, // Reduzir tamanho da fonte
-    fontWeight: '600',
-    color: colors.textPrimary,
-    lineHeight: 22, // Reduzir line height
-    marginBottom: 3, // Reduzir margem
-  },
-  taskTitleCompleted: {
-    textDecorationLine: 'line-through',
-    color: colors.textTertiary,
-  },
-  taskDescription: {
-    fontSize: 13, // Reduzir tamanho da fonte
-    color: activeTheme === 'dark' ? '#fff' : colors.textSecondary,
-    lineHeight: 18, // Reduzir line height
-    marginTop: 3, // Reduzir margem
-  },
-  taskDescriptionCompleted: {
-    textDecorationLine: 'line-through',
-    color: colors.textTertiary,
-  },
-  categoryBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 20,
-    minWidth: 70,
-    justifyContent: 'center',
-  },
-  categoryBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-    marginLeft: 4,
-    textTransform: 'uppercase',
-  },
-  scheduleInfo: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    paddingHorizontal: 12, // Reduzir padding horizontal
-    paddingBottom: 12, // Reduzir padding inferior
-    gap: 6, // Reduzir gap
-    borderTopWidth: activeTheme === 'dark' ? 0 : 1,
-    borderTopColor: activeTheme === 'dark' ? 'transparent' : '#f0f0f0',
-    paddingTop: 8, // Reduzir padding superior
-  },
-  scheduleItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surfaceSecondary,
-    paddingHorizontal: 8, // Reduzir padding horizontal
-    paddingVertical: 4, // Reduzir padding vertical
-    borderRadius: 10, // Reduzir border radius
-    borderWidth: activeTheme === 'dark' ? 0 : 1,
-    borderColor: activeTheme === 'dark' ? 'transparent' : '#e9ecef',
-  },
-  scheduleText: {
-    fontSize: 11, // Reduzir tamanho da fonte
-    color: activeTheme === 'dark' ? '#fff' : '#495057',
-    marginLeft: 3, // Reduzir margem
-    fontWeight: '600',
-  },
-  // Estilos para horário das subtarefas
-  subtaskScheduleInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 2,
-    marginLeft: 2,
-  },
-  subtaskScheduleText: {
-    fontSize: 10,
-    color: activeTheme === 'dark' ? '#fff' : colors.textTertiary,
-    marginLeft: 4,
-    fontStyle: 'italic',
-  },
-  scheduleActions: {
-    flexDirection: 'row',
-    gap: 8,
-    marginLeft: 'auto', // Empurra para a direita
-  },
-  collapseButton: {
-    backgroundColor: 'transparent',
-    padding: 6,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  collapseButtonContainer: {
-    marginLeft: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  scheduleActionButton: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: '#e9ecef',
-    borderRadius: 6,
-    padding: 6,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 4,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  scheduleActionButtonActive: {
-    backgroundColor: THEME.primary,
-    borderColor: THEME.primary,
-  },
-  scheduleActionButtonText: {
-    fontSize: 11,
-    color: '#fff',
-    fontWeight: '600',
-  },
-  overdueText: {
-    color: '#dc3545',
-    fontWeight: '700',
-  },
-  overdueIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: activeTheme === 'dark' ? 'rgba(220,53,69,0.15)' : '#fff5f5',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: activeTheme === 'dark' ? 'rgba(220,53,69,0.4)' : '#fecaca',
-  },
-  overdueLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#dc3545',
-    marginLeft: 4,
-    textTransform: 'uppercase',
-  },
-  fab: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: THEME.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 8,
-  },
-  modalOverlayMobile: {
-    padding: 0,
-    justifyContent: 'flex-start',
-    alignItems: 'stretch',
-  },
-  modalContent: {
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    padding: 20,
-    width: '95%',
-    maxWidth: 500,
-    height: '75%',
-    alignSelf: 'center',
-  },
-  // No web, expandir o modal de Gerenciar Família para ocupar tela cheia (como mobile)
-  modalContentWeb: {
-    flex: 1,
-    width: '100%',
-    maxWidth: '100%',
-    minHeight: '100%',
-    maxHeight: '100%',
-    borderRadius: 0,
-    padding: 0,
-    paddingHorizontal: 0,
-    paddingVertical: 0,
-    alignSelf: 'center',
-  },
-  // Conteúdo do modal de configurações com espaço para o botão fixo
-  settingsModalContent: {
-    position: 'relative',
-    paddingBottom: 72, // espaço para o botão "Fechar" fixo
-  },
-  // Conteúdo do modal de aprovações com espaço para o botão fixo
-  approvalModalContent: {
-    position: 'relative',
-    paddingBottom: 72, // espaço para o botão "Fechar" fixo
-  },
-  fullscreenLoadingOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 999,
-  },
-  fullscreenLoadingContent: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    borderRadius: 16,
-  },
-  fullscreenLoadingText: {
-    marginTop: 12,
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600'
-  },
-  loadingIconContainer: {
-    position: 'relative',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  loadingChristmasHat: {
-    position: 'absolute',
-    top: -15,
-    left: -8,
-    width: 50,
-    height: 50,
-    zIndex: 10,
-    resizeMode: 'contain',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16, // Reduzir margem
-  },
-  modalTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: THEME.primary,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
-    padding: 10, // Reduzir padding
-    fontSize: 15, // Reduzir tamanho da fonte
-    marginBottom: 12, // Reduzir margem
-    backgroundColor: colors.surfaceSecondary,
-    width: '99%', // Garantir que ocupe toda a largura disponível
-    alignSelf: 'stretch', // Garantir que se estenda corretamente
-  },
-  textArea: {
-    height: 70, // Reduzir altura
-    textAlignVertical: 'top',
-    width: '99%', // Garantir largura total
-    alignSelf: 'stretch', // Garantir que se estenda corretamente
-  },
-  
-  categoryLabel: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: colors.textPrimary,
-    marginBottom: 10,
-  },
-  categorySelectorContainer: {
-    marginBottom: 16,
-  },
-  categorySelectorScrollView: {
-    flexGrow: 0,
-  },
-  categorySelectorScroll: {
-    paddingHorizontal: 4,
-    paddingRight: 20,
-  },
-  categorySelector: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10, // Reduzir padding
-    paddingVertical: 6, // Reduzir padding
-    marginRight: 8,
-    borderRadius: 16,
-    borderWidth: 1,
-    minWidth: 85, // Reduzir largura mínima
-    justifyContent: 'center',
-  },
-  categorySelectorActive: {
-    borderWidth: 2,
-  },
-  categorySelectorText: {
-    fontSize: 11, // Reduzir tamanho da fonte
-    fontWeight: '600',
-    marginLeft: 3, // Reduzir margem
-  },
-  modalButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 4, // Reduzir margem superior
-    paddingTop: 8, // Adicionar um pouco de padding
-  },
-  button: {
-    flex: 1,
-    paddingVertical: 10, // Reduzir padding vertical
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  cancelButton: {
-    backgroundColor: colors.surfaceSecondary,
-    marginRight: 8,
-  },
-  cancelButtonText: {
-    color: THEME.textSecondary,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  addButton: {
-    backgroundColor: THEME.primary,
-    marginLeft: 8,
-  },
-  buttonDisabled: {
-    backgroundColor: '#a0c8ff', // Cor mais clara para indicar que está desabilitado
-  },
-  addButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  // Date Picker Styles
-  datePickerModal: {
-    backgroundColor: colors.surface,
-    borderRadius: 20,
-    padding: 20,
-    margin: 20,
-    marginTop: 100,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    elevation: 5,
-  },
-  datePickerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    textAlign: 'center',
-    marginBottom: 20,
-    color: colors.textPrimary,
-  },
-  dateInputsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  dateInput: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
-    padding: 12,
-    textAlign: 'center',
-    fontSize: 16,
-    width: 60,
-    marginHorizontal: 5,
-  },
-  dateSeparator: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.textSecondary,
-    marginHorizontal: 5,
-  },
-  datePickerActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  datePickerCancel: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-    backgroundColor: colors.surfaceSecondary,
-    marginRight: 8,
-  },
-  datePickerCancelText: {
-    color: colors.textSecondary,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  datePickerConfirm: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-    backgroundColor: THEME.primary,
-    marginLeft: 8,
-  },
-  datePickerConfirmText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  // Time Picker Styles
-  timePickerModal: {
-    backgroundColor: colors.surface,
-    borderRadius: 20,
-    padding: 20,
-    margin: 20,
-    marginTop: 100,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    elevation: 5,
-  },
-  timePickerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    textAlign: 'center',
-    marginBottom: 20,
-    color: colors.textPrimary,
-  },
-  timeInputsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  timeInput: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
-    padding: 12,
-    textAlign: 'center',
-    fontSize: 18,
-    width: 50,
-    marginHorizontal: 5,
-  },
-  timeSeparator: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: colors.textSecondary,
-    marginHorizontal: 10,
-  },
-  timePickerActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  timePickerCancel: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-    backgroundColor: colors.surfaceSecondary,
-    marginRight: 8,
-  },
-  timePickerCancelText: {
-    color: colors.textSecondary,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  timePickerConfirm: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-    backgroundColor: THEME.primary,
-    marginLeft: 8,
-  },
-  timePickerConfirmText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  // Keyboard Avoiding Styles
-  keyboardAvoidingView: {
-    flex: 1,
-  },
-  modalScrollView: {
-    flex: 1,
-    marginBottom: 12, // Reduzir margem
-  },
-  modalScrollContent: {
-    paddingBottom: 20,
-  },
-  // Tab Styles (DEPRECATED - mantidos para compatibilidade)
-  /*
-  tabContainer: {
-    flexDirection: 'row',
-    backgroundColor: colors.surfaceSecondary,
-    borderRadius: 12,
-    padding: 4,
-    marginHorizontal: 20,
-    marginVertical: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  tab: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    backgroundColor: 'transparent',
-  },
-  activeTab: {
-    backgroundColor: colors.surface,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  tabText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.textSecondary,
-    marginLeft: 6,
-    marginRight: 8,
-  },
-  activeTabText: {
-    color: THEME.primary,
-  },
-  taskCount: {
-    backgroundColor: '#e3f2fd',
-    borderRadius: 10,
-    minWidth: 20,
-    height: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 6,
-  },
-  taskCountText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: colors.textSecondary,
-  },
-  activeTaskCountText: {
-    color: '#fff',
-  },
-  */
-  // Container principal para tabs e filtro
-  tabsHeaderContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: 16,
-    marginVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e5e5',
-    paddingBottom: 10,
-  },
-  // Simple Tab Styles (Nova aparência simplificada)
-  simpleTabContainer: {
-    flexDirection: 'row',
-    flex: 1, // Ocupa o espaço disponível
-  },
-  simpleTab: {
-    flex: 1,
-    paddingVertical: 10, // Reduzir padding vertical
-    paddingHorizontal: 8, // Reduzir mais o padding horizontal para mobile
-    alignItems: 'center',
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
-  },
-  activeSimpleTab: {
-    borderBottomColor: THEME.primary,
-  },
-  simpleTabText: {
-    fontSize: 15, // Reduzir tamanho da fonte
-    fontWeight: '500',
-    color: colors.textSecondary,
-  },
-  activeSimpleTabText: {
-    color: THEME.primary,
-    fontWeight: '600',
-  },
-  // History Styles
-  historyModalWrapper: {
-    width: '95%',
-    maxWidth: 500,
-    maxHeight: '75%',
-    minHeight: 320,
-    flex: 1,
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  historyModalSafeArea: {
-    flex: 1,
-    position: 'relative',
-    paddingBottom: 72, // espaço para o botão "Fechar" fixo
-  },
-  historySubtitle: {
-    fontSize: 14,
-    color: colors.textPrimary,
-    textAlign: 'center',
-    marginBottom: 12,
-    paddingHorizontal: 20,
-  },
-  historyListContainer: {
-    flex: 1,
-    width: '100%',
-    marginBottom: 12,
-    minHeight: 200,
-  },
-  historyList: {
-    flex: 1,
-  },
-  historyListContent: {
-    paddingBottom: 84, // garantir que o conteúdo não fique sob o botão fixo
-  },
-  emptyHistoryContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 60,
-  },
-  emptyHistoryText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.textPrimary,
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  emptyHistorySubtext: {
-    fontSize: 14,
-    color: colors.textPrimary,
-    textAlign: 'center',
-    paddingHorizontal: 40,
-  },
-  historyItem: {
-    flexDirection: 'row',
-    padding: 16,
-    width: '95%',
-    alignSelf: 'center',
-    marginVertical: 4,
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  historyIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.surfaceSecondary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  historyContent: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  historyText: {
-    fontSize: 15,
-    color: colors.textPrimary,
-    marginBottom: 4,
-  },
-  historyAction: {
-    fontWeight: '600',
-    color: THEME.primary,
-  },
-  historyDetails: {
-    fontSize: 13,
-    color: colors.textSecondary,
-    marginBottom: 4,
-    fontStyle: 'italic',
-  },
-  historyTime: {
-    fontSize: 12,
-    color: colors.textTertiary,
-  },
-  // Overdue Task Styles
-  taskOverdue: {
-    // Manter o fundo do card conforme o tema; no dark permanecer escuro
-    backgroundColor: activeTheme === 'dark' ? colors.surface : '#fff5f5',
-    borderWidth: 2,
-    borderColor: activeTheme === 'dark' ? 'rgba(220,53,69,0.4)' : '#fecaca',
-  },
-  pendingRecurringIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(243, 156, 18, 0.1)',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 8,
-    gap: 4,
-  },
-  pendingRecurringLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#f39c12',
-    textTransform: 'uppercase',
-  },
-  taskTitlePending: {
-    color: '#b45309',
-  },
-  taskDescriptionPending: {
-    color: '#92400e',
-  },
-  lastUpdateText: {
-    fontSize: 11,
-    color: '#28a745',
-    marginTop: 4,
-    textAlign: 'center',
-    fontWeight: '500',
-  },
-  refreshContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 4,
-  },
-  refreshButton: {
-    marginLeft: 8,
-    padding: 4,
-    borderRadius: 12,
-    backgroundColor: '#f0f9f0',
-  },
-  refreshButtonActive: {
-    backgroundColor: '#e7f3ff',
-  },
-  rotating: {
-    transform: [{ rotate: '45deg' }],
-  },
-  approvalStatus: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    backgroundColor: activeTheme === 'dark' ? 'rgba(255,193,7,0.15)' : '#fff3cd',
-    borderRadius: 12,
-    marginHorizontal: 12,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: activeTheme === 'dark' ? 'rgba(255,152,0,0.4)' : '#ff9800',
-  },
-  approvalStatusApproved: {
-    backgroundColor: activeTheme === 'dark' ? 'rgba(76,175,80,0.15)' : '#d4edda',
-    borderColor: activeTheme === 'dark' ? 'rgba(76,175,80,0.4)' : '#4CAF50',
-  },
-  approvalStatusRejected: {
-    backgroundColor: activeTheme === 'dark' ? 'rgba(231,76,60,0.15)' : '#f8d7da',
-    borderColor: activeTheme === 'dark' ? 'rgba(231,76,60,0.4)' : '#e74c3c',
-  },
-  approvalStatusText: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#ff9800',
-    marginLeft: 4,
-  },
-  approvalStatusTextApproved: {
-    color: '#4CAF50',
-  },
-  approvalStatusTextRejected: {
-    color: '#e74c3c',
-  },
-  noNotificationsText: {
-    textAlign: 'center',
-    color: colors.textSecondary,
-    fontStyle: 'italic',
-    marginVertical: 20,
-  },
-  notificationsList: {
-    maxHeight: 400,
-    marginVertical: 10,
-  },
-  notificationItem: {
-    backgroundColor: colors.surfaceSecondary,
-    borderRadius: 10,
-    padding: 15,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  notificationTitle: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    marginBottom: 5,
-  },
-  notificationTaskTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: colors.textPrimary,
-    marginBottom: 5,
-  },
-  notificationTime: {
-    fontSize: 12,
-    color: colors.textTertiary,
-    marginBottom: 10,
-  },
-  approvalActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  approvalButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 15,
-    borderRadius: 8,
-    gap: 5,
-  },
-  approveButton: {
-    backgroundColor: '#4CAF50',
-  },
-  rejectButton: {
-    backgroundColor: '#e74c3c',
-  },
-  approvalButtonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 14,
-  },
-  closeButton: {
-    backgroundColor: THEME.primary,
-    paddingVertical: 12,
-    paddingHorizontal: 30,
-    borderRadius: 8,
-    marginTop: 15,
-    alignItems: 'center',
-  },
-  // Botão "Fechar" fixo no rodapé do modal de aprovações
-  closeButtonFixed: {
-    position: 'absolute',
-    left: 20,
-    right: 20,
-    bottom: 16,
-    marginTop: 0,
-  },
-  closeButtonText: {
-    color: '#fff',
-    fontWeight: '600',
-    textAlign: 'center',
-    fontSize: 16,
-  },
-  // Estilos do Modal de Família
-  familyModalContent: {
-    maxHeight: '75%',
-    minHeight: '75%',
-    paddingBottom: 20, // espaço para o botão "Fechar" fixo
-  },
-  familyModalContentMobile: {
-    flex: 1,
-    width: '100%',
-    maxWidth: '100%',
-    minHeight: '100%',
-    maxHeight: '100%',
-    borderRadius: 0,
-    padding: 0,
-    paddingHorizontal: 0,
-    paddingVertical: 0,
-    paddingBottom: 20, // espaço para o botão "Fechar" fixo
-  },
-  familyModalHeader: {
-    alignItems: 'center',
-    paddingVertical: 20,
-    paddingHorizontal: 20,
-    borderBottomWidth: 2,
-    borderBottomColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  closeModalButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 30,
-    borderRadius: 8,
-    alignItems: 'center',
-    backgroundColor: THEME.primary,
-    marginTop: 15,
-  },
-  closeModalButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  familyContent: {
-    flex: 1,
-  },
-
-  familySectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: colors.textPrimary,
-    marginBottom: 12,
-  },
-  familySectionSubtitle: {
-    fontSize: 15,
-    color: colors.textPrimary,
-    marginBottom: 16,
-    lineHeight: 22,
-  },
-  generateCodeButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: THEME.primary,
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    borderRadius: 10,
-    gap: 8,
-  },
-  generateCodeButtonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 17,
-  },
-  inviteCodeContainer: {
-    marginTop: 15,
-    marginHorizontal: 0,
-    padding: 0,
-    backgroundColor: 'transparent',
-    borderRadius: 0,
-    borderWidth: 0,
-  },
-  inviteCodeLabel: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: colors.textPrimary,
-    marginBottom: 8,
-  },
-  inviteCodeBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: colors.surface,
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: THEME.primary,
-    width: '100%',
-  },
-  inviteCodeText: {
-    fontSize: 30,
-    fontWeight: 'bold',
-    color: THEME.primary,
-    letterSpacing: 4,
-    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
-  },
-  copyButton: {
-    backgroundColor: THEME.primary,
-    padding: 12,
-    borderRadius: 8,
-    marginLeft: 12,
-  },
-  inviteCodeExpiry: {
-    fontSize: 12,
-    color: colors.textPrimary,
-    fontStyle: 'italic',
-    marginTop: 5,
-  },
-  regenCodeButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: THEME.primary,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    marginLeft: 8
-  },
-  regenCodeButtonText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
-    marginLeft: 6
-  },
-  activeInvites: {
-    marginTop: 15,
-  },
-  activeInvitesTitle: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: THEME.textPrimary,
-    marginBottom: 8,
-  },
-  activeInviteItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: colors.surfaceSecondary,
-    padding: 10,
-    borderRadius: 6,
-    marginBottom: 5,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  activeInviteCode: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: THEME.primary,
-  },
-  activeInviteExpiry: {
-    fontSize: 12,
-    color: colors.textPrimary,
-  },
-  familyMember: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surfaceSecondary,
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-    borderRadius: 10,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  memberAvatarColumn: {
-    width: 60,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  memberDetailsColumn: {
-    flex: 1,
-    paddingLeft: 16,
-  },
-  memberInfo: {
-    flex: 1,
-    gap: 4,
-  },
-  memberAvatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: colors.surface,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: colors.border,
-  },
-  memberAvatarImage: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-  },
-  memberAvatarEmoji: {
-    fontSize: 32,
-  },
-  memberDetails: {
-    flex: 1,
-    gap: 4,
-  },
-  memberName: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: colors.textPrimary,
-    marginBottom: 4,
-  },
-  memberRole: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 6,
-    gap: 4,
-  },
-  memberRoleText: {
-    fontSize: 14,
-    color: colors.textPrimary,
-  },
-  memberRoleAdmin: {
-    color: THEME.primary,
-    fontWeight: '600',
-  },
-  memberEmail: {
-    fontSize: 13,
-    color: colors.textPrimary,
-    marginBottom: 6,
-    lineHeight: 18,
-  },
-  memberJoinDate: {
-    fontSize: 12,
-    color: colors.textTertiary,
-  },
-  removeMemberButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 8,
-    backgroundColor: THEME.danger + '20',
-    minHeight: 48,
-    minWidth: 48,
-  },
-  removeMemberButtonMobile: {
-    minWidth: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  memberActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    flexWrap: 'wrap',
-    marginTop: 12,
-  },
-  memberActionsMobile: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-    width: '100%',
-    marginTop: 8,
-  },
-  changeMemberRoleButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 8,
-    backgroundColor: THEME.primary + '20',
-    gap: 8,
-    minHeight: 48,
-    minWidth: 160,
-  },
-  changeMemberRoleButtonMobile: {
-    flex: 1,
-  },
-  changeMemberRoleButtonText: {
-    fontSize: 15,
-    color: THEME.primary,
-    fontWeight: '600',
-  },
-  
-  // Novos estilos para cards de membros - Design simplificado
-  memberCardContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    flexWrap: 'wrap',
-    gap: 14,
-  },
-  memberAvatarAndInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    flex: 1,
-    minWidth: 200,
-  },
-  memberRoleBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginBottom: 4,
-  },
-  editMemberButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    backgroundColor: '#e6f3ff',
-    borderRadius: 8,
-    minWidth: 100,
-  },
-  editMemberButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: THEME.primary,
-  },
-
-  // Estilos do Modal de Edição de Membro
-  editMemberModalContent: {
-    maxHeight: '75%',
-    minHeight: '60%',
-    paddingBottom: 20,
-  },
-  editMemberScroll: {
-    flex: 1,
-  },
-  editMemberInfo: {
-    alignItems: 'center',
-    paddingVertical: 24,
-    paddingHorizontal: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-  },
-  editMemberAvatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#f0f0f0',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 3,
-    borderColor: colors.border,
-    marginBottom: 12,
-  },
-  editMemberAvatarImage: {
-    width: 74,
-    height: 74,
-    borderRadius: 37,
-  },
-  editMemberAvatarEmoji: {
-    fontSize: 48,
-  },
-  editMemberName: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: colors.textPrimary,
-    marginBottom: 6,
-  },
-  editMemberJoinDate: {
-    fontSize: 14,
-    color: colors.textSecondary,
-  },
-  editSection: {
-    paddingHorizontal: 20,
-    paddingVertical: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-  },
-  editSectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: colors.textPrimary,
-    marginBottom: 8,
-  },
-  editSectionDescription: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    marginBottom: 16,
-    lineHeight: 20,
-  },
-  permissionsEditContainer: {
-    gap: 12,
-  },
-  permissionEditItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-    backgroundColor: colors.surfaceSecondary,
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: colors.border,
-  },
-  permissionEditItemActive: {
-    backgroundColor: '#e6f3ff',
-    borderColor: THEME.primary,
-  },
-  permissionEditLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  permissionEditLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.textPrimary,
-  },
-  permissionEditLabelActive: {
-    color: THEME.primary,
-  },
-  permissionCheckbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: THEME.border,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  permissionCheckboxActive: {
-    backgroundColor: THEME.primary,
-    borderColor: THEME.primary,
-  },
-  permissionsNote: {
-    fontSize: 12,
-    color: colors.textTertiary,
-    marginTop: 12,
-    fontStyle: 'italic',
-    lineHeight: 16,
-  },
-  changeRoleButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    backgroundColor: THEME.primary + '20',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: THEME.primary,
-  },
-  changeRoleButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: THEME.primary,
-  },
-  removeMemberButtonEdit: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    backgroundColor: THEME.danger,
-    borderRadius: 10,
-  },
-  removeMemberButtonTextEdit: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  closeIconButton: {
-    padding: 4,
-  },
-  
-  // Estilos para edição do nome da família
-  familyNameContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: colors.surfaceSecondary,
-    padding: 16,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  currentFamilyName: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.textPrimary,
-    flex: 1,
-  },
-  editFamilyNameIconButton: {
-    padding: 10,
-    borderRadius: 6,
-    backgroundColor: THEME.primary + '20',
-    minHeight: 44,
-    minWidth: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  editFamilyNameContainer: {
-    backgroundColor: THEME.surface,
-    padding: 16,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: THEME.border,
-  },
-  editFamilyNameInput: {
-    backgroundColor: THEME.background,
-    borderWidth: 2,
-    borderColor: THEME.border,
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 17,
-    marginBottom: 16,
-  },
-  editFamilyNameActions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 8,
-  },
-  editFamilyNameButton: {
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 8,
-    minWidth: 90,
-    alignItems: 'center',
-  },
-  saveButton: {
-    backgroundColor: THEME.primary,
-  },
-  saveButtonText: {
-    color: '#fff',
-    fontWeight: '600',
-    fontSize: 16,
-  },
-  // Estilos para indicador de conectividade
-  connectivityIndicator: {
-    backgroundColor: colors.surfaceSecondary,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-  },
-  connectivityContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  connectivityText: {
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  syncingIndicator: {
-    marginLeft: 4,
-  },
-  // Estilos para informações de autoria
-  authorshipInfo: {
-    backgroundColor: colors.surfaceSecondary,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 16,
-    borderTopWidth: activeTheme === 'dark' ? 0 : 1,
-    borderTopColor: activeTheme === 'dark' ? 'transparent' : '#f0f0f0',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  authorshipRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 2,
-    gap: 6,
-  },
-  authorshipText: {
-    fontSize: 11,
-    color: activeTheme === 'dark' ? '#fff' : colors.textSecondary,
-    fontWeight: '500',
-    flex: 1,
-  },
-  historyAuthor: {
-    fontSize: 11,
-    color: colors.textSecondary,
-    fontStyle: 'italic',
-    marginTop: 2,
-  },
-  syncingDot: {
-    fontSize: 20,
-    color: '#4CAF50',
-  },
-  // Estilos para botão de filtro e rodapé
-  filterButton: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: THEME.primary,
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-    marginLeft: 8, // Espaçamento do container de tabs
-  },
-  createTaskButton: {
-    backgroundColor: THEME.primary,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 15,
-    maxWidth: 300,
-    marginBottom: 15,
-    borderRadius: 12,
-    gap: 8,
-    shadowColor: THEME.primary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    elevation: 4,
-    
-  },
-  // Container para o botão fixo respeitando safe area
-  fixedButtonContainer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: 'transparent', // Removido o background
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 12,
-    // Removidas as propriedades de borda e sombra
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  createTaskButtonFixed: {
-    backgroundColor: THEME.primary,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    maxWidth: 250,
-    width: '100%',
-    borderRadius: 12,
-    gap: 8,
-    shadowColor: THEME.primary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    elevation: 4,
-  },
-  createTaskButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  filterDropdownMenuFloating: {
-    position: 'absolute',
-    // top e right serão definidos dinamicamente via inline style
-    width: 240,
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
-    elevation: 12,
-    maxHeight: 320,
-    zIndex: 1001,
-    overflow: 'hidden',
-  },
-  filterDropdownItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    gap: 12,
-    borderBottomWidth: 0.5,
-    borderBottomColor: '#f3f4f6',
-    minHeight: 52,
-  },
-  filterDropdownItemActive: {
-    backgroundColor: '#f0f4ff',
-  },
-  filterDropdownItemText: {
-    fontSize: 15,
-    color: '#374151',
-    flex: 1,
-    fontWeight: '400',
-  },
-  filterDropdownItemTextActive: {
-    color: THEME.primary,
-    fontWeight: '600',
-  },
-  deleteCategoryButton: {
-    padding: 6,
-    marginLeft: 4,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 6,
-    backgroundColor: '#f9fafb',
-  },
-  filterDropdownSeparator: {
-    height: 1,
-    backgroundColor: '#e0e0e0',
-    marginVertical: 4,
-  },
-  dropdownOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'transparent',
-    zIndex: 999,
-  },
-  // Estilos para modal de configurações
-  settingsOptions: {
-    width: '100%',
-    marginVertical: 20,
-  },
-  settingsOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    backgroundColor: colors.surfaceSecondary,
-    marginBottom: 2,
-    borderRadius: 8,
-  },
-  settingsOptionText: {
-    flex: 1,
-    fontSize: 16,
-    color: colors.textPrimary,
-    marginLeft: 15,
-    fontWeight: '500',
-  },
-  // Botão de ação do modal de configurações (redondo e verde)
-  settingsActionFab: {
-    position: 'absolute',
-    bottom: 86, // acima do botão Fechar (que está em bottom: 16)
-    alignSelf: 'center',
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: THEME.success,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 5,
-  },
-  // Estilos do Modal do Manual
-  manualModalContent: {
-    position: 'relative',
-    paddingBottom: 72,
-  },
-  manualScroll: {
-    flexGrow: 0,
-  },
-  manualContent: {
-    paddingBottom: 8,
-  },
-  manualParagraph: {
-    fontSize: 14,
-    color: colors.textPrimary,
-    marginBottom: 12,
-    lineHeight: 20,
-  },
-  manualSubtitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: THEME.secondary,
-    marginTop: 8,
-    marginBottom: 8,
-  },
-  manualListItem: {
-    fontSize: 14,
-    color: colors.textPrimary,
-    marginBottom: 6,
-    lineHeight: 20,
-  },
-  // Estilos para interface de criação de família
-  createFamilyIcon: {
-    alignSelf: 'center',
-    marginBottom: 16,
-  },
-  createFamilyTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: colors.textPrimary,
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  createFamilySubtitle: {
-    fontSize: 15,
-    color: colors.textPrimary,
-    textAlign: 'center',
-    marginBottom: 30,
-    lineHeight: 22,
-    paddingHorizontal: 20,
-  },
-  createFamilyInputContainer: {
-    marginBottom: 25,
-  },
-  createFamilyInput: {
-    backgroundColor: colors.surface,
-    borderWidth: 2,
-    borderColor: colors.border,
-    borderRadius: 10,
-    paddingVertical: 16,
-    paddingHorizontal: 18,
-    fontSize: 17,
-    color: colors.textPrimary,
-  },
-  createFamilyButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: THEME.primary,
-    paddingVertical: 18,
-    paddingHorizontal: 28,
-    borderRadius: 12,
-    gap: 10,
-    marginBottom: 20,
-    shadowColor: THEME.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 4,
-  },
-  createFamilyButtonDisabled: {
-    backgroundColor: '#ccc',
-    shadowOpacity: 0,
-    elevation: 0,
-  },
-  createFamilyButtonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  createFamilyNote: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: '#fff9e6',
-    padding: 16,
-    borderRadius: 0,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderLeftWidth: 0,
-    borderRightWidth: 0,
-    borderColor: '#ffc107',
-    gap: 10,
-    marginTop: 20,
-    marginHorizontal: -20,
-  },
-  createFamilyNoteText: {
-    flex: 1,
-    fontSize: 15,
-    color: colors.textSecondary,
-    lineHeight: 22,
-  },
-  // ===== Permissões de Membros =====
-  permissionsContainer: {
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#e8e8e8'
-  },
-  permissionsTitle: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.textPrimary,
-    marginBottom: 6
-  },
-  permissionsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8
-  },
-  permissionChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#bbb',
-    backgroundColor: colors.surface,
-    marginRight: 8,
-    marginBottom: 8
-  },
-  permissionChipActive: {
-    backgroundColor: THEME.primary,
-    borderColor: THEME.primary
-  },
-  permissionChipText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#555'
-  },
-  permissionChipTextActive: {
-    color: '#fff'
-  },
-  permissionsHint: {
-    fontSize: 10,
-    color: colors.textSecondary,
-    marginTop: 2
-  },
-  // Banner unificado de sincronização no modal de família
-  familySyncBanner: {
-    marginTop: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    backgroundColor: '#f0f6ff',
-    borderWidth: 1,
-    borderColor: '#cfe3ff',
-    alignSelf: 'stretch',
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  familySyncBannerText: {
-    color: '#0a58ca',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  // Estilos para o modal de picker do iOS
-  iosPickerOverlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
-    zIndex: 9999,
-    elevation: 9999,
-  },
-  iosPickerContainer: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: 12,
-    borderTopRightRadius: 12,
-    paddingBottom: Platform.OS === 'ios' ? 20 : 0,
-    zIndex: 10000,
-    elevation: 10000,
-  },
-  iosPickerHeader: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-  },
-  iosPickerDoneButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-  },
-  iosPickerDoneButtonText: {
-    color: THEME.primary,
-    fontSize: 17,
-    fontWeight: '600',
-  },
-  iosDateTimePicker: {
-    backgroundColor: colors.surface,
-    height: 200,
-  },
-  // iOS inline picker dentro do container do modal de tarefa
-  iosInlinePickerBox: {
-    marginTop: 12,
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    overflow: 'hidden',
-  },
-  iosInlinePickerActions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
-    backgroundColor: colors.surface,
-  },
-  // Estilos do modal de loading de sincronização
-  syncLoadingOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  syncLoadingContainer: {
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    padding: 32,
-    alignItems: 'center',
-    gap: 16,
-    minWidth: 200,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  syncLoadingText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.textPrimary,
-    textAlign: 'center',
-  },
-  postponeModalContent: {
-    backgroundColor: colors.surface,
-    borderRadius: 20,
-    padding: 24,
-    width: '90%',
-    maxWidth: 400,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  modalSubtitle: {
-    fontSize: 14,
-    color: THEME.textSecondary,
-    marginBottom: 24,
-    textAlign: 'center',
-  },
-  pickerSection: {
-    marginBottom: 20,
-  },
-  pickerLabel: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: THEME.textPrimary,
-    marginBottom: 8,
-  },
-  
-  postponeWarningText: {
-    marginTop: 6,
-    marginBottom: 2,
-    color: '#b45309', // amber-700
-    fontSize: 12,
-    textAlign: 'center',
-  },
-  opacityDisabled: {
-    opacity: 0.5,
-  },
-});
 

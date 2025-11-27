@@ -4,7 +4,16 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../contexts/ThemeContext';
 import { getHeaderStyles } from './HeaderStyles';
 import { UserRole } from '../../types/FamilyTypes';
-import { THEME } from '../../utils/colors';
+import { APP_COLORS } from '../../utils/colors';
+
+const THEME = {
+    primary: APP_COLORS.primary.main,
+    danger: APP_COLORS.status.error,
+    success: APP_COLORS.status.success,
+    warning: APP_COLORS.status.warning,
+    textPrimary: APP_COLORS.text.primary,
+    textSecondary: APP_COLORS.text.secondary,
+};
 
 interface HeaderUserInfoProps {
   userName: string;
@@ -48,7 +57,7 @@ export const HeaderUserInfo: React.FC<HeaderUserInfoProps> = ({
           ) : null}
           {syncStatus?.isSyncing || (syncStatus?.pendingOperations ?? 0) > 0 ? (
             <View 
-              style={[styles.syncPill, { backgroundColor: syncStatus?.isSyncing ? THEME.primary : '#f59e0b' }]} 
+              style={[styles.syncPill, { backgroundColor: syncStatus?.isSyncing ? APP_COLORS.primary.main : '#f59e0b' }]} 
               accessibilityLabel={syncStatus?.isSyncing ? "Sincronizando alterações" : `${syncStatus?.pendingOperations} alterações pendentes`}
             >
               {syncStatus?.isSyncing ? (
@@ -71,3 +80,4 @@ export const HeaderUserInfo: React.FC<HeaderUserInfoProps> = ({
     </Pressable>
   );
 };
+

@@ -1,6 +1,15 @@
 import { useMemo } from 'react';
 import { getBrazilHolidays } from '../utils/Holidays';
-import { THEME } from '../utils/colors';
+import { APP_COLORS } from '../utils/colors';
+
+const THEME = {
+    primary: APP_COLORS.primary.main,
+    danger: APP_COLORS.status.error,
+    success: APP_COLORS.status.success,
+    warning: APP_COLORS.status.warning,
+    textPrimary: APP_COLORS.text.primary,
+    textSecondary: APP_COLORS.text.secondary,
+};
 
 export const useCalendarLogic = (calendarMonth: Date, tasks: any[], colors: any) => {
   const markedDates = useMemo(() => {
@@ -78,7 +87,7 @@ export const useCalendarLogic = (calendarMonth: Date, tasks: any[], colors: any)
           const isOverdue = taskDate < todayDate;
           // Vermelho: não completada e vencida
           // Verde: não completada mas ainda não venceu
-          taskColor = isOverdue ? THEME.danger : '#4CAF50';
+          taskColor = isOverdue ? APP_COLORS.status.error : '#4CAF50';
         }
         
         const taskYmd = `${dateObj.getFullYear()}-${String(dateObj.getMonth()+1).padStart(2,'0')}-${String(dateObj.getDate()).padStart(2,'0')}`;
@@ -144,7 +153,7 @@ export const useCalendarLogic = (calendarMonth: Date, tasks: any[], colors: any)
       map[ymd] = {
         customStyles: {
           container: {
-            backgroundColor: THEME.primary,
+            backgroundColor: APP_COLORS.primary.main,
             borderRadius: 20,
           },
           text: {
@@ -210,3 +219,4 @@ export const useCalendarLogic = (calendarMonth: Date, tasks: any[], colors: any)
 
   return { markedDates, monthHolidays, monthTasks };
 };
+

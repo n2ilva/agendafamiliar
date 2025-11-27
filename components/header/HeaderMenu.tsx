@@ -4,7 +4,16 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../contexts/ThemeContext';
 import { getHeaderStyles } from './HeaderStyles';
 import { UserRole } from '../../types/FamilyTypes';
-import { THEME } from '../../utils/colors';
+import { APP_COLORS } from '../../utils/colors';
+
+const THEME = {
+    primary: APP_COLORS.primary.main,
+    danger: APP_COLORS.status.error,
+    success: APP_COLORS.status.success,
+    warning: APP_COLORS.status.warning,
+    textPrimary: APP_COLORS.text.primary,
+    textSecondary: APP_COLORS.text.secondary,
+};
 
 interface HeaderMenuProps {
   visible: boolean;
@@ -62,22 +71,22 @@ export const HeaderMenu: React.FC<HeaderMenuProps> = ({
           >
             {userRole === 'admin' && onManageFamily && (
               <Pressable onPress={() => { onClose(); onManageFamily(); }} style={styles.menuItem}>
-                <Ionicons name="people-outline" size={18} color={THEME.accent} />
+                <Ionicons name="people-outline" size={18} color={APP_COLORS.secondary.dark} />
                 <Text style={styles.menuText}>Gerenciar Família</Text>
               </Pressable>
             )}
             {onJoinFamily && (
               <Pressable onPress={() => { onClose(); onJoinFamily(); }} style={styles.menuItem}>
-                <Ionicons name="key-outline" size={18} color={THEME.highlight} />
+                <Ionicons name="key-outline" size={18} color={APP_COLORS.primary.dark} />
                 <Text style={styles.menuText}>Entrar em outra família</Text>
               </Pressable>
             )}
             <Pressable onPress={() => { onClose(); onHistory(); }} style={styles.menuItem}>
-              <Ionicons name="time-outline" size={18} color={THEME.extra} />
+              <Ionicons name="time-outline" size={18} color={APP_COLORS.primary.light} />
               <Text style={styles.menuText}>Histórico</Text>
             </Pressable>
             <Pressable onPress={() => { onClose(); onInfo(); }} style={styles.menuItem}>
-              <Ionicons name="information-circle-outline" size={18} color={THEME.success} />
+              <Ionicons name="information-circle-outline" size={18} color={APP_COLORS.status.success} />
               <Text style={styles.menuText}>Manual e Informações</Text>
             </Pressable>
             {/* Atualizar dados */}
@@ -126,8 +135,8 @@ export const HeaderMenu: React.FC<HeaderMenuProps> = ({
             
             {/* Logout no final do menu */}
             <Pressable onPress={() => { onClose(); onLogout(); }} style={styles.menuItem}>
-              <Ionicons name="log-out-outline" size={18} color={THEME.danger} />
-              <Text style={[styles.menuText, { color: THEME.danger }]}>Sair</Text>
+              <Ionicons name="log-out-outline" size={18} color={APP_COLORS.status.error} />
+              <Text style={[styles.menuText, { color: APP_COLORS.status.error }]}>Sair</Text>
             </Pressable>
           </ScrollView>
         </View>
@@ -135,3 +144,4 @@ export const HeaderMenu: React.FC<HeaderMenuProps> = ({
     </Modal>
   );
 };
+

@@ -4,7 +4,16 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { getHeaderStyles } from '../HeaderStyles';
 import { UserRole } from '../../../types/FamilyTypes';
-import { THEME } from '../../../utils/colors';
+import { APP_COLORS } from '../../../utils/colors';
+
+const THEME = {
+    primary: APP_COLORS.primary.main,
+    danger: APP_COLORS.status.error,
+    success: APP_COLORS.status.success,
+    warning: APP_COLORS.status.warning,
+    textPrimary: APP_COLORS.text.primary,
+    textSecondary: APP_COLORS.text.secondary,
+};
 
 interface ProfileSettingsModalProps {
   visible: boolean;
@@ -60,7 +69,7 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
               <Ionicons 
                 name="shield-checkmark" 
                 size={24} 
-                color={selectedRole === 'admin' ? '#fff' : THEME.primary} 
+                color={selectedRole === 'admin' ? '#fff' : APP_COLORS.primary.main} 
               />
               <Text style={[
                 styles.roleOptionText, 
@@ -86,7 +95,7 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
               <Ionicons 
                 name="person" 
                 size={24} 
-                color={selectedRole === 'dependente' ? '#fff' : THEME.primary} 
+                color={selectedRole === 'dependente' ? '#fff' : APP_COLORS.primary.main} 
               />
               <Text style={[
                 styles.roleOptionText, 
@@ -123,3 +132,4 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
     </Modal>
   );
 };
+

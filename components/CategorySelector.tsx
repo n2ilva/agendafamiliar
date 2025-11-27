@@ -2,7 +2,7 @@ import React from 'react';
 import { ScrollView, Pressable, Text, StyleSheet, View, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { CategoryConfig } from '../types/FamilyTypes';
-import { THEME } from '../utils/colors';
+import { APP_COLORS } from '../utils/colors';
 
 interface CategorySelectorProps {
   categories: CategoryConfig[];
@@ -42,11 +42,11 @@ export const CategorySelector: React.FC<CategorySelectorProps> = ({
             <Ionicons 
               name={category.icon as any} 
               size={16} 
-              color={selectedCategory === category.id ? '#fff' : category.color} 
+              color={selectedCategory === category.id ? APP_COLORS.text.white : category.color} 
             />
             <Text style={[
               styles.categorySelectorText,
-              { color: selectedCategory === category.id ? '#fff' : category.color }
+              { color: selectedCategory === category.id ? APP_COLORS.text.white : category.color }
             ]}>
               {category.name}
             </Text>
@@ -58,7 +58,7 @@ export const CategorySelector: React.FC<CategorySelectorProps> = ({
           style={styles.addCategoryButton}
           onPress={onAddCategory}
         >
-          <Ionicons name="add-circle" size={16} color={THEME.primary} />
+          <Ionicons name="add-circle" size={16} color={APP_COLORS.primary.main} />
           <Text style={styles.addCategoryText}>Nova</Text>
         </Pressable>
       </ScrollView>
@@ -101,13 +101,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: APP_COLORS.background.gray,
     height: 32,
   },
   addCategoryText: {
     fontSize: 13,
     fontWeight: '600',
-    color: THEME.primary,
+    color: APP_COLORS.primary.main,
     marginLeft: 6,
   },
 });

@@ -75,19 +75,28 @@ async function registerBackgroundSyncAsync() {
   }
 
   const isRegistered = await TaskManager.isTaskRegisteredAsync(BACKGROUND_SYNC_TASK);
-  if (!isRegistered) {
-    try {
-      await BackgroundFetch.registerTaskAsync(BACKGROUND_SYNC_TASK, {
-        minimumInterval: 15 * 60, // 15 minutos (Android respeita; iOS é oportunista)
-        stopOnTerminate: false,   // Android: continuar após fechamento
-        startOnBoot: true         // Android: iniciar no boot
-      });
-      console.log('✅ Background sync registrado.');
-    } catch (e) {
+  if (isRegistered) {
+    console.log('ℹ️ Background sync já estava registrado.');
+    return;
+  }
+
+  try {
+    await BackgroundFetch.registerTaskAsync(BACKGROUND_SYNC_TASK, {
+      minimumInterval: 15 * 60,
+      stopOnTerminate: false,
+      startOnBoot: true
+    });
+    console.log('✅ Background sync registrado.');
+  } catch (e: any) {
+    const msg = String(e?.message || e);
+    if (msg.includes('is not defined')) {
+      console.warn('⚠️ Task não estava definida no momento do registro. Tentando definir novamente e ignorando em Expo Go.');
+      try {
+        await defineBackgroundSyncTask();
+      } catch {}
+    } else {
       console.error('❌ Falha ao registrar background sync:', e);
     }
-  } else {
-    console.log('ℹ️ Background sync já estava registrado.');
   }
 }
 

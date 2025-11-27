@@ -1,5 +1,14 @@
 import { StyleSheet } from 'react-native';
-import { THEME } from '../../utils/colors';
+import { APP_COLORS } from '../../utils/colors';
+
+const THEME = {
+    primary: APP_COLORS.primary.main,
+    danger: APP_COLORS.status.error,
+    success: APP_COLORS.status.success,
+    warning: APP_COLORS.status.warning,
+    textPrimary: APP_COLORS.text.primary,
+    textSecondary: APP_COLORS.text.secondary,
+};
 
 export const getHeaderStyles = (colors: any) => StyleSheet.create({
   // Container Styles
@@ -21,19 +30,19 @@ export const getHeaderStyles = (colors: any) => StyleSheet.create({
     zIndex: 1000,
   },
   containerOnline: {
-    shadowColor: THEME.success,
+    shadowColor: APP_COLORS.status.success,
     shadowOpacity: 0.3,
     shadowRadius: 6,
     elevation: 8,
   },
   containerError: {
-    shadowColor: THEME.danger,
+    shadowColor: APP_COLORS.status.error,
     shadowOpacity: 0.3,
     shadowRadius: 6,
     elevation: 8,
   },
   containerOffline: {
-    shadowColor: THEME.warning,
+    shadowColor: APP_COLORS.status.warning,
     shadowOpacity: 0.3,
     shadowRadius: 6,
     elevation: 8,
@@ -59,7 +68,7 @@ export const getHeaderStyles = (colors: any) => StyleSheet.create({
     position: 'absolute',
     top: -4,
     right: -2,
-    backgroundColor: THEME.danger,
+    backgroundColor: APP_COLORS.status.error,
     borderRadius: 8,
     minWidth: 16,
     height: 16,
@@ -67,7 +76,7 @@ export const getHeaderStyles = (colors: any) => StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: THEME.surface,
+    borderColor: APP_COLORS.background.lightGray,
   },
   notificationDotText: {
     color: '#fff',
@@ -107,7 +116,7 @@ export const getHeaderStyles = (colors: any) => StyleSheet.create({
   input: {
     width: '100%',
     borderWidth: 1,
-    borderColor: THEME.border,
+    borderColor: APP_COLORS.border.light,
     borderRadius: 5,
     padding: 10,
     marginBottom: 20,
@@ -130,7 +139,7 @@ export const getHeaderStyles = (colors: any) => StyleSheet.create({
     marginRight: 10,
   },
   saveButton: {
-    backgroundColor: THEME.primary,
+    backgroundColor: APP_COLORS.primary.main,
   },
   buttonText: {
     color: '#fff',
@@ -141,7 +150,7 @@ export const getHeaderStyles = (colors: any) => StyleSheet.create({
   },
   // Specific for JoinFamilyModal
   errorText: {
-    color: THEME.danger,
+    color: APP_COLORS.status.error,
     alignSelf: 'flex-start',
     marginTop: -12,
     marginBottom: 8,
@@ -159,7 +168,7 @@ export const getHeaderStyles = (colors: any) => StyleSheet.create({
     justifyContent: 'center',
   },
   secondaryBtn: {
-    backgroundColor: THEME.secondary,
+    backgroundColor: APP_COLORS.secondary.main,
   },
   cancelBtn: {
     backgroundColor: '#ccc',
@@ -185,7 +194,7 @@ export const getHeaderStyles = (colors: any) => StyleSheet.create({
   roleOption: {
     flex: 1,
     borderWidth: 1,
-    borderColor: THEME.border,
+    borderColor: APP_COLORS.border.light,
     borderRadius: 10,
     padding: 15,
     alignItems: 'center',
@@ -193,13 +202,13 @@ export const getHeaderStyles = (colors: any) => StyleSheet.create({
     backgroundColor: colors.surface,
   },
   roleOptionSelected: {
-    backgroundColor: THEME.primary,
-    borderColor: THEME.primary,
+    backgroundColor: APP_COLORS.primary.main,
+    borderColor: APP_COLORS.primary.main,
   },
   roleOptionText: {
     marginTop: 8,
     fontWeight: '600',
-    color: THEME.primary,
+    color: APP_COLORS.primary.main,
     fontSize: 14,
   },
   roleOptionTextSelected: {
@@ -251,17 +260,17 @@ export const getHeaderStyles = (colors: any) => StyleSheet.create({
     position: 'absolute',
     bottom: -2,
     right: -2,
-    backgroundColor: THEME.primary,
+    backgroundColor: APP_COLORS.primary.main,
     borderRadius: 10,
     width: 20,
     height: 20,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
-    borderColor: THEME.surface,
+    borderColor: APP_COLORS.background.lightGray,
   },
   iconAvatar: {
-    backgroundColor: THEME.primaryBg,
+    backgroundColor: APP_COLORS.primary.mainBg,
     borderColor: '#d3e6ff',
   },
   avatarEmoji: {
@@ -308,19 +317,19 @@ export const getHeaderStyles = (colors: any) => StyleSheet.create({
     borderColor: '#dce3ea'
   },
   iconOptionSelected: {
-    backgroundColor: THEME.primaryBg,
-    borderColor: THEME.primary,
+    backgroundColor: APP_COLORS.primary.mainBg,
+    borderColor: APP_COLORS.primary.main,
     borderWidth: 2,
   },
   emojiIcon: {
     fontSize: 32,
   },
   primaryButton: {
-    backgroundColor: THEME.primary,
+    backgroundColor: APP_COLORS.primary.main,
   },
   // Avatar Actions Modal
   dangerBtn: {
-    backgroundColor: THEME.danger,
+    backgroundColor: APP_COLORS.status.error,
   },
   // Calendar Styles
   calendarCenterOverlay: {
@@ -474,7 +483,7 @@ export const getHeaderStyles = (colors: any) => StyleSheet.create({
   },
   syncPill: {
     marginLeft: 8,
-    backgroundColor: THEME.primary,
+    backgroundColor: APP_COLORS.primary.main,
     borderRadius: 12,
     paddingHorizontal: 10,
     paddingVertical: 4,
@@ -549,7 +558,7 @@ export const getHeaderStyles = (colors: any) => StyleSheet.create({
     justifyContent: 'center',
   },
   segmentActive: {
-    backgroundColor: THEME.primary,
+    backgroundColor: APP_COLORS.primary.main,
   },
   segmentText: {
     fontSize: 12,
@@ -560,3 +569,4 @@ export const getHeaderStyles = (colors: any) => StyleSheet.create({
     color: '#fff',
   },
 });
+

@@ -11,47 +11,20 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { THEME } from '../utils/colors';
+import { APP_COLORS } from '../utils/colors';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { familyService } from '../services/LocalFamilyService';
+
 import { UserRole } from '../types/FamilyTypes';
 import Alert from '../utils/Alert';
-
-// ============= TIPOS =============
-// Props removidas pois agora usamos Context
-interface FamilySetupScreenProps {
-  onFamilySetup: (familyId: string) => void;
-  onLogout: () => void;
-  userEmail: string;
-  userName: string;
-  userId: string;
-}
-
-type SetupStep = 'choose' | 'create-family' | 'join-family';
-
-interface SetupState {
-  currentStep: SetupStep;
-  familyName: string;
-  familyCode: string;
-  isLoading: boolean;
-  lastInviteCode: string | null;
-}
-
-// ============= VALIDAÇÃO =============
-const validateFamilyName = (name: string): string | null => {
-  if (!name.trim()) {
-    return 'Por favor, insira o nome da família';
-  }
-  return null;
-};
-
-const validateFamilyCode = (code: string): string | null => {
-  if (!code.trim()) {
-    return 'Por favor, insira o código da família';
-  }
-  return null;
-};
+import { getStyles } from './FamilySetupScreen/styles';
+import { 
+  FamilySetupScreenProps, 
+  SetupState, 
+  validateFamilyName, 
+  validateFamilyCode 
+} from './FamilySetupScreen/types';
 
 export default function FamilySetupScreen({ 
   onFamilySetup, 
@@ -182,7 +155,7 @@ export default function FamilySetupScreen({
   const ChooseStep = () => (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Ionicons name="people" size={60} color={THEME.primary} />
+        <Ionicons name="people" size={60} color={APP_COLORS.primary.main} />
         <Text style={styles.title}>Bem-vindo!</Text>
         <Text style={styles.subtitle}>Escolha uma opção para começar:</Text>
       </View>
@@ -225,7 +198,7 @@ export default function FamilySetupScreen({
         style={({ pressed }) => [styles.logoutButton, pressed && { opacity: 0.7 }]}
         onPress={onLogout}
       >
-        <Ionicons name="log-out-outline" size={20} color={THEME.textSecondary} />
+        <Ionicons name="log-out-outline" size={20} color={APP_COLORS.text.secondary} />
         <Text style={styles.logoutButtonText}>Entrar com outro email</Text>
       </Pressable>
     </View>
@@ -236,9 +209,9 @@ export default function FamilySetupScreen({
     <View style={styles.container}>
       <View style={styles.header}>
         <Pressable style={styles.backButton} onPress={goBack}>
-          <Ionicons name="arrow-back" size={24} color={THEME.primary} />
+          <Ionicons name="arrow-back" size={24} color={APP_COLORS.primary.main} />
         </Pressable>
-        <Ionicons name="home" size={60} color={THEME.primary} />
+        <Ionicons name="home" size={60} color={APP_COLORS.primary.main} />
         <Text style={styles.title}>Criar Família</Text>
         <Text style={styles.subtitle}>Insira o nome da sua família:</Text>
       </View>
@@ -279,9 +252,9 @@ export default function FamilySetupScreen({
     <View style={styles.container}>
       <View style={styles.header}>
         <Pressable style={styles.backButton} onPress={goBack}>
-          <Ionicons name="arrow-back" size={24} color={THEME.primary} />
+          <Ionicons name="arrow-back" size={24} color={APP_COLORS.primary.main} />
         </Pressable>
-        <Ionicons name="enter" size={60} color={THEME.warning} />
+        <Ionicons name="enter" size={60} color={APP_COLORS.status.warning} />
         <Text style={styles.title}>Entrar na Família</Text>
         <Text style={styles.subtitle}>Insira o código da família:</Text>
       </View>
@@ -344,154 +317,3 @@ export default function FamilySetupScreen({
     </SafeAreaView>
   );
 }
-
-const getStyles = (colors: any) => StyleSheet.create({
-  keyboardContainer: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  scrollContainer: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    padding: 20,
-  },
-  scrollContainerWeb: {
-    paddingHorizontal: 0,
-  },
-  pageContainer: {
-    width: '100%',
-    alignSelf: 'center',
-  },
-  pageContainerWeb: {
-    width: '70%',
-    maxWidth: 1000,
-    minWidth: 320,
-    alignSelf: 'center',
-  },
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: 40,
-    position: 'relative',
-    width: '100%',
-  },
-  backButton: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    padding: 10,
-    zIndex: 1,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: THEME.textPrimary,
-    marginTop: 20,
-    marginBottom: 10,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: THEME.textSecondary,
-    textAlign: 'center',
-    paddingHorizontal: 20,
-  },
-  optionsContainer: {
-    width: '100%',
-    gap: 20,
-  },
-    roleOption: {
-      backgroundColor: THEME.surface,
-      padding: 20,
-      borderRadius: 15,
-      alignItems: 'center',
-      shadowColor: '#000',
-      shadowOffset: {
-        width: 0,
-        height: 2,
-      },
-      shadowOpacity: 0.1,
-      shadowRadius: 4,
-      elevation: 3,
-    },
-    roleOptionWeb: {
-      alignSelf: 'stretch',
-      width: '100%',
-      marginHorizontal: 0,
-    },
-  roleTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: THEME.textPrimary,
-    marginTop: 15,
-    marginBottom: 8,
-  },
-  roleDescription: {
-    fontSize: 12,
-    color: THEME.textSecondary,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-  formContainer: {
-    width: '100%',
-    gap: 20,
-  },
-  input: {
-    backgroundColor: THEME.surface,
-    padding: 15,
-    borderRadius: 10,
-    fontSize: 16,
-    borderWidth: 1,
-    borderColor: THEME.border,
-    color: THEME.textPrimary,
-  },
-  primaryButton: {
-    backgroundColor: THEME.primary,
-    padding: 18,
-    borderRadius: 10,
-    alignItems: 'center',
-  },
-  primaryButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  disabledButton: {
-    backgroundColor: '#ccc',
-  },
-  inviteCodeBoxInline: {
-    marginTop: 12,
-    alignItems: 'center',
-  },
-  inviteCodeLabelInline: {
-    fontSize: 14,
-    color: THEME.textSecondary,
-  },
-  inviteCodeTextInline: {
-    marginTop: 6,
-    fontSize: 18,
-    fontWeight: '700',
-    color: THEME.primary,
-  },
-  logoutButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 30,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-    backgroundColor: THEME.background,
-    borderWidth: 1,
-    borderColor: THEME.border,
-  },
-  logoutButtonText: {
-    fontSize: 14,
-    color: THEME.textSecondary,
-    marginLeft: 8,
-    fontWeight: '500',
-  },
-});

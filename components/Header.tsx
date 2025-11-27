@@ -14,7 +14,7 @@ import { AvatarPickerModal } from './header/modals/AvatarPickerModal';
 import { AvatarActionsModal } from './header/modals/AvatarActionsModal';
 import { CalendarModal } from './header/modals/CalendarModal';
 import { UserRole } from '../types/FamilyTypes';
-import { THEME } from '../utils/colors';
+import { APP_COLORS } from '../utils/colors';
 
 interface HeaderProps {
   userName: string;
@@ -126,11 +126,11 @@ export const Header: React.FC<HeaderProps> = ({
               <HeaderAvatar userProfileIcon={userProfileIcon} userImage={userImageLocal || undefined} />
               {imageLoading ? (
                 <View style={styles.loadingOverlay}>
-                  <ActivityIndicator size="small" color="#fff" />
+                  <ActivityIndicator size="small" color={APP_COLORS.text.white} />
                 </View>
               ) : (
                 <View style={styles.editIconContainer}>
-                  <Ionicons name="create" size={12} color="#fff" />
+                  <Ionicons name="create" size={12} color={APP_COLORS.text.white} />
                 </View>
               )}
             </Pressable>
@@ -153,7 +153,7 @@ export const Header: React.FC<HeaderProps> = ({
                 style={styles.iconButton} 
                 accessibilityLabel="Desfazer última ação"
               >
-                <Ionicons name="arrow-undo" size={24} color={THEME.primary} />
+                <Ionicons name="arrow-undo" size={24} color={APP_COLORS.primary.main} />
               </Pressable>
             )}
             
@@ -164,7 +164,7 @@ export const Header: React.FC<HeaderProps> = ({
                   <Ionicons
                     name="notifications-outline"
                     size={24}
-                    color={notificationCount > 0 ? THEME.highlight : THEME.primary}
+                    color={notificationCount > 0 ? APP_COLORS.status.info : APP_COLORS.primary.main}
                   />
                   {notificationCount > 0 && (
                     <View style={styles.notificationDot}>
@@ -181,7 +181,7 @@ export const Header: React.FC<HeaderProps> = ({
               style={styles.iconButton}
               accessibilityLabel="Calendário"
             >
-              <Ionicons name="calendar-outline" size={24} color={THEME.secondary} />
+              <Ionicons name="calendar-outline" size={24} color={APP_COLORS.secondary.main} />
             </Pressable>
 
             <View style={styles.menuContainer}>
@@ -190,7 +190,7 @@ export const Header: React.FC<HeaderProps> = ({
                 onPress={handleMenuPress} 
                 style={styles.iconButton}
               >
-                <Ionicons name="settings-outline" size={24} color={THEME.secondary} />
+                <Ionicons name="settings-outline" size={24} color={APP_COLORS.secondary.main} />
               </Pressable>
             </View>
           </View>

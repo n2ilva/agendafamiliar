@@ -1,32 +1,26 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  View, Text, StyleSheet, Modal, KeyboardAvoidingView, ScrollView, 
-  TextInput, Pressable, Platform, Alert, Keyboard, ActivityIndicator,
-  LayoutAnimation
+import {
+  View, Text, StyleSheet, Modal, KeyboardAvoidingView, ScrollView,
+  TextInput, Pressable, Platform, Alert, Keyboard, ActivityIndicator
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { v4 as uuidv4 } from 'uuid';
 
-import { 
-  FamilyUser, CategoryConfig, Task, Subtask, SubtaskCategory, 
-  RepeatType, RepeatConfig 
+import {
+  FamilyUser, CategoryConfig, Task, Subtask, SubtaskCategory,
+  RepeatType, RepeatConfig
 } from '../types/FamilyTypes';
-import { THEME } from '../utils/colors';
+import { APP_COLORS } from '../utils/colors';
 import { useTheme } from '../contexts/ThemeContext';
-import { 
-  formatDate, formatTime, getNextRecurrenceDate 
+import {
+  formatDate, formatTime, getNextRecurrenceDate
 } from '../utils/DateUtils';
-import { 
-  repeatConfigToOption, optionToRepeatConfig, getRepeat 
+import {
+  repeatConfigToOption, optionToRepeatConfig, getRepeat
 } from '../utils/TaskUtils';
 import { CategorySelector } from './CategorySelector';
 import { logger } from '../utils/Logger';
-
-// Importar constantes se necessário (AVAILABLE_ICONS etc para CategoryModal se for movido)
-// Por enquanto CategoryModal fica aqui ou é importado?
-// O plano era extrair TaskModal. Se CategoryModal é usado dentro, deve estar aqui ou importado.
-// Vou assumir que CategoryModal será movido para cá ou mantido interno por enquanto.
 
 interface TaskModalProps {
   visible: boolean;
@@ -36,14 +30,11 @@ interface TaskModalProps {
   onSave: (taskData: any) => Promise<void>;
   user: FamilyUser;
   categories: CategoryConfig[];
-  onAddCategory: () => void; // Callback para abrir modal de categoria (gerenciado pelo pai ou aqui?)
-  // Se gerenciado aqui, precisa de lógica de categoria.
-  // O código original chama openManagedModal('category').
-  // Vou manter a criação de categoria como callback por enquanto para simplificar.
-  isAddingTask: boolean; // Loading state do salvamento
+  onAddCategory: () => void;
+  isAddingTask: boolean;
 }
 
-export const TaskModal: React.FC<TaskModalProps> = ({
+export const TaskModal = ({
   visible,
   onClose,
   initialTask,
@@ -53,69 +44,49 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   categories,
   onAddCategory,
   isAddingTask
-}) => {
+}: TaskModalProps) => {
   const { colors } = useTheme();
-  
+
   // --- STATE ---
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [isPrivate, setIsPrivate] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState('all');
-  
+
   // Subtasks
   const [subtaskMode, setSubtaskMode] = useState<'none' | 'simple' | 'category'>('none');
   const [subtasksDraft, setSubtasksDraft] = useState<Subtask[]>([]);
   const [subtaskCategories, setSubtaskCategories] = useState<SubtaskCategory[]>([]);
-  
+
   // Date & Time
   const [dueDate, setDueDate] = useState<Date | undefined>(undefined);
   const [dueTime, setDueTime] = useState<Date | undefined>(undefined);
-  
+
   // Repeat
   const [repeatType, setRepeatType] = useState<RepeatType>(RepeatType.NONE);
   const [customDays, setCustomDays] = useState<number[]>([]);
   const [intervalDays, setIntervalDays] = useState<number>(1);
   const [durationMonths, setDurationMonths] = useState<number>(0);
-  
+
   // Repeat Modal State (Internal)
   const [repeatModalVisible, setRepeatModalVisible] = useState(false);
   const [tempCustomDays, setTempCustomDays] = useState<number[]>([]);
   const [tempIntervalDays, setTempIntervalDays] = useState<number>(1);
   const [tempDurationMonths, setTempDurationMonths] = useState<number>(0);
-  const [tempWeekly, setTempWeekly] = useState(false);
-  const [tempWeeksCount, setTempWeeksCount] = useState(1);
 
   // Subtask Creation State
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
-  const [newSubtaskDate, setNewSubtaskDate] = useState<Date | undefined>(undefined);
-  const [newSubtaskTime, setNewSubtaskTime] = useState<Date | undefined>(undefined);
-  
   const [isAddingCategory, setIsAddingCategory] = useState(false);
   const [newCategoryTitle, setNewCategoryTitle] = useState('');
-  const [newSubtaskInCategory, setNewSubtaskInCategory] = useState<{categoryId: string, title: string} | null>(null);
-  const [newCategorySubtaskDate, setNewCategorySubtaskDate] = useState<Date | undefined>(undefined);
-  const [newCategorySubtaskTime, setNewCategorySubtaskTime] = useState<Date | undefined>(undefined);
+  const [newSubtaskInCategory, setNewSubtaskInCategory] = useState<{ categoryId: string, title: string } | null>(null);
 
   // Pickers State
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
-  const [showSubtaskDatePicker, setShowSubtaskDatePicker] = useState(false);
-  const [showSubtaskTimePicker, setShowSubtaskTimePicker] = useState(false);
-  
-  const [editingSubtaskId, setEditingSubtaskId] = useState<string | null>(null);
-  const [editingSubtaskCategoryId, setEditingSubtaskCategoryId] = useState<string | null>(null);
 
   // Refs
   const pickerDateValueRef = useRef<Date>(new Date());
   const pickerTimeValueRef = useRef<Date>(new Date());
-  const pickerSubtaskDateValueRef = useRef<Date>(new Date());
-  const pickerSubtaskTimeValueRef = useRef<Date>(new Date());
-  
-  const webDateInputRef = useRef<any>(null);
-  const webTimeInputRef = useRef<any>(null);
-  const webSubtaskDateInputRef = useRef<any>(null);
-  const webSubtaskTimeInputRef = useRef<any>(null);
-  
   const stableNowRef = useRef<Date>(new Date());
 
   // --- EFFECT: Initialize State ---
@@ -130,14 +101,14 @@ export const TaskModal: React.FC<TaskModalProps> = ({
         setSelectedCategory(initialTask.category || 'all');
         setDueDate(initialTask.dueDate ? new Date(initialTask.dueDate) : undefined);
         setDueTime(initialTask.dueTime ? new Date(initialTask.dueTime) : undefined);
-        
+
         // Repeat
         const repeat = getRepeat(initialTask);
         setRepeatType(repeat.type);
         setCustomDays(repeat.days || []);
         setIntervalDays(repeat.intervalDays || 1);
         setDurationMonths(repeat.durationMonths || 0);
-        
+
         // Subtasks
         if (initialTask.subtaskCategories && initialTask.subtaskCategories.length > 0) {
           setSubtaskMode('category');
@@ -158,50 +129,52 @@ export const TaskModal: React.FC<TaskModalProps> = ({
         setDescription('');
         setIsPrivate(false);
         setSelectedCategory('all');
-        
+
         if (initialDate) {
           setDueDate(initialDate);
         } else {
           setDueDate(undefined);
         }
         setDueTime(undefined);
-        
+
         setRepeatType(RepeatType.NONE);
         setCustomDays([]);
         setIntervalDays(1);
         setDurationMonths(0);
-        
+
         setSubtaskMode('none');
         setSubtasksDraft([]);
         setSubtaskCategories([]);
       }
-      
+
       // Reset auxiliary state
       setNewSubtaskTitle('');
-      setNewSubtaskDate(undefined);
-      setNewSubtaskTime(undefined);
       setIsAddingCategory(false);
       setNewCategoryTitle('');
       setNewSubtaskInCategory(null);
-      setNewCategorySubtaskDate(undefined);
-      setNewCategorySubtaskTime(undefined);
-      setEditingSubtaskId(null);
-      setEditingSubtaskCategoryId(null);
       setShowDatePicker(false);
       setShowTimePicker(false);
-      setShowSubtaskDatePicker(false);
-      setShowSubtaskTimePicker(false);
       setRepeatModalVisible(false);
     }
   }, [visible, initialTask, initialDate]);
 
   // --- HANDLERS ---
-  
+
   const handleSave = async () => {
     if (!title.trim()) {
       Alert.alert('Erro', 'Por favor, informe o título da tarefa');
       return;
     }
+
+    // Converter configuração de repetição para o formato plano da Task
+    const repeatConfig = {
+      type: repeatType,
+      days: repeatType === RepeatType.CUSTOM ? customDays : undefined,
+      intervalDays: repeatType === RepeatType.INTERVAL ? intervalDays : undefined,
+      durationMonths: repeatType === RepeatType.INTERVAL ? durationMonths : undefined
+    };
+
+    const repeatOptions = repeatConfigToOption(repeatConfig);
 
     const taskData: any = {
       title: title.trim(),
@@ -210,12 +183,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
       private: isPrivate,
       dueDate: dueDate,
       dueTime: dueTime,
-      repeat: {
-        type: repeatType,
-        days: repeatType === RepeatType.CUSTOM ? customDays : undefined,
-        intervalDays: repeatType === RepeatType.INTERVAL ? intervalDays : undefined,
-        durationMonths: repeatType === RepeatType.INTERVAL ? durationMonths : undefined
-      },
+      ...repeatOptions, // Espalha as propriedades: repeatOption, repeatDays, repeatIntervalDays, repeatDurationMonths
       subtasks: subtaskMode === 'simple' ? subtasksDraft : [],
       subtaskCategories: subtaskMode === 'category' ? subtaskCategories : []
     };
@@ -227,30 +195,53 @@ export const TaskModal: React.FC<TaskModalProps> = ({
     switch (repeatType) {
       case RepeatType.DAILY: return 'Diariamente';
       case RepeatType.MONTHLY: return 'Mensalmente';
-      case RepeatType.CUSTOM: 
+      case RepeatType.CUSTOM:
         if (customDays.length === 0) return 'Personalizado';
         const days = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-        return customDays.map(d => days[d]).join(', ');
+        return customDays.map((d: number) => days[d]).join(', ');
       case RepeatType.INTERVAL:
         return `A cada ${intervalDays} dias${durationMonths ? ` por ${durationMonths} meses` : ''}`;
       default: return 'Não repetir';
     }
   };
 
-  // ... (Resto da lógica de pickers e renderização)
-  // Vou simplificar os pickers para usar apenas o DateTimePicker nativo ou web
-  // e remover a complexidade de "managed modal" para os pickers internos,
-  // já que agora eles são locais ao TaskModal.
+  const openRepeatConfig = (type: RepeatType) => {
+    setRepeatType(type);
+    if (type === RepeatType.CUSTOM) {
+      setTempCustomDays(customDays);
+      setRepeatModalVisible(true);
+    } else if (type === RepeatType.INTERVAL) {
+      setTempIntervalDays(intervalDays);
+      setTempDurationMonths(durationMonths);
+      setRepeatModalVisible(true);
+    }
+  };
+
+  const toggleWeekday = (dayIndex: number) => {
+    setTempCustomDays((prev: number[]) => {
+      if (prev.includes(dayIndex)) {
+        return prev.filter((d: number) => d !== dayIndex);
+      } else {
+        return [...prev, dayIndex].sort();
+      }
+    });
+  };
+
+  const saveRepeatConfig = () => {
+    if (repeatType === RepeatType.CUSTOM) {
+      setCustomDays(tempCustomDays);
+    } else if (repeatType === RepeatType.INTERVAL) {
+      setIntervalDays(tempIntervalDays);
+      setDurationMonths(tempDurationMonths);
+    }
+    setRepeatModalVisible(false);
+  };
 
   const closeAllPickers = () => {
     setShowDatePicker(false);
     setShowTimePicker(false);
-    setShowSubtaskDatePicker(false);
-    setShowSubtaskTimePicker(false);
   };
 
-  // ... (Renderização)
-  
   return (
     <Modal
       animationType="slide"
@@ -261,7 +252,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
         onClose();
       }}
     >
-      <KeyboardAvoidingView 
+      <KeyboardAvoidingView
         style={styles.keyboardAvoidingView}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
@@ -270,11 +261,11 @@ export const TaskModal: React.FC<TaskModalProps> = ({
             {/* HEADER */}
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>{initialTask ? 'Editar Tarefa' : 'Nova Tarefa'}</Text>
-              
+
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                 <Pressable
                   style={[
-                    styles.privateToggleButtonCompact, 
+                    styles.privateToggleButtonCompact,
                     isPrivate && styles.privateToggleButtonActive,
                     user.role !== 'admin' && styles.opacityDisabled
                   ]}
@@ -287,26 +278,26 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                   }}
                   disabled={user.role !== 'admin'}
                 >
-                  <Ionicons 
-                    name={isPrivate ? "lock-closed" : "lock-open-outline"} 
-                    size={14} 
-                    color={isPrivate ? "#fff" : "#666"} 
+                  <Ionicons
+                    name={isPrivate ? "lock-closed" : "lock-open-outline"}
+                    size={14}
+                    color={isPrivate ? APP_COLORS.text.white : APP_COLORS.text.secondary}
                   />
                   <Text style={[
-                    styles.privateToggleTextCompact, 
+                    styles.privateToggleTextCompact,
                     isPrivate && styles.privateToggleTextActive
                   ]}>
                     Privado
                   </Text>
                 </Pressable>
-                
+
                 <Pressable onPress={onClose} disabled={isAddingTask}>
-                  <Ionicons name="close" size={24} color="#666" />
+                  <Ionicons name="close" size={24} color={APP_COLORS.text.secondary} />
                 </Pressable>
               </View>
             </View>
 
-            <ScrollView 
+            <ScrollView
               style={styles.modalScrollView}
               contentContainerStyle={styles.modalScrollContent}
               showsVerticalScrollIndicator={false}
@@ -314,7 +305,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
             >
               {/* CATEGORY SELECTOR */}
               <Text style={styles.categoryLabel}>Categoria:</Text>
-              <CategorySelector 
+              <CategorySelector
                 categories={categories}
                 selectedCategory={selectedCategory}
                 onSelect={setSelectedCategory}
@@ -325,7 +316,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
               <TextInput
                 style={[styles.input, { color: colors.textPrimary }]}
                 placeholder="Título da tarefa"
-                placeholderTextColor={THEME.textSecondary}
+                placeholderTextColor={APP_COLORS.text.secondary}
                 value={title}
                 onChangeText={setTitle}
                 maxLength={100}
@@ -334,7 +325,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
               <TextInput
                 style={[styles.input, styles.textArea, { color: colors.textPrimary }]}
                 placeholder="Descrição (opcional)"
-                placeholderTextColor={THEME.textSecondary}
+                placeholderTextColor={APP_COLORS.text.secondary}
                 value={description}
                 onChangeText={setDescription}
                 multiline
@@ -345,7 +336,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
               {/* SUBTASKS */}
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, marginTop: 16 }}>
                 <Text style={styles.categoryLabel}>Subtarefas:</Text>
-                <View style={{ flexDirection: 'row', backgroundColor: '#f0f0f0', borderRadius: 8, padding: 2 }}>
+                <View style={{ flexDirection: 'row', backgroundColor: APP_COLORS.background.lightGray, borderRadius: 8, padding: 2 }}>
                   <Pressable
                     style={[styles.subtaskModeButton, subtaskMode === 'none' && styles.subtaskModeButtonActive]}
                     onPress={() => {
@@ -355,8 +346,8 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                           'Isso removerá todas as subtarefas criadas. Deseja continuar?',
                           [
                             { text: 'Cancelar', style: 'cancel' },
-                            { 
-                              text: 'Sim', 
+                            {
+                              text: 'Sim',
                               style: 'destructive',
                               onPress: () => {
                                 setSubtaskMode('none');
@@ -371,7 +362,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                       }
                     }}
                   >
-                    <Ionicons name="ban-outline" size={16} color={subtaskMode === 'none' ? '#fff' : '#666'} />
+                    <Ionicons name="ban-outline" size={16} color={subtaskMode === 'none' ? APP_COLORS.text.white : APP_COLORS.text.secondary} />
                   </Pressable>
                   <Pressable
                     style={[styles.subtaskModeButton, subtaskMode === 'simple' && styles.subtaskModeButtonActive]}
@@ -382,8 +373,8 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                           'Isso converterá/removerá as categorias. Deseja continuar?',
                           [
                             { text: 'Cancelar', style: 'cancel' },
-                            { 
-                              text: 'Sim', 
+                            {
+                              text: 'Sim',
                               onPress: () => {
                                 setSubtaskMode('simple');
                                 setSubtaskCategories([]);
@@ -397,7 +388,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                       }
                     }}
                   >
-                    <Ionicons name="list-outline" size={16} color={subtaskMode === 'simple' ? '#fff' : '#666'} />
+                    <Ionicons name="list-outline" size={16} color={subtaskMode === 'simple' ? APP_COLORS.text.white : APP_COLORS.text.secondary} />
                   </Pressable>
                   <Pressable
                     style={[styles.subtaskModeButton, subtaskMode === 'category' && styles.subtaskModeButtonActive]}
@@ -408,8 +399,8 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                           'Isso removerá as subtarefas simples. Deseja continuar?',
                           [
                             { text: 'Cancelar', style: 'cancel' },
-                            { 
-                              text: 'Sim', 
+                            {
+                              text: 'Sim',
                               onPress: () => {
                                 setSubtaskMode('category');
                                 setSubtasksDraft([]);
@@ -423,7 +414,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                       }
                     }}
                   >
-                    <Ionicons name="grid-outline" size={16} color={subtaskMode === 'category' ? '#fff' : '#666'} />
+                    <Ionicons name="grid-outline" size={16} color={subtaskMode === 'category' ? APP_COLORS.text.white : APP_COLORS.text.secondary} />
                   </Pressable>
                 </View>
               </View>
@@ -437,10 +428,10 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                           setSubtasksDraft(prev => prev.map(s => s.id === subtask.id ? { ...s, done: !s.done } : s));
                         }}
                       >
-                        <Ionicons 
-                          name={subtask.done ? "checkbox" : "square-outline"} 
-                          size={20} 
-                          color={subtask.done ? THEME.primary : "#999"} 
+                      <Ionicons
+                        name={subtask.done ? "checkbox" : "square-outline"}
+                        size={20}
+                        color={subtask.done ? APP_COLORS.primary.main : APP_COLORS.text.light}
                         />
                       </Pressable>
                       <TextInput
@@ -451,11 +442,11 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                         }}
                       />
                       <Pressable onPress={() => setSubtasksDraft(prev => prev.filter(s => s.id !== subtask.id))}>
-                        <Ionicons name="trash-outline" size={18} color="#ff4444" />
+                        <Ionicons name="trash-outline" size={18} color={APP_COLORS.status.error} />
                       </Pressable>
                     </View>
                   ))}
-                  
+
                   <View style={styles.addSubtaskContainer}>
                     <TextInput
                       style={styles.addSubtaskInput}
@@ -473,7 +464,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                         }
                       }}
                     />
-                    <Pressable 
+                    <Pressable
                       onPress={() => {
                         if (newSubtaskTitle.trim()) {
                           setSubtasksDraft(prev => [...prev, {
@@ -486,7 +477,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                       }}
                       style={styles.addSubtaskButton}
                     >
-                      <Ionicons name="add" size={20} color={THEME.primary} />
+                      <Ionicons name="add" size={20} color={APP_COLORS.primary.main} />
                     </Pressable>
                   </View>
                 </View>
@@ -500,39 +491,39 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                       <View style={styles.subtaskCategoryHeader}>
                         <Text style={styles.subtaskCategoryTitle}>{category.name}</Text>
                         <Pressable onPress={() => setSubtaskCategories(prev => prev.filter(c => c.id !== category.id))}>
-                          <Ionicons name="trash-outline" size={16} color="#ff4444" />
+                          <Ionicons name="trash-outline" size={16} color={APP_COLORS.status.error} />
                         </Pressable>
                       </View>
-                      
+
                       {/* Subtarefas da Categoria */}
                       {category.subtasks.map((subtask) => (
                         <View key={subtask.id} style={styles.subtaskItem}>
                           <Pressable
                             onPress={() => {
-                              setSubtaskCategories(prev => prev.map(c => 
-                                c.id === category.id 
+                              setSubtaskCategories(prev => prev.map(c =>
+                                c.id === category.id
                                   ? { ...c, subtasks: c.subtasks.map(s => s.id === subtask.id ? { ...s, done: !s.done } : s) }
                                   : c
                               ));
                             }}
                           >
-                            <Ionicons 
-                              name={subtask.done ? "checkbox" : "square-outline"} 
-                              size={20} 
-                              color={subtask.done ? THEME.primary : "#999"} 
+                            <Ionicons
+                              name={subtask.done ? "checkbox" : "square-outline"}
+                              size={20}
+                              color={subtask.done ? APP_COLORS.primary.main : APP_COLORS.text.light}
                             />
                           </Pressable>
                           <Text style={[styles.subtaskText, subtask.done && styles.subtaskInputDone]}>
                             {subtask.title}
                           </Text>
                           <Pressable onPress={() => {
-                            setSubtaskCategories(prev => prev.map(c => 
-                              c.id === category.id 
+                            setSubtaskCategories(prev => prev.map(c =>
+                              c.id === category.id
                                 ? { ...c, subtasks: c.subtasks.filter(s => s.id !== subtask.id) }
                                 : c
                             ));
                           }}>
-                            <Ionicons name="trash-outline" size={16} color="#999" />
+                            <Ionicons name="trash-outline" size={16} color={APP_COLORS.text.light} />
                           </Pressable>
                         </View>
                       ))}
@@ -546,8 +537,8 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                           onChangeText={(text) => setNewSubtaskInCategory({ categoryId: category.id, title: text })}
                           onSubmitEditing={() => {
                             if (newSubtaskInCategory?.categoryId === category.id && newSubtaskInCategory.title.trim()) {
-                              setSubtaskCategories(prev => prev.map(c => 
-                                c.id === category.id 
+                              setSubtaskCategories(prev => prev.map(c =>
+                                c.id === category.id
                                   ? { ...c, subtasks: [...c.subtasks, { id: uuidv4(), title: newSubtaskInCategory.title.trim(), done: false }] }
                                   : c
                               ));
@@ -555,11 +546,11 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                             }
                           }}
                         />
-                        <Pressable 
+                        <Pressable
                           onPress={() => {
                             if (newSubtaskInCategory?.categoryId === category.id && newSubtaskInCategory.title.trim()) {
-                              setSubtaskCategories(prev => prev.map(c => 
-                                c.id === category.id 
+                              setSubtaskCategories(prev => prev.map(c =>
+                                c.id === category.id
                                   ? { ...c, subtasks: [...c.subtasks, { id: uuidv4(), title: newSubtaskInCategory.title.trim(), done: false }] }
                                   : c
                               ));
@@ -568,7 +559,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                           }}
                           style={styles.addSubtaskButton}
                         >
-                          <Ionicons name="add" size={20} color={THEME.primary} />
+                          <Ionicons name="add" size={20} color={APP_COLORS.primary.main} />
                         </Pressable>
                       </View>
                     </View>
@@ -585,16 +576,16 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                         autoFocus
                       />
                       <View style={{ flexDirection: 'row', gap: 8 }}>
-                        <Pressable 
+                        <Pressable
                           onPress={() => {
                             setIsAddingCategory(false);
                             setNewCategoryTitle('');
                           }}
                           style={styles.cancelCategoryButton}
                         >
-                          <Ionicons name="close" size={20} color="#666" />
+                          <Ionicons name="close" size={20} color={APP_COLORS.text.secondary} />
                         </Pressable>
-                        <Pressable 
+                        <Pressable
                           onPress={() => {
                             if (newCategoryTitle.trim()) {
                               setSubtaskCategories(prev => [...prev, {
@@ -610,26 +601,26 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                           }}
                           style={styles.saveCategoryButton}
                         >
-                          <Ionicons name="checkmark" size={20} color="#fff" />
+                          <Ionicons name="checkmark" size={20} color={APP_COLORS.text.white} />
                         </Pressable>
                       </View>
                     </View>
                   ) : (
-                    <Pressable 
+                    <Pressable
                       style={styles.addCategoryTrigger}
                       onPress={() => setIsAddingCategory(true)}
                     >
-                      <Ionicons name="add-circle-outline" size={20} color={THEME.primary} />
+                      <Ionicons name="add-circle-outline" size={20} color={APP_COLORS.primary.main} />
                       <Text style={styles.addCategoryTriggerText}>Nova Lista de Itens</Text>
                     </Pressable>
                   )}
                 </View>
               )}
-              
+
               {/* DATE & TIME */}
               <Text style={[styles.categoryLabel, { marginTop: 16 }]}>Agendamento:</Text>
               <View style={styles.dateTimeContainer}>
-                <Pressable 
+                <Pressable
                   style={styles.dateTimeButton}
                   onPress={() => {
                     Keyboard.dismiss();
@@ -637,13 +628,13 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                     setShowDatePicker(true);
                   }}
                 >
-                  <Ionicons name="calendar-outline" size={16} color="#666" />
+                  <Ionicons name="calendar-outline" size={16} color={APP_COLORS.text.secondary} />
                   <Text style={styles.dateTimeButtonText}>
                     {dueDate ? formatDate(dueDate) : 'Selecionar data'}
                   </Text>
                 </Pressable>
-                
-                <Pressable 
+
+                <Pressable
                   style={styles.dateTimeButton}
                   onPress={() => {
                     Keyboard.dismiss();
@@ -651,7 +642,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                     setShowTimePicker(true);
                   }}
                 >
-                  <Ionicons name="time-outline" size={16} color="#666" />
+                  <Ionicons name="time-outline" size={16} color={APP_COLORS.text.secondary} />
                   <Text style={styles.dateTimeButtonText}>
                     {dueTime ? formatTime(dueTime) : 'Selecionar hora'}
                   </Text>
@@ -661,31 +652,102 @@ export const TaskModal: React.FC<TaskModalProps> = ({
               {/* REPEAT */}
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                 <Text style={styles.categoryLabel}>Repetir:</Text>
-                <Text style={{ fontSize: 13, color: repeatType === RepeatType.NONE ? '#999' : THEME.primary }}>
+                <Text style={{ fontSize: 13, color: repeatType === RepeatType.NONE ? APP_COLORS.text.light : APP_COLORS.primary.main }}>
                   {getRepeatLabel()}
                 </Text>
               </View>
-              {/* (Botões de repetição) */}
-              
+
+              <View style={styles.repeatButtonsContainer}>
+                <Pressable
+                  style={[styles.repeatButton, repeatType === RepeatType.NONE && styles.repeatButtonActive]}
+                  onPress={() => setRepeatType(RepeatType.NONE)}
+                >
+                  <Ionicons
+                    name="close-circle-outline"
+                    size={14}
+                    color={repeatType === RepeatType.NONE ? APP_COLORS.text.white : APP_COLORS.text.secondary}
+                  />
+                  <Text style={[styles.repeatButtonText, repeatType === RepeatType.NONE && styles.repeatButtonTextActive]}>
+                    Não repetir
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  style={[styles.repeatButton, repeatType === RepeatType.DAILY && styles.repeatButtonActive]}
+                  onPress={() => setRepeatType(RepeatType.DAILY)}
+                >
+                  <Ionicons
+                    name="calendar"
+                    size={14}
+                    color={repeatType === RepeatType.DAILY ? APP_COLORS.text.white : APP_COLORS.text.secondary}
+                  />
+                  <Text style={[styles.repeatButtonText, repeatType === RepeatType.DAILY && styles.repeatButtonTextActive]}>
+                    Diariamente
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  style={[styles.repeatButton, repeatType === RepeatType.MONTHLY && styles.repeatButtonActive]}
+                  onPress={() => setRepeatType(RepeatType.MONTHLY)}
+                >
+                  <Ionicons
+                    name="calendar-outline"
+                    size={14}
+                    color={repeatType === RepeatType.MONTHLY ? APP_COLORS.text.white : APP_COLORS.text.secondary}
+                  />
+                  <Text style={[styles.repeatButtonText, repeatType === RepeatType.MONTHLY && styles.repeatButtonTextActive]}>
+                    Mensalmente
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  style={[styles.repeatButton, repeatType === RepeatType.CUSTOM && styles.repeatButtonActive]}
+                  onPress={() => openRepeatConfig(RepeatType.CUSTOM)}
+                >
+                  <Ionicons
+                    name="options-outline"
+                    size={14}
+                    color={repeatType === RepeatType.CUSTOM ? APP_COLORS.text.white : APP_COLORS.text.secondary}
+                  />
+                  <Text style={[styles.repeatButtonText, repeatType === RepeatType.CUSTOM && styles.repeatButtonTextActive]}>
+                    Personalizado
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  style={[styles.repeatButton, repeatType === RepeatType.INTERVAL && styles.repeatButtonActive]}
+                  onPress={() => openRepeatConfig(RepeatType.INTERVAL)}
+                >
+                  <Ionicons
+                    name="repeat-outline"
+                    size={14}
+                    color={repeatType === RepeatType.INTERVAL ? APP_COLORS.text.white : APP_COLORS.text.secondary}
+                  />
+                  <Text style={[styles.repeatButtonText, repeatType === RepeatType.INTERVAL && styles.repeatButtonTextActive]}>
+                    Intervalo
+                  </Text>
+                </Pressable>
+              </View>
+
             </ScrollView>
 
             {/* FOOTER BUTTONS */}
             <View style={styles.modalButtons}>
-              <Pressable 
+              <Pressable
                 style={[styles.button, styles.cancelButton]}
                 onPress={onClose}
                 disabled={isAddingTask}
               >
                 <Text style={styles.cancelButtonText}>Cancelar</Text>
               </Pressable>
-              
-              <Pressable 
+
+              <Pressable
                 style={[styles.button, styles.addButton, isAddingTask && styles.buttonDisabled]}
                 onPress={handleSave}
                 disabled={isAddingTask}
               >
                 {isAddingTask ? (
-                  <ActivityIndicator size="small" color="#fff" />
+                  <ActivityIndicator size="small" color={APP_COLORS.text.white} />
                 ) : (
                   <Text style={styles.addButtonText}>{initialTask ? 'Salvar' : 'Adicionar'}</Text>
                 )}
@@ -694,100 +756,223 @@ export const TaskModal: React.FC<TaskModalProps> = ({
           </View>
         </View>
       </KeyboardAvoidingView>
-      
+
       {/* PICKERS MODAL (iOS/Android) */}
       {(showDatePicker || showTimePicker) && (
         <Modal transparent animationType="fade" visible={true}>
-           <Pressable style={styles.iosPickerOverlay} onPress={closeAllPickers}>
-             <Pressable style={styles.iosPickerContainer} onPress={(e) => e.stopPropagation()}>
-               <View style={styles.iosPickerHeader}>
-                 <Pressable onPress={() => {
-                   if (showDatePicker) setDueDate(pickerDateValueRef.current);
-                   if (showTimePicker) setDueTime(pickerTimeValueRef.current);
-                   closeAllPickers();
-                 }}>
-                   <Text style={styles.iosPickerDoneButtonText}>Concluído</Text>
-                 </Pressable>
-               </View>
-               {showDatePicker && (
-                 <DateTimePicker
-                   value={pickerDateValueRef.current}
-                   mode="date"
-                   display="spinner"
-                   onChange={(_, date) => { if(date) pickerDateValueRef.current = date; }}
-                   style={styles.iosDateTimePicker}
-                 />
-               )}
-               {showTimePicker && (
-                 <DateTimePicker
-                   value={pickerTimeValueRef.current}
-                   mode="time"
-                   display="spinner"
-                   onChange={(_, date) => { if(date) pickerTimeValueRef.current = date; }}
-                   style={styles.iosDateTimePicker}
-                 />
-               )}
-             </Pressable>
-           </Pressable>
+          <Pressable style={styles.iosPickerOverlay} onPress={closeAllPickers}>
+            <Pressable style={styles.iosPickerContainer} onPress={(e) => e.stopPropagation()}>
+              <View style={styles.iosPickerHeader}>
+                <Pressable onPress={() => {
+                  if (showDatePicker) setDueDate(pickerDateValueRef.current);
+                  if (showTimePicker) setDueTime(pickerTimeValueRef.current);
+                  closeAllPickers();
+                }}>
+                  <Text style={styles.iosPickerDoneButtonText}>Concluído</Text>
+                </Pressable>
+              </View>
+              {showDatePicker && (
+                <DateTimePicker
+                  value={pickerDateValueRef.current}
+                  mode="date"
+                  display="spinner"
+                  onChange={(_, date) => { if (date) pickerDateValueRef.current = date; }}
+                  style={styles.iosDateTimePicker}
+                />
+              )}
+              {showTimePicker && (
+                <DateTimePicker
+                  value={pickerTimeValueRef.current}
+                  mode="time"
+                  display="spinner"
+                  onChange={(_, date) => { if (date) pickerTimeValueRef.current = date; }}
+                  style={styles.iosDateTimePicker}
+                />
+              )}
+            </Pressable>
+          </Pressable>
         </Modal>
       )}
+
+      {/* REPEAT CONFIGURATION MODAL */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={repeatModalVisible}
+        onRequestClose={() => setRepeatModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { height: '60%' }]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>
+                {repeatType === RepeatType.CUSTOM ? 'Repetição Personalizada' : 'Configurar Intervalo'}
+              </Text>
+              <Pressable onPress={() => setRepeatModalVisible(false)}>
+                <Ionicons name="close" size={24} color={APP_COLORS.text.secondary} />
+              </Pressable>
+            </View>
+
+            <ScrollView style={styles.modalScrollView} contentContainerStyle={styles.modalScrollContent}>
+              {repeatType === RepeatType.CUSTOM && (
+                <View>
+                  <Text style={styles.categoryLabel}>Selecione os dias da semana:</Text>
+                  <View style={styles.weekdaysContainer}>
+                    {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((day, index) => (
+                      <Pressable
+                        key={index}
+                        style={[
+                          styles.weekdayButton,
+                          tempCustomDays.includes(index) && styles.weekdayButtonActive
+                        ]}
+                        onPress={() => toggleWeekday(index)}
+                      >
+                        <Text style={[
+                          styles.weekdayButtonText,
+                          tempCustomDays.includes(index) && styles.weekdayButtonTextActive
+                        ]}>
+                          {day}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
+              )}
+
+              {repeatType === RepeatType.INTERVAL && (
+                <View>
+                  <Text style={styles.categoryLabel}>Repetir a cada:</Text>
+                  <View style={styles.intervalInputContainer}>
+                    <Pressable
+                      style={styles.intervalButton}
+                      onPress={() => setTempIntervalDays(Math.max(1, tempIntervalDays - 1))}
+                    >
+                      <Ionicons name="remove" size={20} color={APP_COLORS.text.secondary} />
+                    </Pressable>
+                    <Text style={styles.intervalValue}>{tempIntervalDays} dias</Text>
+                    <Pressable
+                      style={styles.intervalButton}
+                      onPress={() => setTempIntervalDays(tempIntervalDays + 1)}
+                    >
+                      <Ionicons name="add" size={20} color={APP_COLORS.text.secondary} />
+                    </Pressable>
+                  </View>
+
+                  <Text style={[styles.categoryLabel, { marginTop: 20 }]}>Duração (opcional):</Text>
+                  <View style={styles.intervalInputContainer}>
+                    <Pressable
+                      style={styles.intervalButton}
+                      onPress={() => setTempDurationMonths(Math.max(0, tempDurationMonths - 1))}
+                    >
+                      <Ionicons name="remove" size={20} color={APP_COLORS.text.secondary} />
+                    </Pressable>
+                    <Text style={styles.intervalValue}>
+                      {tempDurationMonths === 0 ? 'Sem limite' : `${tempDurationMonths} meses`}
+                    </Text>
+                    <Pressable
+                      style={styles.intervalButton}
+                      onPress={() => setTempDurationMonths(tempDurationMonths + 1)}
+                    >
+                      <Ionicons name="add" size={20} color={APP_COLORS.text.secondary} />
+                    </Pressable>
+                  </View>
+                </View>
+              )}
+            </ScrollView>
+
+            <View style={styles.modalButtons}>
+              <Pressable
+                style={[styles.button, styles.cancelButton]}
+                onPress={() => setRepeatModalVisible(false)}
+              >
+                <Text style={styles.cancelButtonText}>Cancelar</Text>
+              </Pressable>
+
+              <Pressable
+                style={[styles.button, styles.addButton]}
+                onPress={saveRepeatConfig}
+              >
+                <Text style={styles.addButtonText}>Confirmar</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </Modal>
   );
 };
 
 const styles = StyleSheet.create({
-  // Copiar estilos relevantes do TaskScreen.tsx
   keyboardAvoidingView: { flex: 1 },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modalContent: { backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, height: '90%', padding: 20 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'flex-end' },
+  modalContent: { backgroundColor: APP_COLORS.background.white, borderTopLeftRadius: 20, borderTopRightRadius: 20, height: '90%', padding: 20 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   modalTitle: { fontSize: 20, fontWeight: 'bold' },
   modalScrollView: { flex: 1 },
   modalScrollContent: { paddingBottom: 20 },
-  input: { borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 12, marginBottom: 16, fontSize: 16 },
+  input: { borderWidth: 1, borderColor: APP_COLORS.border.light, borderRadius: 8, padding: 12, marginBottom: 16, fontSize: 16 },
   textArea: { height: 100, textAlignVertical: 'top' },
-  categoryLabel: { fontSize: 14, fontWeight: '600', marginBottom: 8, color: '#666' },
-  modalButtons: { flexDirection: 'row', gap: 12, paddingTop: 16, borderTopWidth: 1, borderTopColor: '#eee' },
+  categoryLabel: { fontSize: 14, fontWeight: '600', marginBottom: 8, color: APP_COLORS.text.secondary },
+  modalButtons: { flexDirection: 'row', gap: 12, paddingTop: 16, borderTopWidth: 1, borderTopColor: APP_COLORS.border.light },
   button: { flex: 1, padding: 16, borderRadius: 12, alignItems: 'center' },
-  cancelButton: { backgroundColor: '#f0f0f0' },
-  addButton: { backgroundColor: THEME.primary },
-  cancelButtonText: { color: '#666', fontWeight: '600' },
-  addButtonText: { color: '#fff', fontWeight: '600' },
+  cancelButton: { backgroundColor: APP_COLORS.background.lightGray },
+  addButton: { backgroundColor: APP_COLORS.primary.main },
+  cancelButtonText: { color: APP_COLORS.text.secondary, fontWeight: '600' },
+  addButtonText: { color: APP_COLORS.text.white, fontWeight: '600' },
   buttonDisabled: { opacity: 0.7 },
-  privateToggleButtonCompact: { flexDirection: 'row', alignItems: 'center', padding: 6, borderRadius: 12, backgroundColor: '#f0f0f0', gap: 4 },
-  privateToggleButtonActive: { backgroundColor: '#666' },
-  privateToggleTextCompact: { fontSize: 12, color: '#666' },
-  privateToggleTextActive: { color: '#fff' },
+  privateToggleButtonCompact: { flexDirection: 'row', alignItems: 'center', padding: 6, borderRadius: 12, backgroundColor: APP_COLORS.background.lightGray, gap: 4 },
+  privateToggleButtonActive: { backgroundColor: APP_COLORS.text.secondary },
+  privateToggleTextCompact: { fontSize: 12, color: APP_COLORS.text.secondary },
+  privateToggleTextActive: { color: APP_COLORS.text.white },
   opacityDisabled: { opacity: 0.5 },
   dateTimeContainer: { flexDirection: 'row', gap: 12, marginBottom: 16 },
-  dateTimeButton: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderWidth: 1, borderColor: '#ddd', borderRadius: 8 },
-  dateTimeButtonText: { color: '#333' },
-  iosPickerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'flex-end' },
-  iosPickerContainer: { backgroundColor: '#fff', paddingBottom: 20 },
-  iosPickerHeader: { padding: 16, alignItems: 'flex-end', borderBottomWidth: 1, borderBottomColor: '#eee' },
-  iosPickerDoneButtonText: { color: THEME.primary, fontWeight: '600', fontSize: 16 },
+  dateTimeButton: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderWidth: 1, borderColor: APP_COLORS.border.light, borderRadius: 8 },
+  dateTimeButtonText: { color: APP_COLORS.text.primary },
+  iosPickerOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.3)', justifyContent: 'flex-end' },
+  iosPickerContainer: { backgroundColor: APP_COLORS.background.white, paddingBottom: 20 },
+  iosPickerHeader: { padding: 16, alignItems: 'flex-end', borderBottomWidth: 1, borderBottomColor: APP_COLORS.border.light },
+  iosPickerDoneButtonText: { color: APP_COLORS.primary.main, fontWeight: '600', fontSize: 16 },
   iosDateTimePicker: { height: 200 },
-  
+
   // Subtask styles
   subtaskModeButton: { padding: 8, borderRadius: 6 },
-  subtaskModeButtonActive: { backgroundColor: THEME.primary },
+  subtaskModeButtonActive: { backgroundColor: APP_COLORS.primary.main },
   subtasksContainer: { marginTop: 8, marginBottom: 16 },
-  subtaskItem: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8, padding: 8, backgroundColor: '#f9f9f9', borderRadius: 8 },
-  subtaskInput: { flex: 1, fontSize: 14, color: '#333' },
-  subtaskInputDone: { textDecorationLine: 'line-through', color: '#999' },
-  subtaskText: { flex: 1, fontSize: 14, color: '#333' },
+  subtaskItem: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8, padding: 8, backgroundColor: APP_COLORS.background.lightGray, borderRadius: 8 },
+  subtaskInput: { flex: 1, fontSize: 14, color: APP_COLORS.text.primary },
+  subtaskInputDone: { textDecorationLine: 'line-through', color: APP_COLORS.text.light },
+  subtaskText: { flex: 1, fontSize: 14, color: APP_COLORS.text.primary },
   addSubtaskContainer: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
-  addSubtaskInput: { flex: 1, borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 10, fontSize: 14 },
+  addSubtaskInput: { flex: 1, borderWidth: 1, borderColor: APP_COLORS.border.light, borderRadius: 8, padding: 10, fontSize: 14 },
   addSubtaskButton: { padding: 8 },
-  
+
   // Subtask category styles
-  subtaskCategoryCard: { marginBottom: 12, padding: 12, backgroundColor: '#f9f9f9', borderRadius: 12, borderWidth: 1, borderColor: '#eee' },
+  subtaskCategoryCard: { marginBottom: 12, padding: 12, backgroundColor: APP_COLORS.background.lightGray, borderRadius: 12, borderWidth: 1, borderColor: APP_COLORS.border.light },
   subtaskCategoryHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  subtaskCategoryTitle: { fontSize: 15, fontWeight: '600', color: '#333' },
-  addCategoryContainer: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, backgroundColor: '#f0f0f0', borderRadius: 12 },
-  addCategoryInput: { flex: 1, borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 10, fontSize: 14, backgroundColor: '#fff' },
-  cancelCategoryButton: { padding: 8, backgroundColor: '#e0e0e0', borderRadius: 8 },
-  saveCategoryButton: { padding: 8, backgroundColor: THEME.primary, borderRadius: 8 },
-  addCategoryTrigger: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, backgroundColor: '#f0f0f0', borderRadius: 12, borderWidth: 1, borderColor: '#ddd', borderStyle: 'dashed' },
-  addCategoryTriggerText: { fontSize: 14, color: THEME.primary, fontWeight: '500' },
+  subtaskCategoryTitle: { fontSize: 15, fontWeight: '600', color: APP_COLORS.text.primary },
+  addCategoryContainer: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, backgroundColor: APP_COLORS.background.lightGray, borderRadius: 12 },
+  addCategoryInput: { flex: 1, borderWidth: 1, borderColor: APP_COLORS.border.light, borderRadius: 8, padding: 10, fontSize: 14, backgroundColor: APP_COLORS.background.white },
+  cancelCategoryButton: { padding: 8, backgroundColor: APP_COLORS.border.light, borderRadius: 8 },
+  saveCategoryButton: { padding: 8, backgroundColor: APP_COLORS.primary.main, borderRadius: 8 },
+  addCategoryTrigger: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, backgroundColor: APP_COLORS.background.lightGray, borderRadius: 12, borderWidth: 1, borderColor: APP_COLORS.border.light, borderStyle: 'dashed' },
+  addCategoryTriggerText: { fontSize: 14, color: APP_COLORS.primary.main, fontWeight: '500' },
+
+  // Repeat styles
+  repeatButtonsContainer: { flexDirection: 'row', gap: 8, marginBottom: 16, flexWrap: 'wrap' },
+  repeatButton: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: APP_COLORS.background.lightGray, borderRadius: 8 },
+  repeatButtonActive: { backgroundColor: APP_COLORS.primary.main },
+  repeatButtonText: { fontSize: 12, color: APP_COLORS.text.secondary, fontWeight: '500' },
+  repeatButtonTextActive: { color: APP_COLORS.text.white },
+
+  // Weekday selector
+  weekdaysContainer: { flexDirection: 'row', gap: 8, marginBottom: 16, flexWrap: 'wrap' },
+  weekdayButton: { width: 45, height: 45, justifyContent: 'center', alignItems: 'center', backgroundColor: APP_COLORS.background.lightGray, borderRadius: 22.5, borderWidth: 1, borderColor: APP_COLORS.border.light },
+  weekdayButtonActive: { backgroundColor: APP_COLORS.primary.main, borderColor: APP_COLORS.primary.main },
+  weekdayButtonText: { fontSize: 12, color: APP_COLORS.text.secondary, fontWeight: '600' },
+  weekdayButtonTextActive: { color: APP_COLORS.text.white },
+
+  // Interval config
+  intervalInputContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 20, marginBottom: 16 },
+  intervalButton: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center', backgroundColor: APP_COLORS.background.lightGray, borderRadius: 20 },
+  intervalValue: { fontSize: 16, fontWeight: '600', color: APP_COLORS.text.primary, minWidth: 100, textAlign: 'center' },
 });
+
