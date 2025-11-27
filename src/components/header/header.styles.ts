@@ -270,8 +270,9 @@ export const getHeaderStyles = (colors: any) => StyleSheet.create({
     borderColor: APP_COLORS.background.lightGray,
   },
   iconAvatar: {
-    backgroundColor: APP_COLORS.primary.light,
-    borderColor: '#d3e6ff',
+    backgroundColor: 'transparent',
+    borderColor: 'transparent',
+    borderWidth: 0,
   },
   avatarEmoji: {
     fontSize: 40,
