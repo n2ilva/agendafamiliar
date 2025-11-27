@@ -37,7 +37,8 @@ import {
   repeatConfigToOption, 
   optionToRepeatConfig, 
   getRepeat, 
-  getEmojiForIcon 
+  getEmojiForIcon,
+  filterOldCompletedTasks
 } from '../../utils/validators/task.utils';
 import { useTheme } from '../../contexts/theme.context';
 import { Family, FamilyUser, UserRole, TaskApproval, ApprovalNotification, TaskStatus, Task, SubtaskCategory, Subtask, RepeatType, RepeatConfig, CategoryConfig } from '../../types/family.types';
@@ -478,7 +479,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
       // Carregar tarefas do cache
       const cachedRemoteTasks = await LocalStorageService.getTasks();
         if (cachedRemoteTasks.length > 0) {
-          const convertedTasks: Task[] = (cachedRemoteTasks.map(remoteTaskToTask as any) as Task[]);
+          // Filtrar tarefas concluídas há mais de 7 dias (mesma lógica do Firestore)
+          const filteredCachedTasks = filterOldCompletedTasks(cachedRemoteTasks);
+          const convertedTasks: Task[] = (filteredCachedTasks.map(remoteTaskToTask as any) as Task[]);
           setTasks(convertedTasks);
         logger.success('CACHE_LOAD', `${convertedTasks.length} tarefas carregadas`);
       }
@@ -776,7 +779,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
           try {
             const cachedTasks = await LocalStorageService.getTasks();
             if (cachedTasks.length > 0) {
-              const localTasks: Task[] = (cachedTasks.map(remoteTaskToTask as any) as Task[]);
+              // Filtrar tarefas concluídas há mais de 7 dias (mesma lógica do Firestore)
+              const filteredCachedTasks = filterOldCompletedTasks(cachedTasks);
+              const localTasks: Task[] = (filteredCachedTasks.map(remoteTaskToTask as any) as Task[]);
               // Filtrar tarefas privadas que não pertencem ao usuário atual
               const filteredTasks = localTasks.filter(t => {
                 const isPrivate = (t as any).private === true;

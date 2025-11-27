@@ -52,6 +52,35 @@ export const getRepeat = (task: Task): RepeatConfig => {
   return optionToRepeatConfig(task.repeatOption, task.repeatDays, { repeatIntervalDays: (task as any).repeatIntervalDays, repeatDurationMonths: (task as any).repeatDurationMonths });
 };
 
+// Filtra tarefas concluídas há mais de 7 dias (mesma lógica do Firestore)
+export const filterOldCompletedTasks = <T extends { completed?: boolean; completedAt?: Date | string | any }>(tasks: T[]): T[] => {
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  
+  return tasks.filter(task => {
+    // Se não está concluída, mantém
+    if (!task.completed) return true;
+    
+    // Se está concluída mas não tem data, mantém (para evitar perder dados)
+    if (!task.completedAt) return true;
+    
+    // Converter completedAt para Date
+    let completedDate: Date;
+    if (task.completedAt instanceof Date) {
+      completedDate = task.completedAt;
+    } else if (task.completedAt?.toDate) {
+      completedDate = task.completedAt.toDate();
+    } else if (typeof task.completedAt === 'string') {
+      completedDate = new Date(task.completedAt);
+    } else {
+      return true; // Formato desconhecido, mantém
+    }
+    
+    // Mantém apenas se foi concluída nos últimos 7 dias
+    return completedDate >= sevenDaysAgo;
+  });
+};
+
 // Função helper para obter emoji do ícone
 export const getEmojiForIcon = (iconName?: string): string => {
   if (!iconName) return '😊';
