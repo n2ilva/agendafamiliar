@@ -198,7 +198,6 @@ export async function initialize() {
           allowAlert: true,
           allowBadge: true,
           allowSound: true,
-          allowAnnouncements: true,
           allowCriticalAlerts: true,
         },
         android: {
@@ -268,6 +267,18 @@ export async function scheduleTaskReminder(task: any) {
 
       if (dueTime_ms <= now) return null;
 
+      // Formatar data e hora para exibição
+      const formatDateTime = (date: Date) => {
+        const options: Intl.DateTimeFormatOptions = {
+          day: '2-digit',
+          month: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit'
+        };
+        return date.toLocaleDateString('pt-BR', options).replace(',', ' às');
+      };
+      const dueDateFormatted = formatDateTime(fireAt);
+
       // Garantir permissão
       if ((window as any).Notification && (window as any).Notification.permission !== 'granted') {
         await (window as any).Notification.requestPermission?.();
@@ -282,8 +293,8 @@ export async function scheduleTaskReminder(task: any) {
           const delay = oneHourBefore_ms - now;
           const timeoutId = window.setTimeout(() => {
             try {
-              new (window as any).Notification('Lembrete - 1h', { 
-                body: `${task.title} vence em 1 hora`, 
+              new (window as any).Notification('⏰ Lembrete - 1 hora', { 
+                body: `"${task.title}" vence em 1 hora (${dueDateFormatted})`, 
                 data: { taskId: task.id, type: '1hour_before' } 
               });
             } catch (e) {
@@ -299,8 +310,8 @@ export async function scheduleTaskReminder(task: any) {
           const delay = thirtyMinBefore_ms - now;
           const timeoutId = window.setTimeout(() => {
             try {
-              new (window as any).Notification('Lembrete - 30min', { 
-                body: `${task.title} vence em 30 minutos`, 
+              new (window as any).Notification('⏰ Lembrete - 30 minutos', { 
+                body: `"${task.title}" vence em 30 minutos (${dueDateFormatted})`, 
                 data: { taskId: task.id, type: '30min_before' } 
               });
             } catch (e) {
@@ -315,8 +326,8 @@ export async function scheduleTaskReminder(task: any) {
         if (atDue_delay > 0) {
           const timeoutId = window.setTimeout(() => {
             try {
-              new (window as any).Notification('Tarefa Vencendo', { 
-                body: `${task.title} vence AGORA!`, 
+              new (window as any).Notification('🔔 Tarefa Vencendo Agora!', { 
+                body: `"${task.title}" está vencendo AGORA! (${dueDateFormatted})`, 
                 data: { taskId: task.id, type: 'at_due' } 
               });
             } catch (e) {
@@ -380,12 +391,24 @@ export async function scheduleTaskReminder(task: any) {
 
     const notifications: { [type in NotificationType]?: string } = {};
 
+    // Formatar data e hora para exibição nas notificações
+    const formatDateTime = (date: Date) => {
+      const options: Intl.DateTimeFormatOptions = {
+        day: '2-digit',
+        month: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+      };
+      return date.toLocaleDateString('pt-BR', options).replace(',', ' às');
+    };
+    const dueDateFormatted = formatDateTime(fireAt);
+
     // 1. Notificação 1 hora antes
     const oneHourBefore = new Date(dueTime_ms - (60 * 60 * 1000));
     if (oneHourBefore.getTime() > now) {
       const notifId = await scheduleNotification(
-        '⏰ Lembrete - 1h',
-        `${task.title} vence em 1 hora`,
+        '⏰ Lembrete - 1 hora',
+        `"${task.title}" vence em 1 hora (${dueDateFormatted})`,
         oneHourBefore,
         task.id,
         '1hour_before',
@@ -398,8 +421,8 @@ export async function scheduleTaskReminder(task: any) {
     const thirtyMinBefore = new Date(dueTime_ms - (30 * 60 * 1000));
     if (thirtyMinBefore.getTime() > now) {
       const notifId = await scheduleNotification(
-        '⏰ Lembrete - 30min',
-        `${task.title} vence em 30 minutos`,
+        '⏰ Lembrete - 30 minutos',
+        `"${task.title}" vence em 30 minutos (${dueDateFormatted})`,
         thirtyMinBefore,
         task.id,
         '30min_before',
@@ -410,8 +433,8 @@ export async function scheduleTaskReminder(task: any) {
 
     // 3. Notificação no momento do vencimento
     const notifId = await scheduleNotification(
-      '🔔 Tarefa Vencendo',
-      `${task.title} vence AGORA!`,
+      '🔔 Tarefa Vencendo Agora!',
+      `"${task.title}" está vencendo AGORA! (${dueDateFormatted})`,
       fireAt,
       task.id,
       'at_due',
@@ -424,8 +447,8 @@ export async function scheduleTaskReminder(task: any) {
     const firstOverdue = new Date(dueTime_ms + (60 * 60 * 1000));
     if (firstOverdue.getTime() > now) {
       const notifId = await scheduleNotification(
-        '⚠️ Tarefa Vencida',
-        `${task.title} venceu há 1 hora`,
+        '⚠️ Tarefa Vencida!',
+        `"${task.title}" venceu há 1 hora! Era para ${dueDateFormatted}`,
         firstOverdue,
         task.id,
         'overdue_recurring',

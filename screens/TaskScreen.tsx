@@ -3202,6 +3202,14 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
         }
       }
 
+      // ✅ Reagendar notificações para a nova data/hora
+      try {
+        await NotificationService.rescheduleTaskReminder(updatedTask as any);
+        logger.debug('NOTIFY', 'Notificações reagendadas para nova data/hora');
+      } catch (e) {
+        logger.warn('NOTIFY', 'Falha ao reagendar notificações', e);
+      }
+
       Alert.alert('Sucesso', 'Data e horário da tarefa atualizados.');
     } catch (error) {
       logger.error('SAVE_TASK', 'Erro ao atualizar data/horário da tarefa', error);
