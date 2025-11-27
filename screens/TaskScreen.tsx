@@ -1153,6 +1153,40 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
     return () => unsubscribe();
   }, [user.role, user.id]);
 
+  // Filtrar notificações de aprovação baseadas nas tarefas ativas
+  useEffect(() => {
+    if (!currentFamily?.id || approvals.length === 0) {
+      setNotifications([]);
+      return;
+    }
+
+    // Criar notificações apenas para tarefas que existem e não estão concluídas
+    const validNotifications = approvals
+      .filter(approval => {
+        const targetTask = tasks.find(t => t.id === approval.taskId);
+        // Ignorar se a tarefa não existe
+        if (!targetTask) {
+          console.log(`[TaskScreen] Filtrando notificação de tarefa inexistente: ${approval.taskId}`);
+          return false;
+        }
+        // Ignorar se a tarefa já está concluída
+        if (targetTask.completed) {
+          console.log(`[TaskScreen] Filtrando notificação de tarefa concluída: ${targetTask.title}`);
+          return false;
+        }
+        return true;
+      })
+      .map(approval => ({
+        id: approval.id,
+        taskId: approval.taskId,
+        taskTitle: tasks.find(t => t.id === approval.taskId)?.title || 'Tarefa',
+        dependenteName: approval.dependenteName || 'Dependente',
+        read: approval.read || false,
+      }));
+
+    setNotifications(validNotifications as any);
+  }, [approvals, tasks, currentFamily?.id]);
+
   // 🎨 Assinar atualizações de categorias da família em tempo real
   useEffect(() => {
     let unsubscribeCategories: (() => void) | null = null;
@@ -2462,6 +2496,16 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
         // Se não tem família, mostrar apenas tarefas pessoais (sem familyId ou do próprio usuário)
         if ((task as any).familyId || (task.userId && task.userId !== user.id)) {
           return false;
+        }
+      }
+      
+      // Filtrar tarefas concluídas antigas (mais de 7 dias)
+      if (task.completed && (task as any).completedAt) {
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        const completedDate = new Date((task as any).completedAt);
+        if (completedDate < sevenDaysAgo) {
+          return false; // Não mostrar tarefas concluídas há mais de 7 dias
         }
       }
       

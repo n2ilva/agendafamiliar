@@ -318,6 +318,10 @@ export const FirestoreService = {
         return [];
       }
 
+      // Data limite: 7 dias atrás (tarefas concluídas mais antigas serão ignoradas)
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
       // Duas consultas separadas para respeitar privacidade:
       // 1) Tarefas criadas pelo usuário (inclui privadas)
       const createdByQuery = query(tasksCol() as any, where('createdBy', '==', userId));
@@ -343,12 +347,20 @@ export const FirestoreService = {
       };
       snapshots.forEach(snap => {
         iterateSnap(snap, (docSnap: any) => {
-          dedupMap.set(docSnap.id, { id: docSnap.id, ...(docSnap.data() as any) });
+          const data = docSnap.data() as any;
+          // Filtrar tarefas concluídas há mais de 7 dias
+          if (data.completed && data.completedAt) {
+            const completedDate = data.completedAt.toDate ? data.completedAt.toDate() : new Date(data.completedAt);
+            if (completedDate < sevenDaysAgo) {
+              return; // Ignorar tarefa antiga concluída
+            }
+          }
+          dedupMap.set(docSnap.id, { id: docSnap.id, ...data });
         });
       });
 
       const tasks = sortTasksByUpdatedAt(Array.from(dedupMap.values()));
-      console.log(`✅ FirestoreService.getTasksByUser: ${tasks.length} tarefas encontradas`);
+      console.log(`✅ FirestoreService.getTasksByUser: ${tasks.length} tarefas encontradas (antigas concluídas filtradas)`);
       return tasks;
     } catch (error: any) {
       console.error('❌ FirestoreService.getTasksByUser: Erro ao buscar tarefas:', error);
@@ -369,6 +381,10 @@ export const FirestoreService = {
       if (!familyId || familyId.startsWith('local_')) {
         return [];
       }
+
+      // Data limite: 7 dias atrás (tarefas concluídas mais antigas serão ignoradas)
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
       const publicQuery = query(
         tasksCol() as any,
@@ -402,12 +418,20 @@ export const FirestoreService = {
       };
       snapshots.forEach(snap => {
         iterateSnap(snap, (docSnap: any) => {
-          dedupMap.set(docSnap.id, { id: docSnap.id, ...(docSnap.data() as any) });
+          const data = docSnap.data() as any;
+          // Filtrar tarefas concluídas há mais de 7 dias
+          if (data.completed && data.completedAt) {
+            const completedDate = data.completedAt.toDate ? data.completedAt.toDate() : new Date(data.completedAt);
+            if (completedDate < sevenDaysAgo) {
+              return; // Ignorar tarefa antiga concluída
+            }
+          }
+          dedupMap.set(docSnap.id, { id: docSnap.id, ...data });
         });
       });
 
       const tasks = sortTasksByUpdatedAt(Array.from(dedupMap.values()));
-      console.log(`✅ FirestoreService.getTasksByFamily: ${tasks.length} tarefas encontradas`);
+      console.log(`✅ FirestoreService.getTasksByFamily: ${tasks.length} tarefas encontradas (antigas concluídas filtradas)`);
       return tasks;
     } catch (error: any) {
       console.error('❌ FirestoreService.getTasksByFamily: Erro ao buscar tarefas:', error);
