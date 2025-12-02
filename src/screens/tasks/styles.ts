@@ -982,7 +982,7 @@ export const getStyles = (colors: any, activeTheme: any) => StyleSheet.create({
   modalTitle: {
     fontSize: 22,
     fontWeight: 'bold',
-    color: APP_COLORS.primary.main,
+    color: colors.textPrimary,
   },
   input: {
     borderWidth: 1,
@@ -2627,7 +2627,7 @@ export const getStyles = (colors: any, activeTheme: any) => StyleSheet.create({
   },
   modalSubtitle: {
     fontSize: 14,
-    color: APP_COLORS.text.secondary,
+    color: colors.textSecondary,
     marginBottom: 24,
     textAlign: 'center',
   },
@@ -2637,14 +2637,14 @@ export const getStyles = (colors: any, activeTheme: any) => StyleSheet.create({
   pickerLabel: {
     fontSize: 15,
     fontWeight: '600',
-    color: APP_COLORS.text.primary,
+    color: colors.textPrimary,
     marginBottom: 8,
   },
 
   postponeWarningText: {
     marginTop: 6,
     marginBottom: 2,
-    color: '#b45309', // amber-700
+    color: colors.warning,
     fontSize: 12,
     textAlign: 'center',
   },

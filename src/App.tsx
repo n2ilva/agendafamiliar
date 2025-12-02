@@ -14,6 +14,7 @@ import FamilySetupScreen from './screens/family-setup/FamilySetupScreen';
 import { LoadingScreen } from './components/common/LoadingScreen';
 import { SyncSystemBarsAndroid } from './components/common/SyncSystemBars';
 import BackgroundSyncService from './services/sync/background-sync.service';
+import { MigrationService } from './services/storage/migration.service';
 
 function AppContent() {
   const {
@@ -103,16 +104,17 @@ function AppContent() {
 
 export default function App() {
   useEffect(() => {
-    SplashScreen.preventAutoHideAsync().catch(() => { });
-  }, []);
-
-  // Define a task de background após o mount do App
-  useEffect(() => {
     (async () => {
       try {
+        await SplashScreen.preventAutoHideAsync();
+
+        // Executar migração de dados para SecureStorage
+        await MigrationService.migrateToSecureStorage();
+
+        // Define a task de background
         await BackgroundSyncService.defineBackgroundSyncTask();
-      } catch (err) {
-        console.warn('⚠️ Não foi possível definir background task:', err);
+      } catch (e) {
+        console.warn('Erro na inicialização:', e);
       }
     })();
   }, []);

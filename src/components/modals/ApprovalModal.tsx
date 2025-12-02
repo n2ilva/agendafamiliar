@@ -11,6 +11,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { APP_COLORS } from '../../constants/colors';
 import { UserRole } from '../../types/family.types';
+import { ThemeColors } from '../../contexts/theme.context';
 
 interface AdminRoleRequest {
   id: string;
@@ -50,7 +51,7 @@ interface ApprovalModalProps {
   onRejectTask: (approvalId: string, reason: string) => void;
   onApproveTask: (approvalId: string, message: string) => void;
   onMarkNotificationRead: (notificationId: string) => void;
-  colors: any;
+  colors: ThemeColors;
 }
 
 export const ApprovalModal: React.FC<ApprovalModalProps> = ({
@@ -76,9 +77,9 @@ export const ApprovalModal: React.FC<ApprovalModalProps> = ({
       onRequestClose={onClose}
     >
       <View style={styles.modalOverlay}>
-        <View style={[styles.modalContent, { backgroundColor: colors.cardBackground }]}>
+        <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
           <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Solicitações de Aprovação</Text>
-          
+
           {userRole === 'admin' && (
             <>
               {/* Seção: Solicitações para virar Admin */}
@@ -91,14 +92,14 @@ export const ApprovalModal: React.FC<ApprovalModalProps> = ({
                 ) : (
                   <View style={{ gap: 10 }}>
                     {adminRoleRequests.map((req: AdminRoleRequest) => (
-                      <View 
-                        key={req.id} 
-                        style={{ 
-                          backgroundColor: colors.surface, 
-                          borderRadius: 10, 
-                          padding: 12, 
-                          borderWidth: 1, 
-                          borderColor: colors.border 
+                      <View
+                        key={req.id}
+                        style={{
+                          backgroundColor: colors.surface,
+                          borderRadius: 10,
+                          padding: 12,
+                          borderWidth: 1,
+                          borderColor: colors.border
                         }}
                       >
                         <Text style={{ fontSize: 15, fontWeight: '600', color: colors.textPrimary }}>
@@ -108,13 +109,13 @@ export const ApprovalModal: React.FC<ApprovalModalProps> = ({
                           pediu para se tornar administrador
                         </Text>
                         <Text style={{ fontSize: 12, color: colors.textPrimary, marginTop: 6 }}>
-                          {req.requestedAt 
-                            ? new Date(req.requestedAt).toLocaleDateString('pt-BR', { 
-                                day: '2-digit', 
-                                month: '2-digit', 
-                                hour: '2-digit', 
-                                minute: '2-digit' 
-                              }) 
+                          {req.requestedAt
+                            ? new Date(req.requestedAt).toLocaleDateString('pt-BR', {
+                              day: '2-digit',
+                              month: '2-digit',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })
                             : ''}
                         </Text>
                         <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
@@ -122,8 +123,8 @@ export const ApprovalModal: React.FC<ApprovalModalProps> = ({
                             disabled={!!resolvingAdminRequestId}
                             onPress={() => onResolveAdminRequest(req.id, false)}
                             style={[
-                              styles.approvalButton, 
-                              styles.rejectButton, 
+                              styles.approvalButton,
+                              styles.rejectButton,
                               resolvingAdminRequestId === req.id && { opacity: 0.6 }
                             ]}
                           >
@@ -136,8 +137,8 @@ export const ApprovalModal: React.FC<ApprovalModalProps> = ({
                             disabled={!!resolvingAdminRequestId}
                             onPress={() => onResolveAdminRequest(req.id, true)}
                             style={[
-                              styles.approvalButton, 
-                              styles.approveButton, 
+                              styles.approvalButton,
+                              styles.approveButton,
                               resolvingAdminRequestId === req.id && { opacity: 0.6 }
                             ]}
                           >
@@ -155,13 +156,13 @@ export const ApprovalModal: React.FC<ApprovalModalProps> = ({
               <View style={{ height: 1, backgroundColor: '#eee', marginHorizontal: 4, marginBottom: 12 }} />
             </>
           )}
-          
+
           {notifications.length === 0 ? (
             <Text style={[styles.noNotificationsText, { color: colors.textSecondary }]}>
               Nenhuma solicitação pendente
             </Text>
           ) : (
-            <ScrollView 
+            <ScrollView
               style={styles.notificationsList}
               contentContainerStyle={{ paddingBottom: 80 }}
               showsVerticalScrollIndicator={true}
@@ -169,9 +170,9 @@ export const ApprovalModal: React.FC<ApprovalModalProps> = ({
               {notifications.map(notification => {
                 const approval = approvals.find(a => a.taskId === notification.taskId);
                 const task = tasks.find(t => t.id === notification.taskId);
-                
+
                 if (!approval || !task) return null;
-                
+
                 return (
                   <View key={notification.id} style={[styles.notificationItem, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                     <Text style={[styles.notificationTitle, { color: colors.textPrimary }]}>
@@ -181,16 +182,16 @@ export const ApprovalModal: React.FC<ApprovalModalProps> = ({
                       "{notification.taskTitle}"
                     </Text>
                     <Text style={[styles.notificationTime, { color: colors.textSecondary }]}>
-                      {approval.requestedAt 
+                      {approval.requestedAt
                         ? new Date(approval.requestedAt).toLocaleDateString('pt-BR', {
-                            day: '2-digit',
-                            month: '2-digit',
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          }) 
+                          day: '2-digit',
+                          month: '2-digit',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })
                         : 'Data não disponível'}
                     </Text>
-                    
+
                     <View style={styles.approvalActions}>
                       <Pressable
                         style={[styles.approvalButton, styles.rejectButton]}
@@ -202,7 +203,7 @@ export const ApprovalModal: React.FC<ApprovalModalProps> = ({
                         <Ionicons name="close-circle" size={20} color="#fff" />
                         <Text style={styles.approvalButtonText}>Rejeitar</Text>
                       </Pressable>
-                      
+
                       <Pressable
                         style={[styles.approvalButton, styles.approveButton]}
                         onPress={() => {
@@ -219,11 +220,11 @@ export const ApprovalModal: React.FC<ApprovalModalProps> = ({
               })}
             </ScrollView>
           )}
-          
+
           <Pressable
             style={[
-              styles.closeButton, 
-              styles.closeButtonFixed, 
+              styles.closeButton,
+              styles.closeButtonFixed,
               Platform.OS === 'web' && styles.closeButtonFixedWeb
             ]}
             onPress={onClose}

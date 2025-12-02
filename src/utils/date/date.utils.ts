@@ -116,94 +116,92 @@ export const isRecurringTaskCompletable = (dueDate?: Date | any, isRecurring: bo
 };
 
 /**
- * Calculate the next occurrence date for recurring tasks
+ * Calculate the next recurrence date based on the repeat type
  */
-export const getNextRecurrenceDate = (currentDate: Date, repeatType: string, customDays?: number[]): Date => {
+export const getNextRecurrenceDate = (
+  currentDate: Date,
+  repeatType: string,
+  customDays?: number[],
+  intervalDays?: number,
+  durationMonths?: number
+): Date => {
   const nextDate = new Date(currentDate);
   const today = new Date();
-
-  console.log('🔄 Calculando próxima recorrência:', {
-    currentDate: currentDate,
-    repeatType: repeatType,
-    customDays: customDays,
-    today: today
-  });
+  today.setHours(0, 0, 0, 0);
 
   switch (repeatType) {
     case 'daily':
-      // Para tarefa diária, sempre adiciona 1 dia
       nextDate.setDate(nextDate.getDate() + 1);
-      console.log('📅 Próxima data (diária):', nextDate);
+      break;
+
+    case 'weekly':
+      nextDate.setDate(nextDate.getDate() + 7);
       break;
 
     case 'monthly':
-      // Para tarefa mensal, adiciona 1 mês
       nextDate.setMonth(nextDate.getMonth() + 1);
-      console.log('📅 Próxima data (mensal):', nextDate);
       break;
 
     case 'yearly':
-      // Para tarefa anual, adiciona 1 ano
       nextDate.setFullYear(nextDate.getFullYear() + 1);
-      console.log('📅 Próxima data (anual):', nextDate);
       break;
 
     case 'biweekly':
-      // Para tarefa quinzenal, adiciona 15 dias
       nextDate.setDate(nextDate.getDate() + 15);
-      console.log('📅 Próxima data (quinzenal):', nextDate);
       break;
 
     case 'weekends':
       // Próximo fim de semana (sábado ou domingo)
       const currentDay = nextDate.getDay(); // 0 = domingo, 6 = sábado
-      if (currentDay === 0) { // Domingo
-        nextDate.setDate(nextDate.getDate() + 6); // Próximo sábado
-      } else if (currentDay === 6) { // Sábado
-        nextDate.setDate(nextDate.getDate() + 1); // Próximo domingo
+      if (currentDay === 0) { // Domingo -> Sábado
+        nextDate.setDate(nextDate.getDate() + 6);
+      } else if (currentDay === 6) { // Sábado -> Domingo
+        nextDate.setDate(nextDate.getDate() + 1);
       } else {
-        // Se é dia de semana, vai para o próximo sábado
+        // Dia de semana -> Próximo Sábado
         const daysUntilSaturday = 6 - currentDay;
         nextDate.setDate(nextDate.getDate() + daysUntilSaturday);
       }
-      console.log('📅 Próxima data (fins de semana):', nextDate);
       break;
 
     case 'custom':
       if (customDays && customDays.length > 0) {
         const currentDay = nextDate.getDay();
-        let nextDay = customDays.find(day => day > currentDay);
+        // Encontrar o próximo dia na lista que seja maior que o dia atual
+        // customDays deve ser 0-6 (Dom-Sáb)
+        const sortedDays = [...customDays].sort((a, b) => a - b);
+        const nextDay = sortedDays.find(day => day > currentDay);
 
-        if (!nextDay) {
-          // Se não há próximo dia na semana atual, vai para o primeiro dia da próxima semana
-          nextDay = customDays[0];
-          const daysToAdd = (7 - currentDay) + nextDay;
-          nextDate.setDate(nextDate.getDate() + daysToAdd);
-        } else {
+        if (nextDay !== undefined) {
           // Próximo dia na mesma semana
           nextDate.setDate(nextDate.getDate() + (nextDay - currentDay));
+        } else {
+          // Não há dia posterior nesta semana, pegar o primeiro dia da próxima semana
+          const firstDay = sortedDays[0];
+          const daysToAdd = (7 - currentDay) + firstDay;
+          nextDate.setDate(nextDate.getDate() + daysToAdd);
         }
-        console.log('📅 Próxima data (personalizada):', nextDate);
       } else {
         // Fallback: próximo dia
         nextDate.setDate(nextDate.getDate() + 1);
-        console.log('📅 Próxima data (personalizada - fallback):', nextDate);
+      }
+      break;
+
+    case 'interval':
+      if (intervalDays && intervalDays > 0) {
+        nextDate.setDate(nextDate.getDate() + intervalDays);
+      } else {
+        nextDate.setDate(nextDate.getDate() + 1); // Fallback
       }
       break;
 
     default:
-      // Não recorrente, não faz nada
       console.warn('⚠️ Tipo de recorrência não reconhecido:', repeatType);
+      // Default to next day to avoid loops
+      nextDate.setDate(nextDate.getDate() + 1);
       break;
   }
 
-  // Garantir que a próxima data seja sempre no futuro
-  if (nextDate <= today) {
-    console.warn('⚠️ Data calculada não está no futuro, ajustando...');
-    nextDate.setDate(today.getDate() + 1);
-  }
-
-  console.log('✅ Data final calculada:', nextDate);
   return nextDate;
 };
 

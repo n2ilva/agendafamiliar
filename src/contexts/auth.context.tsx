@@ -64,21 +64,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Carrega e sincroniza todos os dados antes de mostrar a tela principal
   const preloadData = async (userData: FamilyUser) => {
     console.log('🔄 Pré-carregando dados...');
-    
+
     try {
       // 1. Limpar cache de tarefas antigas
       console.log('🧹 Limpando tarefas antigas do cache...');
       await LocalStorageService.clearOldCompletedTasks(7);
-      
+
       // 2. Se tiver família e estiver online, sincronizar tarefas
       if (userData.familyId) {
-        const isOnline = await ConnectivityService.isOnline();
-        
+        const isOnline = ConnectivityService.isConnected();
+
         if (isOnline) {
           console.log('📡 Sincronizando dados com Firebase...');
           try {
             // Forçar sync completo das tarefas
-            await SyncService.forceFullSync(userData.id, userData.familyId);
+            await SyncService.forceFullSync();
             console.log('✅ Sincronização completa');
           } catch (syncError) {
             console.warn('⚠️ Erro na sincronização, usando cache local:', syncError);
@@ -87,12 +87,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           console.log('📴 Offline - usando dados do cache');
         }
       }
-      
+
       console.log('✅ Pré-carregamento concluído');
     } catch (error) {
       console.warn('⚠️ Erro no pré-carregamento (continuando com cache):', error);
     }
-    
+
     setIsDataReady(true);
   };
 
@@ -102,7 +102,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Se já tem familyId salvo, considera configurado (otimização para abertura rápida)
       if (userData.familyId) {
         console.log('🏠 Usuário já possui familyId:', userData.familyId);
-        
+
         // Tentar sincronizar em background, mas não bloquear
         try {
           const userFamily = await familyService.getUserFamily(userData.id);
@@ -115,7 +115,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 userData.role = member.role;
                 try {
                   await LocalAuthService.updateUserRole(userData.id, member.role);
-                } catch {}
+                } catch { }
               }
               // Sincronizar profileIcon
               if (member.profileIcon && member.profileIcon !== userData.profileIcon) {
@@ -127,13 +127,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         } catch (error) {
           console.warn('⚠️ Sync em background falhou, usando dados locais');
         }
-        
+
         return true;
       }
 
       // Sem familyId local, buscar no Firebase
       const userFamily = await familyService.getUserFamily(userData.id);
-      
+
       if (!userFamily) {
         console.log('👤 Usuário não possui família');
         return false;
@@ -150,7 +150,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           userData.role = member.role;
           try {
             await LocalAuthService.updateUserRole(userData.id, member.role);
-          } catch {}
+          } catch { }
         }
         // Sincronizar profileIcon
         if (member.profileIcon && member.profileIcon !== userData.profileIcon) {
@@ -174,13 +174,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (savedUser) {
         const userData = JSON.parse(savedUser);
         console.log('👤 Usuário encontrado:', userData.name);
-        
+
         const isFamilyConfigured = await syncUserFamily(userData);
         await saveUserToStorage(userData);
-        
+
         // Pré-carregar dados antes de mostrar a tela
         await preloadData(userData);
-        
+
         setUser(userData);
         setFamilyConfigured(isFamilyConfigured);
         setLoading(false);
@@ -197,18 +197,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const setupAuthListener = () => {
     console.log('🔔 Configurando listener de autenticação');
-    
+
     const safetyTimeout = setTimeout(() => {
       console.warn('⏱️ Timeout de segurança atingido');
       setLoading(false);
     }, 10000);
-    
+
     const unsubscribe = LocalAuthService.onAuthStateChange(async (authUser) => {
       clearTimeout(safetyTimeout);
-      
+
       // Marcar que o Firebase Auth está pronto (emitiu primeiro evento)
       setIsAuthReady(true);
-      
+
       if (!authUser) {
         console.log('🚪 Auth indica logout');
         setUser(null);
@@ -220,17 +220,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       console.log('👤 Usuário autenticado:', authUser.email);
-      
+
       try {
         await LocalAuthService.initializeOfflineSupport();
         await BackgroundSyncService.registerBackgroundSyncAsync();
-        
+
         const isFamilyConfigured = await syncUserFamily(authUser);
         await saveUserToStorage(authUser);
-        
+
         // Pré-carregar dados antes de mostrar a tela
         await preloadData(authUser);
-        
+
         setUser(authUser);
         setFamilyConfigured(isFamilyConfigured);
         setLoading(false);
@@ -270,8 +270,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const updatedUser: FamilyUser = {
       ...user,
-      [payload.field === 'picture' ? 'picture' : 
-       payload.field === 'profileIcon' ? 'profileIcon' : 'name']: payload.value
+      [payload.field === 'picture' ? 'picture' :
+        payload.field === 'profileIcon' ? 'profileIcon' : 'name']: payload.value
     };
 
     setUser(updatedUser);
@@ -316,8 +316,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       'Tem certeza que deseja sair da sua conta?',
       [
         { text: 'Cancelar', style: 'cancel' },
-        { 
-          text: 'Sair', 
+        {
+          text: 'Sair',
           style: 'destructive',
           onPress: async () => {
             try {
@@ -352,11 +352,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!user.isGuest) {
         await LocalAuthService.updateUserRole(user.id, newRole);
       }
-      
+
       const updatedUser = { ...user, role: newRole };
       setUser(updatedUser);
       await saveUserToStorage(updatedUser);
-      
+
       if (!opts?.silent) {
         Alert.alert(
           'Perfil Atualizado',

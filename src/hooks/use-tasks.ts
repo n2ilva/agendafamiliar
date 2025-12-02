@@ -63,9 +63,9 @@ export const remoteTaskToTask = (remoteTask: RemoteTask): Task => {
 
   const repeatOption = remote.repeatOption === 'diario' ? 'diario' :
     remote.repeatOption === 'semanal' ? 'semanal' :
-    remote.repeatOption === 'mensal' ? 'mensal' :
-    remote.repeatOption === 'intervalo' ? 'intervalo' : 'nenhum';
-  
+      remote.repeatOption === 'mensal' ? 'mensal' :
+        remote.repeatOption === 'intervalo' ? 'intervalo' : 'nenhum';
+
   const repeatDays = Array.isArray(remote.repeatDays) ? remote.repeatDays : [];
 
   return {
@@ -85,9 +85,9 @@ export const remoteTaskToTask = (remoteTask: RemoteTask): Task => {
     repeatDurationMonths: remote.repeatDurationMonths,
     repeatStartDate: safeToDate(remote.repeatStartDate),
     repeat: {
-      type: repeatOption === 'diario' ? RepeatType.DAILY : 
-            repeatOption === 'mensal' ? RepeatType.MONTHLY : 
-            repeatOption === 'semanal' ? RepeatType.CUSTOM : 
+      type: repeatOption === 'diario' ? RepeatType.DAILY :
+        repeatOption === 'mensal' ? RepeatType.MONTHLY :
+          repeatOption === 'semanal' ? RepeatType.CUSTOM :
             repeatOption === 'intervalo' ? RepeatType.INTERVAL : RepeatType.NONE,
       days: repeatDays || [],
       intervalDays: remote.repeatIntervalDays,
@@ -123,7 +123,7 @@ export function useTasks(user: any, currentFamily: any, isOffline: boolean) {
   const [allTasks, setAllTasks] = useState<Task[]>([]); // Todas as tarefas incluindo concluídas
   const [pendingSyncIds, setPendingSyncIds] = useState<string[]>([]);
   const { isAuthReady, isDataReady } = useAuth();
-  
+
   // Carregar tarefas
   const loadTasks = useCallback(async () => {
     // Aguardar Firebase Auth e dados estarem prontos antes de carregar
@@ -133,42 +133,58 @@ export function useTasks(user: any, currentFamily: any, isOffline: boolean) {
     }
 
     try {
-      // 1. Cache Local (apenas tarefas pendentes)
+      // 1. Cache Local (apenas tarefas ativas)
       const cachedTasks = await LocalStorageService.getTasks();
       if (cachedTasks.length > 0) {
-        // Filtrar: apenas tarefas não concluídas + privacidade
+        // 🆕 Filtrar: apenas tarefas ATIVAS (não concluídas, não excluídas) + privacidade
         const filtered = cachedTasks.filter(t => {
-          // Excluir tarefas concluídas
+          // Validação de tarefa ativa (não concluída nem excluída)
           if (t.completed) return false;
+          if (t.status === 'concluida') return false;
+          if ((t as any).deleted === true) return false;
+
           // Filtro de privacidade
           const isPrivate = (t as any).private === true;
           return !(isPrivate && t.createdBy && t.createdBy !== user.id);
         });
         setTasks(filtered);
+        logger.info('TASKS_LOAD', `${filtered.length} tarefas ativas carregadas do cache (${cachedTasks.length - filtered.length} filtradas)`);
       }
 
       // 2. Remoto (se online e com família)
       if (!isOffline && currentFamily?.id) {
         const familyTasks = await familyService.getFamilyTasks(currentFamily.id, user.id);
         const convertedTasks = familyTasks;
-        
+
         // Salvar TODAS as tarefas para o calendário
         setAllTasks(convertedTasks);
-        
-        // Filtrar: não incluir tarefas concluídas na UI principal (vêm do Firebase apenas para sync)
-        const pendingTasks = convertedTasks.filter(t => !t.completed);
-        
+
+        // 🆕 Filtrar: apenas tarefas ATIVAS (não concluídas, não excluídas)
+        const activeTasks = convertedTasks.filter(t => {
+          if (t.completed) return false;
+          if (t.status === 'concluida') return false;
+          if ((t as any).deleted === true) return false;
+          return true;
+        });
+
+        logger.info('TASKS_LOAD', `${activeTasks.length} tarefas ativas do Firebase (${convertedTasks.length - activeTasks.length} filtradas)`);
+
         // Merge logic simplificada (pode ser refinada depois)
         setTasks(prev => {
-          // Remover tarefas concluídas do estado anterior também
-          const pendingPrev = prev.filter(t => !t.completed);
-          const merged = new Map(pendingPrev.map(t => [t.id, t]));
-          pendingTasks.forEach(t => merged.set(t.id, t));
+          // Remover tarefas inativas do estado anterior também
+          const activePrev = prev.filter(t => {
+            if (t.completed) return false;
+            if (t.status === 'concluida') return false;
+            if ((t as any).deleted === true) return false;
+            return true;
+          });
+          const merged = new Map(activePrev.map(t => [t.id, t]));
+          activeTasks.forEach(t => merged.set(t.id, t));
           return Array.from(merged.values());
         });
 
-        // Atualizar cache apenas com tarefas NÃO concluídas
-        for (const task of pendingTasks) {
+        // Atualizar cache apenas com tarefas ATIVAS
+        for (const task of activeTasks) {
           await LocalStorageService.saveTask(taskToRemoteTask(task, currentFamily.id) as any);
         }
       }
@@ -189,20 +205,20 @@ export function useTasks(user: any, currentFamily: any, isOffline: boolean) {
     setAllTasks(prev => {
       // Criar mapa das tarefas atuais
       const tasksMap = new Map(tasks.map(t => [t.id, t]));
-      
+
       // Atualizar allTasks: manter tarefas existentes e atualizar as que mudaram
       const updatedAllTasks = prev.map(t => {
         const updatedTask = tasksMap.get(t.id);
         return updatedTask || t; // Se encontrou atualização, usa ela; senão mantém a original
       });
-      
+
       // Adicionar novas tarefas que não existiam em allTasks
       tasks.forEach(t => {
         if (!prev.find(p => p.id === t.id)) {
           updatedAllTasks.push(t);
         }
       });
-      
+
       return updatedAllTasks;
     });
   }, [tasks]);
@@ -214,6 +230,6 @@ export function useTasks(user: any, currentFamily: any, isOffline: boolean) {
     setAllTasks,
     loadTasks,
     pendingSyncIds,
-    setPendingSyncIds
+    setPendingSyncIds,
   };
 }

@@ -1,4 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import SecureStorageService from '../storage/secure-storage.service';
 import { FamilyUser, UserRole } from '../../types/family.types';
 import { firebaseAuth, firebaseFirestore, firebaseStorage } from '../../config/firebase.config';
 import { onAuthStateChanged, signOut, updateProfile } from 'firebase/auth';
@@ -20,23 +20,23 @@ class LocalAuthService {
       joinedAt: new Date()
     };
 
-    await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
+    await SecureStorageService.setItem(USER_STORAGE_KEY, user);
     return { success: true, user, error: undefined };
   }
 
   static async loginUser(email: string, password: string) {
-    const raw = await AsyncStorage.getItem(USER_STORAGE_KEY);
-  if (!raw) return { success: false, error: 'Nenhum usuário local encontrado' };
-    const user = JSON.parse(raw) as FamilyUser;
-    if (user.email === email) return { success: true, user, error: undefined };
-    return { success: false, error: 'Credenciais inválidas (local)'};
+    const user = await SecureStorageService.getItem(USER_STORAGE_KEY) as FamilyUser | null;
+    if (!user) return { success: false, error: 'Nenhum usuário local encontrado' };
+
+    if (user.email === email) return { success: true, user: user as FamilyUser, error: undefined };
+    return { success: false, error: 'Credenciais inválidas (local)' };
   }
 
   static async logout() {
     console.log('🚪 Executando logout completo');
-    
-    await AsyncStorage.removeItem(USER_STORAGE_KEY);
-    
+
+    await SecureStorageService.removeItem(USER_STORAGE_KEY);
+
     // Logout do Firebase se houver usuário autenticado
     try {
       const auth = firebaseAuth() as any;
@@ -47,19 +47,19 @@ class LocalAuthService {
     } catch (error) {
       console.warn('⚠️ Erro ao fazer logout do Firebase:', error);
     }
-    
+
     return { success: true, error: undefined };
   }
 
   static onAuthStateChange(callback: (user: FamilyUser | null) => void) {
     console.log('🔔 Configurando listener de autenticação');
-    
+
     // Verifica usuário local primeiro
     (async () => {
-      const raw = await AsyncStorage.getItem(USER_STORAGE_KEY);
-      if (raw) {
-        console.log('📱 Usuário local encontrado no AsyncStorage');
-        callback(JSON.parse(raw));
+      const user = await SecureStorageService.getItem(USER_STORAGE_KEY);
+      if (user) {
+        console.log('📱 Usuário local encontrado no SecureStorage');
+        callback(user as FamilyUser);
       }
     })();
 
@@ -67,16 +67,16 @@ class LocalAuthService {
     try {
       const auth = firebaseAuth() as any;
       console.log('🔥 Configurando onAuthStateChanged do Firebase');
-      
+
       const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
         console.log('🔥 Firebase Auth State Changed:', firebaseUser ? `Usuário: ${firebaseUser.email}` : 'Nenhum usuário');
-        
+
         if (firebaseUser) {
-          const raw = await AsyncStorage.getItem(USER_STORAGE_KEY);
+          const localUser = await SecureStorageService.getItem(USER_STORAGE_KEY);
           let familyUser: FamilyUser;
-          
-          if (raw) {
-            familyUser = JSON.parse(raw);
+
+          if (localUser) {
+            familyUser = localUser as FamilyUser;
             familyUser.id = firebaseUser.uid;
             familyUser.email = firebaseUser.email || familyUser.email;
           } else {
@@ -104,7 +104,7 @@ class LocalAuthService {
                 const data = snap.data();
                 firestorePhoto = data?.picture;
                 firestoreProfileIcon = data?.profileIcon;
-                if (data?.name && !raw) {
+                if (data?.name && !localUser) {
                   // se primeiro login e Firestore tem nome mais atual
                   familyUser.name = data.name;
                 }
@@ -124,21 +124,21 @@ class LocalAuthService {
           } catch (e) {
             console.warn('[LocalAuthService.onAuthStateChange] Falha ao resolver foto de perfil:', e);
           }
-          
-          await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(familyUser));
-          console.log('✅ FamilyUser salvo no AsyncStorage:', familyUser.name);
+
+          await SecureStorageService.setItem(USER_STORAGE_KEY, familyUser);
+          console.log('✅ FamilyUser salvo no SecureStorage:', familyUser.name);
           callback(familyUser);
         } else {
-          console.log('🚪 Firebase logout detectado - limpando AsyncStorage');
-          await AsyncStorage.removeItem(USER_STORAGE_KEY);
+          console.log('🚪 Firebase logout detectado - limpando SecureStorage');
+          await SecureStorageService.removeItem(USER_STORAGE_KEY);
           callback(null);
         }
       });
-      
+
       return unsubscribe;
     } catch (error) {
       console.warn('⚠️ Erro ao configurar Firebase Auth listener:', error);
-      return () => {};
+      return () => { };
     }
   }
 
@@ -147,12 +147,12 @@ class LocalAuthService {
   }
 
   static async saveUserToLocalStorage(user: FamilyUser): Promise<void> {
-    await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
+    await SecureStorageService.setItem(USER_STORAGE_KEY, user);
   }
 
   static async getUserFromLocalStorage(): Promise<FamilyUser | null> {
-    const raw = await AsyncStorage.getItem(USER_STORAGE_KEY);
-    return raw ? JSON.parse(raw) : null;
+    const user = await SecureStorageService.getItem(USER_STORAGE_KEY);
+    return user ? (user as FamilyUser) : null;
   }
 
   static startAuthKeepAlive() {
@@ -249,7 +249,7 @@ class LocalAuthService {
 
   static async resetPassword(email: string) {
     console.log('🔑 Iniciando reset de senha para:', email);
-    
+
     try {
       // Tenta usar o Firebase Auth primeiro
       const auth = firebaseAuth() as any;
@@ -261,7 +261,7 @@ class LocalAuthService {
       }
     } catch (error: any) {
       console.error('❌ Erro ao enviar email de reset via Firebase:', error);
-      
+
       // Mensagens de erro mais amigáveis
       let errorMessage = error?.message || String(error);
       if (error?.code === 'auth/user-not-found') {
@@ -271,15 +271,15 @@ class LocalAuthService {
       } else if (error?.code === 'auth/too-many-requests') {
         errorMessage = 'Muitas tentativas. Tente novamente mais tarde.';
       }
-      
+
       return { success: false, error: errorMessage };
     }
-    
+
     // Fallback: apenas para modo offline/desenvolvimento
     console.log('⚠️ Firebase não disponível - modo offline');
-    return { 
-      success: false, 
-      error: 'Sem conexão. O reset de senha requer internet.' 
+    return {
+      success: false,
+      error: 'Sem conexão. O reset de senha requer internet.'
     };
   }
 
@@ -308,7 +308,7 @@ class LocalAuthService {
 
       // 2. ATUALIZA TODAS AS REFERÊNCIAS NO FIREBASE E AUTH
       const updatePromises = [];
-      
+
       // Auth
       const auth = firebaseAuth() as any;
       if (auth?.currentUser) {
@@ -361,7 +361,7 @@ class LocalAuthService {
 
     try {
       const storage = firebaseStorage() as any;
-      
+
       // Extrair o caminho do arquivo da URL do Firebase Storage
       // Formato esperado: https://firebasestorage.googleapis.com/.../o/profilePictures%2Ffile.jpg?...
       const match = photoURL.match(/\/o\/([^?]+)/);
@@ -369,10 +369,10 @@ class LocalAuthService {
         console.warn('[LocalAuthService.deleteOldProfileImage] Não foi possível extrair o caminho do arquivo da URL:', photoURL);
         return;
       }
-      
+
       // Decodificar o caminho (transforma %2F em /)
       const filePath = decodeURIComponent(match[1]);
-      
+
       const fileRef = ref(storage, filePath);
       await deleteObject(fileRef);
       console.log('🗑️ Foto antiga removida do Storage:', filePath);
@@ -393,7 +393,7 @@ class LocalAuthService {
   static async setProfileIcon(iconName: string) {
     const user = await this.getUserFromLocalStorage();
     if (!user) return { success: false, error: 'Usuário não encontrado' } as const;
-    
+
     // Deleta a foto antiga se existir, antes de definir o ícone
     const oldPicture = user.picture;
     if (oldPicture) {
@@ -403,7 +403,7 @@ class LocalAuthService {
         console.warn('[LocalAuthService.setProfileIcon] Falha ao deletar foto antiga:', e);
       }
     }
-    
+
     try {
       // Limpa photoURL do Auth
       try {
@@ -455,13 +455,13 @@ class LocalAuthService {
   static async removeProfilePhoto() {
     const user = await this.getUserFromLocalStorage();
     if (!user) return { success: false, error: 'Usuário não encontrado' } as const;
-    
+
     const oldPicture = user.picture;
 
     try {
       // 1. ATUALIZA TODAS AS REFERÊNCIAS PARA NULO
       const updatePromises = [];
-      
+
       const auth = firebaseAuth() as any;
       if (auth.currentUser) {
         updatePromises.push(updateProfile(auth.currentUser, { photoURL: null }));

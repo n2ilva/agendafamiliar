@@ -115,8 +115,8 @@ class SyncService {
   private static async executeBatchOperations(operations: PendingOperation[]): Promise<void> {
     if (operations.length === 0) return;
 
-    console.log(`📦 Processando ${operations.length} operações em batch`);
-    
+
+
     // Agrupar operações por tipo e coleção
     const groups: Record<string, PendingOperation[]> = {};
     for (const op of operations) {
@@ -128,8 +128,8 @@ class SyncService {
     // Processar cada grupo sequencialmente
     for (const [key, ops] of Object.entries(groups)) {
       const [collection, type] = key.split(':');
-      console.log(`📋 Processando ${ops.length} operações: ${type} em ${collection}`);
-      
+
+
       for (const op of ops) {
         try {
           await this.executeOperation(op);
@@ -158,7 +158,7 @@ class SyncService {
       if (now - lastUserSync > 60000) { // 1 minuto
         const userTasks = await FirestoreService.getTasksByUser(uid);
         const offlineData = await LocalStorageService.getOfflineData();
-        
+
         for (const task of userTasks) {
           const tt: any = { ...task };
           tt.createdAt = safeToDate(tt.createdAt) || new Date();
@@ -166,13 +166,13 @@ class SyncService {
 
           const localTask = offlineData.tasks[tt.id];
           const remoteUpdated = safeToDate(tt.updatedAt) || new Date();
-          
+
           if (!localTask || remoteUpdated.getTime() > (safeToDate((localTask as any).editedAt)?.getTime() || 0)) {
             await LocalStorageService.saveTask(tt as any);
           }
         }
         this.lastSyncTimestamps['user_tasks'] = now;
-        console.log(`✅ Delta sync de tarefas do usuário concluído`);
+
       }
 
       // Similiar para tarefas da família
@@ -182,7 +182,7 @@ class SyncService {
         if (now - lastFamilySync > 60000) { // 1 minuto
           const familyTasks = await FirestoreService.getTasksByFamily(userFamily.id);
           const offlineData = await LocalStorageService.getOfflineData();
-          
+
           for (const task of familyTasks) {
             const tt: any = { ...task };
             tt.createdAt = safeToDate(tt.createdAt) || new Date();
@@ -190,13 +190,13 @@ class SyncService {
 
             const localTask = offlineData.tasks[tt.id];
             const remoteUpdated = safeToDate(tt.updatedAt) || new Date();
-            
+
             if (!localTask || remoteUpdated.getTime() > (safeToDate((localTask as any).editedAt)?.getTime() || 0)) {
               await LocalStorageService.saveTask(tt as any);
             }
           }
           this.lastSyncTimestamps['family_tasks'] = now;
-          console.log(`✅ Delta sync de tarefas da família concluído`);
+
         }
       }
     } catch (e) {
@@ -222,7 +222,7 @@ class SyncService {
     if (Date.now() - lastSyncTime < minimumInterval) return;
 
     try {
-      console.log(`🔄 Iniciando sincronização incremental desde ${new Date(lastSyncTime).toISOString()}`);
+
 
       // 1. Obter IDs de tarefas que foram modificadas no Firestore desde a última sincronização
       let modifiedTaskIds: string[] = [];
@@ -240,28 +240,28 @@ class SyncService {
 
       // 2. Se houver tarefas modificadas, baixar apenas essas
       if (modifiedTaskIds.length > 0) {
-        console.log(`📥 ${modifiedTaskIds.length} tarefas modificadas detectadas - fazendo download`);
+
         const offlineData = await LocalStorageService.getOfflineData();
-        
+
         const userTasks = await FirestoreService.getTasksByUser(uid);
-        
+
         // Filtrar para não sincronizar tarefas completadas há mais de 7 dias
         const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
         const tasksToUpdate = userTasks.filter(t => {
           if (!modifiedTaskIds.includes(t.id)) return false;
-          
+
           // Se a tarefa está concluída, verificar se é recente
           if ((t as any).completed) {
             const completedDate = safeToDate((t as any).completedAt || (t as any).updatedAt || (t as any).createdAt);
             if (completedDate && completedDate.getTime() < sevenDaysAgo) {
-              console.log(`⏭️  Pulando tarefa concluída antiga: ${t.title}`);
+
               return false;
             }
           }
-          
+
           return true;
         });
-        
+
         // Salvar em batch para melhor performance
         await LocalStorageService.saveBatchTasks(
           tasksToUpdate.map(task => {
@@ -272,9 +272,9 @@ class SyncService {
           })
         );
 
-        console.log(`✅ ${tasksToUpdate.length} tarefas atualizadas no cache local`);
+
       } else {
-        console.log(`✓ Nenhuma tarefa nova ou modificada desde a última sincronização`);
+
       }
 
       // 3. Sincronizar tarefas da família se aplicável
@@ -290,25 +290,25 @@ class SyncService {
             .map(task => task.id);
 
           if (modifiedFamilyTaskIds.length > 0) {
-            console.log(`👨‍👩‍👧‍👦 ${modifiedFamilyTaskIds.length} tarefas da família modificadas - fazendo download`);
-            
+
+
             // Filtrar para não sincronizar tarefas completadas há mais de 7 dias
             const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
             const tasksToUpdate = familyTasks.filter(t => {
               if (!modifiedFamilyTaskIds.includes(t.id)) return false;
-              
+
               // Se a tarefa está concluída, verificar se é recente
               if ((t as any).completed) {
                 const completedDate = safeToDate((t as any).completedAt || (t as any).updatedAt || (t as any).createdAt);
                 if (completedDate && completedDate.getTime() < sevenDaysAgo) {
-                  console.log(`⏭️  Pulando tarefa da família concluída antiga: ${t.title}`);
+
                   return false;
                 }
               }
-              
+
               return true;
             });
-            
+
             await LocalStorageService.saveBatchTasks(
               tasksToUpdate.map(task => {
                 const fixed: any = { ...task };
@@ -318,7 +318,7 @@ class SyncService {
               })
             );
 
-            console.log(`✅ ${tasksToUpdate.length} tarefas da família atualizadas no cache`);
+
           }
         } catch (e) {
           console.warn('Erro ao sincronizar tarefas da família incrementalmente:', e);
@@ -358,7 +358,7 @@ class SyncService {
     try {
       // Limpar operações pendentes antigas antes de inicializar
       await LocalStorageService.cleanupOldOperations();
-      
+
       // Inicializar conectividade
       await ConnectivityService.initialize();
 
@@ -379,7 +379,7 @@ class SyncService {
         hasError: false
       };
 
-      console.log(`🔄 SyncService inicializado com ${offlineData.pendingOperations.length} operações pendentes`);
+
 
       // Se estiver online, iniciar sincronização
       if (connectivityState.isConnected) {
@@ -388,7 +388,7 @@ class SyncService {
 
       this.isInitialized = true;
       this.notifyListeners();
-      console.log('SyncService inicializado');
+
     } catch (error) {
       console.error('Erro ao inicializar SyncService:', error);
       this.updateSyncStatus({ hasError: true, errorMessage: (error as Error).message });
@@ -404,14 +404,14 @@ class SyncService {
 
     // Se voltou a ficar online, sincronizar e iniciar sincronização periódica
     if (!wasOnline && isNowOnline) {
-      console.log('🔄 Conexão restaurada - iniciando sincronização');
+
       await this.syncWithRemote();
       this.startPeriodicSync(); // Iniciar sincronização periódica
     }
 
     // Se ficou offline, parar listeners remotos e sincronização periódica
     if (wasOnline && !isNowOnline) {
-      console.log('📴 Ficou offline - parando listeners remotos');
+
       this.stopRemoteListeners();
       this.stopPeriodicSync(); // Parar sincronização periódica
     }
@@ -420,11 +420,11 @@ class SyncService {
   // Iniciar sincronização periódica
   private static startPeriodicSync(): void {
     if (this.periodicSyncInterval) {
-      console.log('ℹ️ Sincronização periódica já ativa');
+
       return;
     }
 
-    console.log('🔄 Iniciando sincronização periódica (a cada ' + (this.SYNC_INTERVAL_MS / 1000) + 's)');
+
     this.periodicSyncInterval = setInterval(async () => {
       if (ConnectivityService.isConnected() && !this.isSyncing) {
         try {
@@ -441,7 +441,7 @@ class SyncService {
     if (this.periodicSyncInterval) {
       clearInterval(this.periodicSyncInterval);
       this.periodicSyncInterval = null;
-      console.log('⏹️ Sincronização periódica parada');
+
     }
   }
 
@@ -455,35 +455,32 @@ class SyncService {
     this.updateSyncStatus({ isSyncing: true, hasError: false });
 
     try {
+      // 1. Processar operações pendentes em batch (tenta aplicar as operações que falharam antes)
+      await this.processPendingOperations();
 
-  console.log('🔄 Iniciando sincronização remota');
+      // 2. NOVO: Delta Sync Inteligente - Sincroniza apenas tarefas modificadas (mais eficiente)
+      await this.downloadIncrementalData();
 
-  // 1. Processar operações pendentes em batch (tenta aplicar as operações que falharam antes)
-  await this.processPendingOperations();
+      // 3. Delta Sync legado: Baixar apenas dados que mudaram (fallback)
+      await this.downloadDeltaData();
 
-  // 2. NOVO: Delta Sync Inteligente - Sincroniza apenas tarefas modificadas (mais eficiente)
-  await this.downloadIncrementalData();
+      // 4. Baixar dados atualizados do servidor remoto (reconciliação local para dados que não temos)
+      await this.downloadRemoteData();
 
-  // 3. Delta Sync legado: Baixar apenas dados que mudaram (fallback)
-  await this.downloadDeltaData();
+      // 5. Configurar listeners remotos
+      this.setupRemoteListeners();
 
-  // 4. Baixar dados atualizados do servidor remoto (reconciliação local para dados que não temos)
-  await this.downloadRemoteData();
+      // 6. Atualizar timestamp da última sincronização
+      await LocalStorageService.updateLastSync();
 
-  // 5. Configurar listeners remotos
-  this.setupRemoteListeners();
-
-  // 6. Atualizar timestamp da última sincronização
-  await LocalStorageService.updateLastSync();
-
-  // 7. Compactar cache (a cada 2 sincronizações - aprox 1 minuto)
-  if (Math.random() < 0.5) {
-    try {
-      await LocalStorageService.compactCache();
-    } catch (e) {
-      console.warn('Erro ao compactar cache (ignorado):', e);
-    }
-  }
+      // 7. Compactar cache (a cada 2 sincronizações - aprox 1 minuto)
+      if (Math.random() < 0.5) {
+        try {
+          await LocalStorageService.compactCache();
+        } catch (e) {
+          console.warn('Erro ao compactar cache (ignorado):', e);
+        }
+      }
 
       // 7. Atualizar status - usar getPendingOperations para contar apenas operações válidas
       const validPendingOps = await LocalStorageService.getPendingOperations();
@@ -493,13 +490,12 @@ class SyncService {
         pendingOperations: validPendingOps.length
       });
 
-      console.log('✅ Sincronização remota concluída com sucesso');
     } catch (error) {
       console.error('❌ Erro na sincronização:', error);
-      this.updateSyncStatus({ 
-        isSyncing: false, 
-        hasError: true, 
-        errorMessage: (error as Error).message 
+      this.updateSyncStatus({
+        isSyncing: false,
+        hasError: true,
+        errorMessage: (error as Error).message
       });
     } finally {
       this.isSyncing = false;
@@ -510,8 +506,6 @@ class SyncService {
   private static async processPendingOperations(): Promise<void> {
     const pendingOps = await LocalStorageService.getPendingOperations();
     if (pendingOps.length === 0) return;
-
-    console.log(`📤 Processando ${pendingOps.length} operações pendentes`);
 
     // Separar operações que podem ser feitas em batch vs. sequencial
     const batchableOps = pendingOps.filter(op => op.type === 'create' || op.type === 'update');
@@ -529,12 +523,6 @@ class SyncService {
         await this.executeOperation(operation);
         // If executed successfully, remove from queue
         await LocalStorageService.removePendingOperation(operation.id);
-        // Log padronizado: incluir id da operação, tipo, coleção, taskId e familyId quando disponíveis
-        const opTaskId = operation.data && operation.data.id ? operation.data.id : undefined;
-        const opFamilyId = operation.data && (operation.data.familyId !== undefined) ? operation.data.familyId : undefined;
-        console.log(`✅ Operação processada: id=${operation.id} type=${operation.type} collection=${operation.collection}` +
-          `${opTaskId ? ` taskId=${opTaskId}` : ''}` +
-          `${opFamilyId !== undefined ? ` familyId=${opFamilyId}` : ''}`);
       } catch (error) {
         console.error(`❌ Erro ao processar operação ${operation.id}:`, error);
         // incrementar retry e aguardar backoff com jitter antes de continuar
@@ -546,7 +534,6 @@ class SyncService {
         const base = Math.min(30000, 1000 * Math.pow(2, retryCount));
         const jitter = 0.5 + Math.random();
         const delay = Math.floor(base * jitter);
-        console.log(`⏱️ Aguardando ${delay}ms (retry #${retryCount}) antes da próxima tentativa para ${operation.id}`);
         await this.sleep(delay);
       }
     }
@@ -554,7 +541,6 @@ class SyncService {
     // Força a atualização do contador de operações pendentes
     const remainingOps = await LocalStorageService.getPendingOperations();
     this.updateSyncStatus({ pendingOperations: remainingOps.length });
-    console.log(`📊 Status de fila atualizado. Operações restantes: ${remainingOps.length}`);
   }
 
   // Executar operação pendente
@@ -593,11 +579,10 @@ class SyncService {
         if (type === 'delete') {
           // Se for família local, não tenta deletar no Firestore
           if (isLocalFamily) {
-            console.log('ℹ️ Task de família local - deletando apenas do cache');
             await LocalStorageService.removeFromCache('tasks', data.id);
             return; // Operação concluída
           }
-          
+
           // If online, try delete remote first
           if (ConnectivityService.isConnected()) {
             try {
@@ -613,12 +598,11 @@ class SyncService {
         } else {
           // Se for família local, salva apenas no cache
           if (isLocalFamily) {
-            console.log('ℹ️ Task de família local - salvando apenas no cache');
             const savedLocal = { ...data, familyId: normalizedFamilyId } as any;
             await LocalStorageService.saveTask(savedLocal as Task);
             return; // Operação concluída
           }
-          
+
           // When online, prefer writing remote first so Firestore is source-of-truth
           if (ConnectivityService.isConnected()) {
             try {
@@ -652,10 +636,10 @@ class SyncService {
         // Suporte remoto para approvals
         if (type === 'delete') {
           // Tentar deletar remoto primeiro se online
-            if (ConnectivityService.isConnected()) {
-              try { await FirestoreService.deleteApproval(data.id); } catch (e) { console.warn('Falha ao deletar approval remoto (continuando local):', e); }
-            }
-            await LocalStorageService.removeFromCache('approvals', data.id);
+          if (ConnectivityService.isConnected()) {
+            try { await FirestoreService.deleteApproval(data.id); } catch (e) { console.warn('Falha ao deletar approval remoto (continuando local):', e); }
+          }
+          await LocalStorageService.removeFromCache('approvals', data.id);
         } else {
           // create/update
           if (ConnectivityService.isConnected()) {
@@ -707,7 +691,7 @@ class SyncService {
     // In local-only mode, download from local familyService (which uses AsyncStorage)
     const currentUser = await LocalAuthService.getUserFromLocalStorage();
     if (!currentUser) return;
-    console.log('📥 Baixando dados (remoto/local híbrido - apenas delta)');
+
 
     try {
       // Save current user to cache
@@ -728,7 +712,7 @@ class SyncService {
             tt.updatedAt = safeToDate(tt.updatedAt) || safeToDate(tt.createdAt) || new Date();
 
             const localTaskRaw = offlineData.tasks[tt.id];
-            
+
             // Usar comparação inteligente de mudanças antes de salvar
             if (this.hasRealChanges(tt, localTaskRaw)) {
               await LocalStorageService.saveTask(tt as any);
@@ -736,9 +720,9 @@ class SyncService {
             }
           }
           if (savedCount > 0) {
-            console.log(`📋 ${savedCount} tarefas do usuário com mudanças reais atualizadas no cache`);
+
           } else {
-            console.log(`✓ Nenhuma tarefa do usuário com mudanças para sincronizar`);
+
           }
         } catch (e) {
           console.warn('Falha ao baixar tarefas do usuário do Firestore:', e);
@@ -773,7 +757,7 @@ class SyncService {
               tt.updatedAt = safeToDate(tt.updatedAt) || safeToDate(tt.createdAt) || new Date();
 
               const localTaskRaw = offlineData.tasks[tt.id];
-              
+
               // Usar comparação inteligente: verificar se há mudanças REAIS antes de salvar
               // Isto evita sobrescrever cache com dados idênticos e economiza writes
               if (this.hasRealChanges(tt, localTaskRaw)) {
@@ -782,9 +766,9 @@ class SyncService {
               }
             }
             if (savedFamilyCount > 0) {
-              console.log(`📋 ${savedFamilyCount} tarefas da família com mudanças reais atualizadas no cache`);
+
             } else {
-              console.log(`✓ Nenhuma tarefa da família com mudanças para sincronizar`);
+
             }
           } catch (e) {
             console.warn('Falha ao baixar tarefas da família do Firestore:', e);
@@ -795,7 +779,7 @@ class SyncService {
           for (const task of familyTasks) {
             await LocalStorageService.saveTask(task);
           }
-          console.log(`📋 ${familyTasks.length} tarefas da família (offline) salvas no cache`);
+
         }
       }
 
@@ -809,7 +793,7 @@ class SyncService {
   private static async downloadFamilyData(familyId: string): Promise<void> {
     try {
       console.log('👨‍👩‍👧‍👦 Baixando dados da família:', familyId);
-      
+
       // Baixar família usando o familyService
       const familyData = await familyService.getFamilyById(familyId);
       if (familyData) {
@@ -819,14 +803,14 @@ class SyncService {
         for (const member of familyData.members) {
           await LocalStorageService.saveUser(member);
         }
-        
+
         console.log(`👥 ${familyData.members.length} membros da família salvos no cache`);
       }
 
-  // Baixar tarefas da família usando o familyService (incluir tarefas privadas do usuário se possível)
-  const currentUser = await LocalAuthService.getUserFromLocalStorage();
-  const userId = currentUser ? ((currentUser as any).uid || (currentUser as any).id) : undefined;
-  const familyTasks = await familyService.getFamilyTasks(familyId, userId);
+      // Baixar tarefas da família usando o familyService (incluir tarefas privadas do usuário se possível)
+      const currentUser = await LocalAuthService.getUserFromLocalStorage();
+      const userId = currentUser ? ((currentUser as any).uid || (currentUser as any).id) : undefined;
+      const familyTasks = await familyService.getFamilyTasks(familyId, userId);
       for (const task of familyTasks) {
         await LocalStorageService.saveTask(task);
       }
@@ -853,8 +837,8 @@ class SyncService {
       }
       this.notifyApprovalsListeners(approvals);
 
-  // Reconciliar cache local: usar os dados remotos como source-of-truth para esta família
-  try {
+      // Reconciliar cache local: usar os dados remotos como source-of-truth para esta família
+      try {
         const offlineData = await LocalStorageService.getOfflineData();
 
         // Preparar mapas iniciais copiando o que existe (mantendo outras famílias)
@@ -874,7 +858,7 @@ class SyncService {
         }
 
         // Adicionar/atualizar membros da família baixados do servidor
-          if (familyData && Array.isArray(familyData.members)) {
+        if (familyData && Array.isArray(familyData.members)) {
           for (const member of familyData.members) {
             usersMap[member.id] = member;
           }
@@ -973,7 +957,7 @@ class SyncService {
 
                 if (remoteUpdated.getTime() === localUpdated.getTime()) {
                   // Same timestamp — compare important fields to avoid overwrite
-                  const fieldsToCompare = ['title','description','completed','category','userId','familyId'];
+                  const fieldsToCompare = ['title', 'description', 'completed', 'category', 'userId', 'familyId'];
                   const normalizeDate = (d: any) => {
                     const dt = safeToDate(d);
                     return dt ? dt.toISOString() : null;
@@ -1079,7 +1063,7 @@ class SyncService {
       try {
         // Execute directly as a PendingOperation to reuse execution logic
         const tempOp: PendingOperation = {
-          id: `immediate_${Date.now()}_${Math.random().toString(36).substr(2,9)}`,
+          id: `immediate_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
           type,
           collection: collection as any,
           data,
@@ -1097,8 +1081,8 @@ class SyncService {
       }
     }
 
-  // Fallback: add to pending operations queue. For private tasks, familyId remains null.
-  await LocalStorageService.addPendingOperation({ type, collection: collection as any, data });
+    // Fallback: add to pending operations queue. For private tasks, familyId remains null.
+    await LocalStorageService.addPendingOperation({ type, collection: collection as any, data });
 
     // Atualizar contagem de operações pendentes
     const offlineData = await LocalStorageService.getOfflineData();
@@ -1108,7 +1092,7 @@ class SyncService {
   // Adicionar listener para status de sincronização
   static addSyncListener(callback: SyncCallback): () => void {
     this.listeners.push(callback);
-    
+
     // Chamar imediatamente com estado atual
     callback(this.syncStatus);
 
@@ -1173,27 +1157,27 @@ class SyncService {
     try {
       // Baixar dados remotos primeiro
       await this.downloadRemoteData();
-      
+
       // Depois processar operações pendentes
       await this.processPendingOperations();
-      
+
       // Limpar tarefas antigas do cache (mesma lógica do Firestore: > 7 dias)
       await LocalStorageService.clearOldCompletedTasks(7);
-      
-      this.updateSyncStatus({ 
+
+      this.updateSyncStatus({
         lastSync: Date.now(),
-        isSyncing: false 
+        isSyncing: false
       });
-      
+
       console.log('✅ Sincronização completa finalizada');
     } catch (error) {
       console.error('❌ Erro na sincronização completa:', {
         message: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined
       });
-      this.updateSyncStatus({ 
-        isSyncing: false, 
-        hasError: true, 
+      this.updateSyncStatus({
+        isSyncing: false,
+        hasError: true,
         errorMessage: error instanceof Error ? error.message : 'Erro desconhecido'
       });
     }
@@ -1292,7 +1276,7 @@ class SyncService {
 
       // 3. Atualizar timestamp da última sincronização
       await LocalStorageService.updateLastSync();
-      
+
       console.log('✅ [BG] Sincronização em background concluída com sucesso.');
       this.isSyncing = false;
       return true;

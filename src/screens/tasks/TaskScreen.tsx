@@ -26,17 +26,17 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { v4 as uuidv4 } from 'uuid';
 import { APP_COLORS } from '../../constants/colors';
-import { 
-  DEFAULT_CATEGORIES, 
-  AVAILABLE_ICONS, 
-  AVAILABLE_COLORS, 
-  AVAILABLE_EMOJIS 
+import {
+  DEFAULT_CATEGORIES,
+  AVAILABLE_ICONS,
+  AVAILABLE_COLORS,
+  AVAILABLE_EMOJIS
 } from '../../constants/task.constants';
 
-import { 
-  repeatConfigToOption, 
-  optionToRepeatConfig, 
-  getRepeat, 
+import {
+  repeatConfigToOption,
+  optionToRepeatConfig,
+  getRepeat,
   getEmojiForIcon,
   filterOldCompletedTasks
 } from '../../utils/validators/task.utils';
@@ -51,7 +51,8 @@ import familyService from '../../services/family/local-family.service';
 import { safeToDate, isToday, isUpcoming, isTaskOverdue, getNextRecurrenceDate, isRecurringTaskCompletable } from '../../utils/date/date.utils';
 import { RemoteTask } from '../../services/tasks/firestore.service';
 import FirestoreService from '../../services/tasks/firestore.service';
-import LocalStorageService, { HistoryItem as StoredHistoryItem } from '../../services/storage/local-storage.service';
+import LocalStorageService from '../../services/storage/local-storage.service';
+import { HistoryItem as StoredHistoryItem } from '../../types/storage.types';
 import SyncService from '../../services/sync/sync.service';
 import FamilySyncHelper from '../../services/family/family-sync.helper';
 import NotificationService from '../../services/notifications/notification.service';
@@ -80,24 +81,24 @@ const repeatTypeToOption = (rt: RepeatType): Task['repeatOption'] => {
     default: return 'nenhum';
   }
 };
-export const TaskScreen: React.FC<TaskScreenProps> = ({ 
-  user: propUser, 
-  onLogout, 
-  onUserNameChange, 
+export const TaskScreen: React.FC<TaskScreenProps> = ({
+  user: propUser,
+  onLogout,
+  onUserNameChange,
   onUserImageChange,
   onUserProfileIconChange,
-  onUserRoleChange 
+  onUserRoleChange
 }) => {
   // Usar dados do contexto se disponíveis, senão fallback para props (durante transição)
   const auth = useAuth();
   const user = auth.user || propUser;
-  
+
   // Hook do tema
   const { colors, activeTheme } = useTheme();
-  
+
   // Estilos dinâmicos baseados no tema
   const styles = useMemo(() => getStyles(colors, activeTheme), [colors, activeTheme]);
-  
+
   // Estados de conectividade (necessário para os hooks)
   const [isOffline, setIsOffline] = useState(false);
   const [connectivityState, setConnectivityState] = useState<ConnectivityState>({
@@ -107,22 +108,22 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
   });
 
   // Hooks Customizados
-  const { 
-    currentFamily, 
-    setCurrentFamily, 
-    familyMembers, 
-    setFamilyMembers, 
-    isBootstrapping: isFamilyBootstrapping 
+  const {
+    currentFamily,
+    setCurrentFamily,
+    familyMembers,
+    setFamilyMembers,
+    isBootstrapping: isFamilyBootstrapping
   } = useFamily(user, isOffline);
 
-  const { 
-    tasks, 
-    setTasks, 
+  const {
+    tasks,
+    setTasks,
     allTasks,
     setAllTasks,
     loadTasks,
-    pendingSyncIds, 
-    setPendingSyncIds 
+    pendingSyncIds,
+    setPendingSyncIds,
   } = useTasks(user, currentFamily, isOffline);
 
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -137,16 +138,16 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
 
   const [isAddingTask, setIsAddingTask] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
-  
+
   const [syncMessage, setSyncMessage] = useState('');
   // Recorrência
   const [intervalDays, setIntervalDays] = useState<number>(0);
   const [durationMonths, setDurationMonths] = useState<number>(0);
-  
+
   // Estados para controle do seletor de data/hora
   const [tempDueDate, setTempDueDate] = useState<Date | undefined>(undefined);
   const [tempDueTime, setTempDueTime] = useState<Date | undefined>(undefined);
-  
+
   // Estado para dropdown de filtros
   const [filterDropdownVisible, setFilterDropdownVisible] = useState(false);
   const [filterButtonLayout, setFilterButtonLayout] = useState({ top: 120, right: 16 });
@@ -166,7 +167,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState(new Date());
   const [activeTab, setActiveTab] = useState<'today' | 'upcoming'>('today');
-  
+
   // Estado para funcionalidade de desfazer
   const [lastAction, setLastAction] = useState<{
     type: 'toggle' | 'delete' | 'edit';
@@ -176,7 +177,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
   } | null>(null);
   const [showUndoButton, setShowUndoButton] = useState(false);
   const undoTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  
+
   // Estados de família (currentFamily e familyMembers vêm do hook agora)
   const [familyModalVisible, setFamilyModalVisible] = useState(false);
   const [familyName, setFamilyName] = useState('');
@@ -184,7 +185,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
   const [codeCountdown, setCodeCountdown] = useState('');
   const [editMemberModalVisible, setEditMemberModalVisible] = useState(false);
   const [selectedMemberForEdit, setSelectedMemberForEdit] = useState<FamilyUser | null>(null);
-  
+
   // Ref para controlar notificações de tarefas vencidas
   const overdueNotificationTrackRef = useRef<Record<string, number>>({});
   const NOTIFICATION_THROTTLE_MINUTES = 30;
@@ -210,9 +211,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
     const currentUserEntry = familyMembers.find(member => member.id === userId);
     return currentUserEntry ? [currentUserEntry, ...others] : others;
   }, [familyMembers, user?.id]);
-  
+
   // Helper: garante permissão atualizada do membro autenticado; retorna true/false
-  const ensureFamilyPermission = useCallback(async (perm: 'create'|'edit'|'delete'): Promise<boolean> => {
+  const ensureFamilyPermission = useCallback(async (perm: 'create' | 'edit' | 'delete'): Promise<boolean> => {
     if (!currentFamily || user.role !== 'dependente') return true;
     try {
       // Sempre buscar do servidor para evitar permissões locais desatualizadas (ex.: revogadas recentemente)
@@ -231,26 +232,26 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
     }
     return false;
   }, [currentFamily, familyMembers, user]);
-  
+
   // Estados de aprovação
   const [approvals, setApprovals] = useState<TaskApproval[]>([]);
   const [adminRoleRequests, setAdminRoleRequests] = useState<any[]>([]);
-  
+
   // Estados de histórico
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [historyModalVisible, setHistoryModalVisible] = useState(false);
   const [historyDetailModalVisible, setHistoryDetailModalVisible] = useState(false);
   const [selectedHistoryItem, setSelectedHistoryItem] = useState<HistoryItem | null>(null);
-  
+
   // Estados de notificação
   const [notifications, setNotifications] = useState<ApprovalNotification[]>([]);
   const [notificationModalVisible, setNotificationModalVisible] = useState(false);
-  
+
   // Estados de categoria customizada
   const [newCategoryName, setNewCategoryName] = useState('');
   const [selectedIcon, setSelectedIcon] = useState('star');
   const [selectedColorIndex, setSelectedColorIndex] = useState(0);
-  
+
   // Estados de subtarefas
   const [subtasksDraft, setSubtasksDraft] = useState<Array<{ id: string; title: string; done: boolean; completedById?: string; completedByName?: string; completedAt?: Date; dueDate?: Date; dueTime?: Date; }>>([]);
   // Sempre ter acesso ao valor mais recente das subtarefas (evita estado obsoleto ao salvar)
@@ -258,17 +259,17 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
   useEffect(() => {
     subtasksDraftRef.current = subtasksDraft;
   }, [subtasksDraft]);
-  
+
   // Estados de categorias de subtarefas
   const [subtaskCategories, setSubtaskCategories] = useState<SubtaskCategory[]>([]);
   const [newCategoryTitle, setNewCategoryTitle] = useState('');
   const [isAddingCategory, setIsAddingCategory] = useState(false);
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
   const [newSubtaskInCategory, setNewSubtaskInCategory] = useState<{ categoryId: string; title: string } | null>(null);
-  
+
   // Estado para controlar qual modo de subtarefa está ativo
   const [subtaskMode, setSubtaskMode] = useState<'none' | 'simple' | 'category'>('none');
-  
+
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
   const [newSubtaskDate, setNewSubtaskDate] = useState<Date | undefined>(undefined);
   const [newSubtaskTime, setNewSubtaskTime] = useState<Date | undefined>(undefined);
@@ -301,7 +302,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
     isOnline: true,
     hasError: false
   });
-  
+
   // Estados de modais adicionais
   const [settingsModalVisible, setSettingsModalVisible] = useState(false);
   const [approvalModalVisible, setApprovalModalVisible] = useState(false);
@@ -318,7 +319,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
   const [modalStack, setModalStack] = useState<ModalKey[]>([]);
   const isTopModal = (key: ModalKey) => modalStack[modalStack.length - 1] === key;
   const openManagedModal = (key: ModalKey) => {
-    try { Keyboard.dismiss(); } catch {}
+    try { Keyboard.dismiss(); } catch { }
     setModalStack(prev => {
       const next = prev.filter(k => k !== key);
       next.push(key);
@@ -329,7 +330,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
     setModalStack(prev => prev.filter(k => k !== key));
   };
   const [selectedApproval, setSelectedApproval] = useState<TaskApproval | null>(null);
-  
+
   // Estados de criação/edição de família
   const [isCreatingFamily, setIsCreatingFamily] = useState(false);
   const [isCreatingFamilyMode, setIsCreatingFamilyMode] = useState(false);
@@ -338,12 +339,12 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
   const [editingFamilyName, setEditingFamilyName] = useState(false);
   const [newFamilyName, setNewFamilyName] = useState('');
   const [isSyncingFamily, setIsSyncingFamily] = useState(false);
-  
+
   // Estados de resolução de pedidos admin
   const [resolvingAdminRequestId, setResolvingAdminRequestId] = useState<string | null>(null);
   // Permissões efetivas do próprio usuário (atualizadas do servidor para visual)
   const [myEffectivePerms, setMyEffectivePerms] = useState<{ create?: boolean; edit?: boolean; delete?: boolean } | null>(null);
-  
+
   // Animated value para transições de tab
   const tabFade = useRef(new Animated.Value(1)).current;
 
@@ -383,7 +384,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
       if (familyModalVisible && currentFamily?.id) {
         // Garante que não haja duas assinaturas ativas
         if (membersUnsubRef.current) {
-          try { membersUnsubRef.current(); } catch {}
+          try { membersUnsubRef.current(); } catch { }
           membersUnsubRef.current = null;
         }
         const unsubscribe = (familyService as any).subscribeToFamilyMembers(
@@ -395,13 +396,13 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
         membersUnsubRef.current = unsubscribe;
         // Cleanup quando dependências mudarem ou componente desmontar
         return () => {
-          try { unsubscribe && unsubscribe(); } catch {}
+          try { unsubscribe && unsubscribe(); } catch { }
           membersUnsubRef.current = null;
         };
       }
       // Se o modal fechar, cancelar assinatura se existir
       if (!familyModalVisible && membersUnsubRef.current) {
-        try { membersUnsubRef.current(); } catch {}
+        try { membersUnsubRef.current(); } catch { }
         membersUnsubRef.current = null;
       }
     } catch (e) {
@@ -489,14 +490,14 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
   const loadDataFromCache = async () => {
     try {
       logger.debug('CACHE_LOAD', 'Carregando dados do cache local');
-      
+
       // Carregar tarefas do cache
       const cachedRemoteTasks = await LocalStorageService.getTasks();
-        if (cachedRemoteTasks.length > 0) {
-          // Filtrar tarefas concluídas há mais de 7 dias (mesma lógica do Firestore)
-          const filteredCachedTasks = filterOldCompletedTasks(cachedRemoteTasks);
-          const convertedTasks: Task[] = (filteredCachedTasks.map(remoteTaskToTask as any) as Task[]);
-          setTasks(convertedTasks);
+      if (cachedRemoteTasks.length > 0) {
+        // Filtrar tarefas concluídas há mais de 7 dias (mesma lógica do Firestore)
+        const filteredCachedTasks = filterOldCompletedTasks(cachedRemoteTasks);
+        const convertedTasks: Task[] = (filteredCachedTasks.map(remoteTaskToTask as any) as Task[]);
+        setTasks(convertedTasks);
         logger.success('CACHE_LOAD', `${convertedTasks.length} tarefas carregadas`);
       }
 
@@ -521,11 +522,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
   // Função para salvar dados no cache
   const saveDataToCache = async () => {
     try {
-      // Salvar tarefas convertidas
-      for (const task of tasks) {
-  const remoteTask = taskToRemoteTask(task as any, currentFamily?.id);
-  await LocalStorageService.saveTask(remoteTask as any);
-      }
+      // Salvar tarefas convertidas em batch
+      const remoteTasks = tasks.map(task => taskToRemoteTask(task as any, currentFamily?.id));
+      await LocalStorageService.saveBatchTasks(remoteTasks as any[]);
 
       // Salvar aprovações
       for (const approval of approvals) {
@@ -541,11 +540,11 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
     if (currentFamily) {
       try {
         logger.info('SYNC', 'Recarregando tarefas da família (sync em background)');
-        
+
         // Se estiver online, buscar do Firebase e fazer merge com cache
         if (!isOffline) {
           const familyTasks = await familyService.getFamilyTasks(currentFamily.id, user.id);
-          
+
           // Converter usando função centralizada para manter dueTime e repeatDays
           let convertedTasks: Task[] = familyTasks.map(remoteTaskToTask as any);
 
@@ -555,19 +554,19 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
             if (isPrivate && t.createdBy && t.createdBy !== user.id) return false;
             return true;
           });
-          
+
           logger.debug('REMOTE_TASKS', convertedTasks.map(t => ({ id: t.id, title: t.title, dueDate: t.dueDate, dueTime: t.dueTime })));
 
           // Fazer merge inteligente: manter tarefas locais mais recentes e adicionar novas do servidor remoto
           setTasks(currentTasks => {
             logger.debug('LOCAL_TASKS_BEFORE', currentTasks.map(t => ({ id: t.id, title: t.title, dueDate: t.dueDate, dueTime: t.dueTime })));
-            
+
             const mergedTasksMap = new Map(currentTasks.map(t => [t.id, t]));
 
             // Para cada tarefa remota
             convertedTasks.forEach(remoteTask => {
               const existingTask = mergedTasksMap.get(remoteTask.id);
-              
+
               if (!existingTask) {
                 // Tarefa não existe localmente, adicionar
                 mergedTasksMap.set(remoteTask.id, remoteTask);
@@ -576,7 +575,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
                 // Tarefa existe, manter a versão mais recente baseada em updatedAt/editedAt
                 const existingTime = existingTask.editedAt || existingTask.createdAt;
                 const remoteTime = remoteTask.editedAt || remoteTask.createdAt;
-                
+
                 if (remoteTime > existingTime) {
                   // Versão remota é mais recente
                   mergedTasksMap.set(remoteTask.id, remoteTask);
@@ -586,7 +585,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
                 }
               }
             });
-            
+
             // Remover tarefas locais que não existem mais no servidor remoto (foram deletadas)
             const remoteIds = new Set(convertedTasks.map(t => t.id));
             currentTasks.forEach(localTask => {
@@ -604,15 +603,13 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
 
             const finalTasks = Array.from(mergedTasksMap.values());
             logger.debug('LOCAL_TASKS_AFTER', finalTasks.map(t => ({ id: t.id, title: t.title, dueDate: t.dueDate, dueTime: t.dueTime })));
-            
+
             return finalTasks;
           });
-          
+
           // Salvar tarefas atualizadas no cache
-          for (const task of convertedTasks) {
-            await LocalStorageService.saveTask(task as any);
-          }
-          
+          await LocalStorageService.saveBatchTasks(convertedTasks as any[]);
+
           logger.success('SYNC_COMPLETE', `${familyTasks.length} tarefas sincronizadas`);
         }
       } catch (error) {
@@ -624,12 +621,106 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
   // Configurar notificações apenas uma vez
   useEffect(() => {
     NotificationService.initialize();
-  }, []);
+
+    // 🆕 Registrar listener para ações de notificação (Complete/Skip)
+    const subscription = Notifications.addNotificationResponseReceivedListener(async (response) => {
+      const { actionIdentifier, notification } = response;
+      const taskId = notification.request.content.data?.taskId as string;
+
+      if (!taskId) {
+        logger.warn('NOTIFICATION_ACTION', 'Ação de notificação sem taskId');
+        return;
+      }
+
+      logger.info('NOTIFICATION_ACTION', `Ação: ${actionIdentifier} para tarefa: ${taskId}`);
+
+      try {
+        // 🆕 Dispensar a notificação da bandeja imediatamente
+        await Notifications.dismissNotificationAsync(notification.request.identifier);
+
+        const task = tasks.find(t => t.id === taskId);
+
+        if (!task) {
+          logger.warn('NOTIFICATION_ACTION', `Tarefa ${taskId} não encontrada. Cancelando notificação órfã.`);
+          await NotificationService.cancelTaskReminder(taskId);
+          return;
+        }
+
+        if (actionIdentifier === 'complete') {
+          // Marcar tarefa como concluída
+          logger.info('NOTIFICATION_ACTION', `Concluindo tarefa: ${task.title}`);
+
+          const updatedTask = {
+            ...task,
+            completed: true,
+            completedAt: new Date(),
+            status: 'concluida' as TaskStatus,
+          };
+
+          // Remover campos undefined antes de salvar (Firebase não aceita undefined)
+          const cleanTask: any = {};
+          Object.keys(updatedTask).forEach(key => {
+            const value = (updatedTask as any)[key];
+            if (value !== undefined) {
+              cleanTask[key] = value;
+            }
+          });
+
+          // Atualizar no Firebase
+          if (currentFamily?.id) {
+            await familyService.saveFamilyTask(cleanTask as Task, currentFamily.id);
+          }
+
+          // Atualizar estado local
+          setTasks(prev => prev.map(t => t.id === taskId ? updatedTask : t));
+
+          // Cancelar notificações agendadas
+          await NotificationService.cancelTaskReminder(taskId);
+
+          // Registrar no histórico
+          if (currentFamily?.id) {
+            await familyService.addFamilyHistoryItem(currentFamily.id, {
+              id: `history_${Date.now()}`,
+              action: 'completed',
+              taskTitle: task.title,
+              taskId: task.id,
+              timestamp: new Date(),
+              details: 'Concluída via notificação',
+              userId: user.id,
+              userName: user.name,
+              userRole: user.role,
+            });
+          }
+
+          logger.success('NOTIFICATION_ACTION', `Tarefa "${task.title}" concluída com sucesso`);
+
+        } else if (actionIdentifier === 'skip') {
+          // Pular notificações por 24h
+          logger.info('NOTIFICATION_ACTION', `Pulando notificações para: ${task.title}`);
+
+          // Cancelar notificações pendentes
+          await NotificationService.cancelTaskReminder(taskId);
+
+          // Adicionar ao rastreamento para não notificar nas próximas 24h
+          const now = Date.now();
+          overdueNotificationTrackRef.current[taskId] = now;
+
+          logger.success('NOTIFICATION_ACTION', `Notificações pausadas por 24h para "${task.title}"`);
+        }
+      } catch (error) {
+        logger.error('NOTIFICATION_ACTION', 'Erro ao processar ação de notificação', error);
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [tasks, currentFamily, user]);
 
   // Configurar atualização automática e AppState listener
   useEffect(() => {
     verificarTarefasVencidas();
-    
+
     // Configurar atualização automática a cada minuto
     const interval = setInterval(() => {
       logger.debug('AUTO_UPDATE', 'Executando atualização automática agendada');
@@ -644,7 +735,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
     };
 
     const appStateSubscription = AppState.addEventListener('change', handleAppStateChange);
-    
+
     return () => {
       clearInterval(interval);
       appStateSubscription.remove();
@@ -654,6 +745,12 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
   // Verificar tarefas vencidas quando há mudanças nas tasks ou atualizações automáticas
   useEffect(() => {
     verificarTarefasVencidas();
+
+    // 🆕 Limpar notificações órfãs se houver tarefas carregadas
+    if (tasks.length > 0) {
+      const activeTaskIds = tasks.map(t => t.id);
+      NotificationService.cleanupOrphanedNotifications(activeTaskIds);
+    }
   }, [tasks, lastUpdate]);
 
   // Contagem regressiva do código de convite
@@ -675,7 +772,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
       const h = Math.floor(totalSeconds / 3600);
       const m = Math.floor((totalSeconds % 3600) / 60);
       const s = totalSeconds % 60;
-      setCodeCountdown(`${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`);
+      setCodeCountdown(`${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`);
     };
     updateCountdown();
     timer = setInterval(updateCountdown, 1000);
@@ -702,16 +799,16 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
       try {
         // Inicializar conectividade
         await ConnectivityService.initialize();
-        
+
         // Configurar listener de conectividade
         const removeConnectivityListener = ConnectivityService.addConnectivityListener((state) => {
           setConnectivityState(state);
           setIsOffline(!state.isConnected);
         });
 
-  // Inicializar sincronização (rápido) sem bloquear UI
-  await SyncService.initialize();
-        
+        // Inicializar sincronização (rápido) sem bloquear UI
+        await SyncService.initialize();
+
         // Configurar listener de sincronização
         const removeSyncListener = SyncService.addSyncListener((status) => {
           setSyncStatus(status);
@@ -738,7 +835,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
     };
 
     const cleanup = initializeOfflineSystem();
-    
+
     return () => {
       cleanup.then(cleanupFn => cleanupFn && cleanupFn());
     };
@@ -785,7 +882,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
           });
           // Mostra overlay de boot enquanto carrega dados essenciais
           setIsBootstrapping(true);
-          
+
           // ========================================
           // 1. CARREGAR DO CACHE LOCAL PRIMEIRO (INSTANTÂNEO)
           // ========================================
@@ -815,117 +912,117 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
           } catch (cacheError) {
             logger.warn('CACHE_ERROR', 'Erro ao carregar do cache local');
           }
-          
+
           // ========================================
           // 2. SINCRONIZAR EM BACKGROUND (NÃO BLOQUEIA A UI)
           // ========================================
           if (!isOffline) {
             logger.debug('SYNC', 'Iniciando sincronização em background');
-            
+
             // Carrega família do Firebase em background
             const userFamily = await familyService.getUserFamily(user.id);
-          logger.debug('FAMILY_SEARCH', { userFamily });
-          
-          if (userFamily) {
-            setCurrentFamily(userFamily);
-            logger.success('FAMILY_LOAD', `Família atualizada do Firebase: ${userFamily.name}`);
-            
-            // Salvar família no cache
-            await LocalStorageService.saveFamily(userFamily);
-            
-            // Carregar tarefas da família em background
-            const familyTasks = await familyService.getFamilyTasks(userFamily.id, user.id);
-            let convertedTasks: Task[] = familyTasks.map(remoteTaskToTask as any);
-            
-            // Filtrar tarefas privadas
-            convertedTasks = convertedTasks.filter(t => {
-              const isPrivate = (t as any).private === true;
-              if (isPrivate && t.createdBy && t.createdBy !== user.id) return false;
-              return true;
-            });
-            
-            // Fazer merge inteligente com tarefas locais
-            setTasks(currentTasks => {
-              const mergedTasksMap = new Map(currentTasks.map(t => [t.id, t]));
-              
-              convertedTasks.forEach(remoteTask => {
-                const existingTask = mergedTasksMap.get(remoteTask.id);
-                
-                if (!existingTask) {
-                  mergedTasksMap.set(remoteTask.id, remoteTask);
-                } else {
-                  const existingTime = existingTask.editedAt || existingTask.createdAt;
-                  const remoteTime = remoteTask.editedAt || remoteTask.createdAt;
-                  
-                  if (remoteTime > existingTime) {
+            logger.debug('FAMILY_SEARCH', { userFamily });
+
+            if (userFamily) {
+              setCurrentFamily(userFamily);
+              logger.success('FAMILY_LOAD', `Família atualizada do Firebase: ${userFamily.name}`);
+
+              // Salvar família no cache
+              await LocalStorageService.saveFamily(userFamily);
+
+              // Carregar tarefas da família em background
+              const familyTasks = await familyService.getFamilyTasks(userFamily.id, user.id);
+              let convertedTasks: Task[] = familyTasks.map(remoteTaskToTask as any);
+
+              // Filtrar tarefas privadas
+              convertedTasks = convertedTasks.filter(t => {
+                const isPrivate = (t as any).private === true;
+                if (isPrivate && t.createdBy && t.createdBy !== user.id) return false;
+                return true;
+              });
+
+              // Fazer merge inteligente com tarefas locais
+              setTasks(currentTasks => {
+                const mergedTasksMap = new Map(currentTasks.map(t => [t.id, t]));
+
+                convertedTasks.forEach(remoteTask => {
+                  const existingTask = mergedTasksMap.get(remoteTask.id);
+
+                  if (!existingTask) {
                     mergedTasksMap.set(remoteTask.id, remoteTask);
+                  } else {
+                    const existingTime = existingTask.editedAt || existingTask.createdAt;
+                    const remoteTime = remoteTask.editedAt || remoteTask.createdAt;
+
+                    if (remoteTime > existingTime) {
+                      mergedTasksMap.set(remoteTask.id, remoteTask);
+                    }
                   }
-                }
+                });
+
+                // Remover tarefas que não existem mais no servidor
+                const remoteIds = new Set(convertedTasks.map(t => t.id));
+                currentTasks.forEach(localTask => {
+                  if (!remoteIds.has(localTask.id)) {
+                    const isCreatorPrivate = (localTask as any).private === true && localTask.createdBy === user.id;
+                    if (!isCreatorPrivate) {
+                      mergedTasksMap.delete(localTask.id);
+                    }
+                  }
+                });
+
+                return Array.from(mergedTasksMap.values());
               });
-              
-              // Remover tarefas que não existem mais no servidor
-              const remoteIds = new Set(convertedTasks.map(t => t.id));
-              currentTasks.forEach(localTask => {
-                if (!remoteIds.has(localTask.id)) {
-                  const isCreatorPrivate = (localTask as any).private === true && localTask.createdBy === user.id;
-                  if (!isCreatorPrivate) {
-                    mergedTasksMap.delete(localTask.id);
+
+              // Salvar tarefas atualizadas no cache
+              for (const task of convertedTasks) {
+                await LocalStorageService.saveTask(task as any);
+              }
+
+              logger.success('SYNC_BG', `${familyTasks.length} tarefas sincronizadas do Firebase`);
+
+              // Disparar sync completo para garantir que tudo está atualizado
+              SyncService.forceFullSync().catch(e => logger.warn('SYNC_BG', 'forceFullSync error'));
+            } else {
+              logger.info('FAMILY_LOAD', 'Usuário não possui família no Firebase');
+
+              // Fallback: se temos familyId salvo, tentar carregar diretamente pelo ID
+              if (user.familyId) {
+                try {
+                  const fetchedFamily = await familyService.getFamilyById(user.familyId);
+                  if (fetchedFamily) {
+                    setCurrentFamily(fetchedFamily);
+                    await LocalStorageService.saveFamily(fetchedFamily);
+                    logger.success('FAMILY_FALLBACK', `Família carregada via fallback: ${fetchedFamily.name}`);
+
+                    const familyTasks = await familyService.getFamilyTasks(fetchedFamily.id, user.id);
+                    let convertedTasks: Task[] = familyTasks.map(remoteTaskToTask as any);
+                    convertedTasks = convertedTasks.filter(t => {
+                      const isPrivate = (t as any).private === true;
+                      if (isPrivate && t.createdBy && t.createdBy !== user.id) return false;
+                      return true;
+                    });
+
+                    setTasks(convertedTasks);
+
+                    // Salvar no cache
+                    for (const task of convertedTasks) {
+                      await LocalStorageService.saveTask(task as any);
+                    }
+
+                    logger.success('SYNC_FALLBACK', `${convertedTasks.length} tarefas da família sincronizadas`);
+                    SyncService.forceFullSync().catch(e => logger.warn('SYNC_BG', 'forceFullSync error'));
                   }
+                } catch (e) {
+                  logger.warn('FAMILY_FALLBACK', 'Falha ao carregar família via fallback');
                 }
-              });
-              
-              return Array.from(mergedTasksMap.values());
-            });
-            
-            // Salvar tarefas atualizadas no cache
-            for (const task of convertedTasks) {
-              await LocalStorageService.saveTask(task as any);
-            }
-            
-            logger.success('SYNC_BG', `${familyTasks.length} tarefas sincronizadas do Firebase`);
-            
-            // Disparar sync completo para garantir que tudo está atualizado
-            SyncService.forceFullSync().catch(e => logger.warn('SYNC_BG', 'forceFullSync error'));
-          } else {
-            logger.info('FAMILY_LOAD', 'Usuário não possui família no Firebase');
-            
-            // Fallback: se temos familyId salvo, tentar carregar diretamente pelo ID
-            if (user.familyId) {
-              try {
-                const fetchedFamily = await familyService.getFamilyById(user.familyId);
-                if (fetchedFamily) {
-                  setCurrentFamily(fetchedFamily);
-                  await LocalStorageService.saveFamily(fetchedFamily);
-                  logger.success('FAMILY_FALLBACK', `Família carregada via fallback: ${fetchedFamily.name}`);
-                  
-                  const familyTasks = await familyService.getFamilyTasks(fetchedFamily.id, user.id);
-                  let convertedTasks: Task[] = familyTasks.map(remoteTaskToTask as any);
-                  convertedTasks = convertedTasks.filter(t => {
-                    const isPrivate = (t as any).private === true;
-                    if (isPrivate && t.createdBy && t.createdBy !== user.id) return false;
-                    return true;
-                  });
-                  
-                  setTasks(convertedTasks);
-                  
-                  // Salvar no cache
-                  for (const task of convertedTasks) {
-                    await LocalStorageService.saveTask(task as any);
-                  }
-                  
-                  logger.success('SYNC_FALLBACK', `${convertedTasks.length} tarefas da família sincronizadas`);
-                  SyncService.forceFullSync().catch(e => logger.warn('SYNC_BG', 'forceFullSync error'));
-                }
-              } catch (e) {
-                logger.warn('FAMILY_FALLBACK', 'Falha ao carregar família via fallback');
               }
             }
-          }
           }
         }
       } catch (error) {
         logger.error('FAMILY_LOAD', 'Erro ao carregar família do usuário', error);
-        
+
         // Em caso de erro, tentar carregar do cache local
         try {
           const cachedTasks = await LocalStorageService.getTasks();
@@ -946,7 +1043,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
       userId: user?.id,
       isOffline
     });
-    
+
     loadUserFamily();
   }, [user?.id, isOffline]);
 
@@ -971,13 +1068,13 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
           return;
         }
 
-    // Primeiro, carregar histórico do cache local
-    logger.debug('HISTORY', 'Carregando histórico do cache local');
-  const localHistory = await LocalStorageService.getHistory(100);
-  setHistory(localHistory.sort((a,b)=> new Date(b.timestamp as any).getTime() - new Date(a.timestamp as any).getTime()));
+        // Primeiro, carregar histórico do cache local
+        logger.debug('HISTORY', 'Carregando histórico do cache local');
+        const localHistory = await LocalStorageService.getHistory(100);
+        setHistory(localHistory.sort((a, b) => new Date(b.timestamp as any).getTime() - new Date(a.timestamp as any).getTime()));
 
-    // Limpar histórico antigo (manter apenas 7 dias)
-    await LocalStorageService.clearOldHistory(HISTORY_DAYS_TO_KEEP);
+        // Limpar histórico antigo (manter apenas 7 dias)
+        await LocalStorageService.clearOldHistory(HISTORY_DAYS_TO_KEEP);
 
         if (currentFamily && currentFamily.id && !isOffline) {
           logger.debug('HISTORY', 'Carregando histórico da família');
@@ -1027,16 +1124,16 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
             },
             user.id
           );
-          
+
           // Carregar histórico inicial da família
           const familyHistory = await familyService.getFamilyHistory(currentFamily.id, 50);
-          
+
           // Verificar se familyHistory é válido
           if (!familyHistory || !Array.isArray(familyHistory)) {
             logger.warn('HISTORY_INVALID', 'Histórico da família inválido');
             return;
           }
-          
+
           // Converter histórico da família para formato local (usar createdAt como timestamp)
           const convertedHistory: HistoryItem[] = familyHistory.map(item => {
             // Verificar se o item tem propriedades necessárias
@@ -1074,15 +1171,15 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
           setHistory(prevHistory => {
             // Filtrar histórico local para evitar duplicatas
             const localOnlyHistory = prevHistory.filter(localItem => {
-              return !convertedHistory.some(familyItem => 
-                familyItem.taskId === localItem.taskId && 
+              return !convertedHistory.some(familyItem =>
+                familyItem.taskId === localItem.taskId &&
                 familyItem.action === localItem.action &&
                 Math.abs(familyItem.timestamp.getTime() - localItem.timestamp.getTime()) < 5000
               );
             });
 
             const mergedHistory = [...convertedHistory, ...localOnlyHistory];
-            
+
             // Ordenar por timestamp (mais recente primeiro)
             return mergedHistory.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
           });
@@ -1159,14 +1256,14 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
     const unsubscribe = SyncService.addApprovalsListener((items) => {
       // Atualizar apenas se usuário for admin ou se o approval pertencer ao usuário (dependente)
       if (user.role === 'admin') {
-  setApprovals(items);
-  // Separar solicitações de promoção a admin (type === 'admin_role_request')
-  const adminReqs = (items as any[]).filter(a => a && (a as any).type === 'admin_role_request');
-  setAdminRoleRequests(adminReqs);
+        setApprovals(items);
+        // Separar solicitações de promoção a admin (type === 'admin_role_request')
+        const adminReqs = (items as any[]).filter(a => a && (a as any).type === 'admin_role_request');
+        setAdminRoleRequests(adminReqs);
       } else {
-  setApprovals(items.filter(a => a.dependenteId === user.id));
-  // Dependentes não veem solicitações a admin; limpar
-  setAdminRoleRequests([]);
+        setApprovals(items.filter(a => a.dependenteId === user.id));
+        // Dependentes não veem solicitações a admin; limpar
+        setAdminRoleRequests([]);
       }
     });
     return () => unsubscribe();
@@ -1219,10 +1316,10 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
 
       try {
         logger.debug('CATEGORIES', `Carregando categorias da família: ${currentFamily.id}`);
-        
+
         // Carregar categorias iniciais
         const familyCategories = await familyService.getFamilyCategories(currentFamily.id);
-        
+
         if (familyCategories.length > 0) {
           // Mesclar categorias padrão com categorias personalizadas da família
           const mergedCategories = [
@@ -1267,14 +1364,14 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
   // Função para forçar atualização completa do aplicativo
   const forceRefresh = async () => {
     logger.debug('REFRESH', 'Forçando atualização completa');
-    
+
     setIsRefreshing(true);
-    
+
     try {
       // Forçar sincronização completa se estiver online
       if (!isOffline && user?.id) {
         await SyncService.forceFullSync();
-        
+
         // Recarregar dados da família se houver
         if (currentFamily) {
           const familyTasks = await familyService.getFamilyTasks(currentFamily.id, user.id);
@@ -1317,26 +1414,29 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
             return Array.from(mergedTasksMap.values());
           });
 
+          // Salvar no cache
+          await LocalStorageService.saveBatchTasks(convertedTasks as any[]);
+
           logger.success('REFRESH', `${familyTasks.length} tarefas recarregadas (merge aplicado)`);
         }
       }
     } catch (error) {
       logger.error('REFRESH', 'Erro ao forçar sincronização', error);
     }
-    
+
     // Atualizar timestamp
     setLastUpdate(new Date());
-    
+
     // Verificar tarefas vencidas
     verificarTarefasVencidas();
-    
+
     // Limpar histórico antigo
     clearOldHistory();
-    
+
     // Simular um pequeno delay para mostrar o feedback visual
     setTimeout(() => {
       setIsRefreshing(false);
-      
+
       // Log de confirmação de sincronização
       logger.success('REFRESH', 'Sincronização concluída com sucesso!');
     }, 1000);
@@ -1373,7 +1473,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
 
     // Usar a função do serviço para inicializar
     const result = await NotificationService.initialize();
-    
+
     if (!result.granted) {
       Alert.alert(
         'Permissão de Notificação',
@@ -1406,18 +1506,18 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
           const lastNotificationTime = overdueNotificationTrackRef.current[task.id];
           const now = Date.now();
           const throttleMs = NOTIFICATION_THROTTLE_MINUTES * 60 * 1000;
-          
+
           if (!lastNotificationTime || (now - lastNotificationTime) > throttleMs) {
             const diffHoras = Math.floor(diffMinutos / 60);
             const diffDias = Math.floor(diffHoras / 24);
-            
-            const timeStr = diffDias > 0 
-              ? `${diffDias}d` 
+
+            const timeStr = diffDias > 0
+              ? `${diffDias}d`
               : `${diffHoras}h`;
-            
+
             logger.debug('NOTIFY', `Notificando tarefa vencida: "${task.title}" (${timeStr} atraso)`);
             enviarNotificacaoVencimento(task);
-            
+
             // Atualizar timestamp da última notificação
             overdueNotificationTrackRef.current[task.id] = now;
             notificadaspendentes++;
@@ -1452,17 +1552,17 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
       logger.error('NOTIFY', 'Erro ao enviar notificação de vencimento', e);
     }
   };
-  
+
   // Estado para controlar quais cards estão colapsados (por padrão todos colapsados)
   const [collapsedCards, setCollapsedCards] = useState<Set<string>>(new Set());
-  
+
   // Inicializar todas as tarefas como colapsadas ao carregar
   useEffect(() => {
     if (tasks.length > 0) {
       setCollapsedCards(new Set(tasks.map(t => t.id)));
     }
   }, [tasks.length]);
-  
+
   // Toggle para colapsar/expandir um card específico
   const toggleCardCollapse = useCallback((taskId: string) => {
     setCollapsedCards(prev => {
@@ -1497,26 +1597,26 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
   }, []);
   // stableNowRef: "agora" capturado apenas no primeiro render, usado como fallback estável para horas
   const stableNowRef = useRef<Date>(new Date());
-  
+
   // Refs para manter valor base ao abrir pickers (evita usar "agora" como fallback)
   // IMPORTANTE: Declaradas ANTES dos useMemo que as utilizam
   const datePickerBaseRef = useRef<Date | null>(null);
   const timePickerBaseRef = useRef<Date | null>(null);
-  
+
   // Refs para armazenar COMPLETAMENTE o valor do picker (não usa estado)
   const pickerDateValueRef = useRef<Date>(new Date());
   const pickerTimeValueRef = useRef<Date>(new Date());
-  
+
   // Refs para subtarefas - mesma estratégia
   const pickerSubtaskDateValueRef = useRef<Date>(new Date());
   const pickerSubtaskTimeValueRef = useRef<Date>(new Date());
-  
+
   // Refs para modal de adiamento - mesma estratégia
   const pickerPostponeDateValueRef = useRef<Date>(new Date());
   const pickerPostponeTimeValueRef = useRef<Date>(new Date());
   const originalPostponeDateRef = useRef<Date | null>(null);
   const originalPostponeTimeRef = useRef<Date | null>(null);
-  
+
   // Valores estáveis usando APENAS refs - nunca recalcula durante re-renders
   const stableDatePickerValue = pickerDateValueRef.current;
   const stableTimePickerValue = pickerTimeValueRef.current;
@@ -1524,13 +1624,13 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
   const stableSubtaskTimePickerValue = pickerSubtaskTimeValueRef.current;
   const stablePostponeDatePickerValue = pickerPostponeDateValueRef.current;
   const stablePostponeTimePickerValue = pickerPostponeTimeValueRef.current;
-  
+
   // Refs para inputs web (date/time nativos HTML5) - usando any para compatibilidade com React Native Web
   const webDateInputRef = useRef<any>(null);
   const webTimeInputRef = useRef<any>(null);
   const webSubtaskDateInputRef = useRef<any>(null);
   const webSubtaskTimeInputRef = useRef<any>(null);
-  
+
   // useEffect para criar inputs HTML diretamente no DOM (Web only)
   useEffect(() => {
     if (Platform.OS !== 'web') return;
@@ -1619,7 +1719,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
       if (target.value && currentEditingId) {
         const [year, month, day] = target.value.split('-').map(Number);
         const newDate = new Date(year, month - 1, day);
-        
+
         // Se é nova subtarefa simples
         if (currentEditingId === 'new-subtask') {
           setNewSubtaskDate(newDate);
@@ -1634,17 +1734,17 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
             prev.map(cat =>
               cat.id === categoryId
                 ? {
-                    ...cat,
-                    subtasks: cat.subtasks.map(st =>
-                      st.id === currentEditingId ? { ...st, dueDate: newDate } : st
-                    )
-                  }
+                  ...cat,
+                  subtasks: cat.subtasks.map(st =>
+                    st.id === currentEditingId ? { ...st, dueDate: newDate } : st
+                  )
+                }
                 : cat
             )
           );
         } else {
           // Senão, atualizar subtarefa simples existente
-          setSubtasksDraft(prev => prev.map(st => 
+          setSubtasksDraft(prev => prev.map(st =>
             st.id === currentEditingId ? { ...st, dueDate: newDate } : st
           ));
         }
@@ -1668,7 +1768,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
       logger.debug('WEB_INPUT', `Hora subtarefa: ${target.value}, ID: ${currentEditingId}`);
       if (target.value && currentEditingId) {
         const [hours, minutes] = target.value.split(':').map(Number);
-        
+
         // Se é nova subtarefa simples
         if (currentEditingId === 'new-subtask') {
           const baseDate = newSubtaskDate || new Date();
@@ -1689,18 +1789,18 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
             prev.map(cat =>
               cat.id === categoryId
                 ? {
-                    ...cat,
-                    subtasks: cat.subtasks.map(st => {
-                      if (st.id !== currentEditingId) return st;
-                      
-                      // Preservar a data da subtarefa se existir, senão usar hoje
-                      const baseDate = st.dueDate || new Date();
-                      const newTime = new Date(baseDate);
-                      newTime.setHours(hours, minutes, 0, 0);
-                      
-                      return { ...st, dueTime: newTime };
-                    })
-                  }
+                  ...cat,
+                  subtasks: cat.subtasks.map(st => {
+                    if (st.id !== currentEditingId) return st;
+
+                    // Preservar a data da subtarefa se existir, senão usar hoje
+                    const baseDate = st.dueDate || new Date();
+                    const newTime = new Date(baseDate);
+                    newTime.setHours(hours, minutes, 0, 0);
+
+                    return { ...st, dueTime: newTime };
+                  })
+                }
                 : cat
             )
           );
@@ -1708,12 +1808,12 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
           // Senão, atualizar subtarefa simples existente
           setSubtasksDraft(prev => prev.map(st => {
             if (st.id !== currentEditingId) return st;
-            
+
             // Preservar a data da subtarefa se existir, senão usar hoje
             const baseDate = st.dueDate || new Date();
             const newTime = new Date(baseDate);
             newTime.setHours(hours, minutes, 0, 0);
-            
+
             return { ...st, dueTime: newTime };
           }));
         }
@@ -1740,7 +1840,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
       }
     };
   }, []); // Array vazio = executar apenas uma vez na montagem
-  
+
   // Estados para repetição
   const [repeatType, setRepeatType] = useState<RepeatType>(RepeatType.NONE);
   const [customDays, setCustomDays] = useState<number[]>([]);
@@ -1812,7 +1912,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
   // Função para calcular horário da task principal baseado na subtarefa mais próxima
   const calculateMainTaskTimeFromSubtasks = (subtasks: any[]): { date?: Date; time?: Date } => {
     const subtasksWithDateTime = subtasks.filter(st => st.dueDate || st.dueTime);
-    
+
     if (subtasksWithDateTime.length === 0) {
       return {};
     }
@@ -1846,7 +1946,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
   const calculateMainTaskTimeFromPendingSubtasks = (subtasks: any[]): { date?: Date; time?: Date } => {
     // Filtrar apenas subtarefas não concluídas que têm data/hora
     const pendingSubtasksWithDateTime = subtasks.filter(st => !st.done && (st.dueDate || st.dueTime));
-    
+
     if (pendingSubtasksWithDateTime.length === 0) {
       return {};
     }
@@ -1893,7 +1993,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
     const isFamilyContext = !!currentFamily && !newTaskPrivate; // tarefa pública de família
     if (isFamilyContext && user.role === 'dependente') {
       const needed = isEditing ? 'edit' : 'create';
-      const has = await ensureFamilyPermission(needed as 'create'|'edit'|'delete');
+      const has = await ensureFamilyPermission(needed as 'create' | 'edit' | 'delete');
       if (!has) {
         Alert.alert('Sem permissão', `Você não tem permissão para ${needed === 'create' ? 'criar' : 'editar'} tarefas da família.`);
         return;
@@ -1906,12 +2006,12 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
       if (isEditing && editingTaskId) {
         // Atualizar tarefa existente
         const defaultDueDateForEdit = tempDueDate || (repeatType !== RepeatType.NONE ? getInitialDueDateForRecurrence(repeatType, customDays) : undefined);
-        
+
         // Calcular horário da task principal baseado nas subtarefas (se não tiver horário manual)
-  const subtaskBasedTime = calculateMainTaskTimeFromSubtasks(subtasksDraftRef.current || subtasksDraft);
+        const subtaskBasedTime = calculateMainTaskTimeFromSubtasks(subtasksDraftRef.current || subtasksDraft);
         const finalDueDate = subtaskBasedTime.date || defaultDueDateForEdit;
         const finalDueTime = tempDueTime || subtaskBasedTime.time;
-        
+
         // Atualizar os estados dos pickers se foram aplicados valores automáticos
         if (!tempDueDate && subtaskBasedTime.date) {
           setTempDueDate(subtaskBasedTime.date);
@@ -1919,9 +2019,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
         if (!tempDueTime && subtaskBasedTime.time) {
           setTempDueTime(subtaskBasedTime.time);
         }
-        
-  logger.debug('SAVE_TASK', 'Salvando tarefa com subtarefas');
-  
+
+        logger.debug('SAVE_TASK', 'Salvando tarefa com subtarefas');
+
         // Log dos valores de repetição ao editar tarefa
         logger.debug('REPEAT', {
           repeatType,
@@ -1930,48 +2030,48 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
           intervalDays,
           durationMonths
         });
-  
+
         // 🔄 SALVAR ESTADO PARA DESFAZER: Guardar tarefa original antes de editar
         const originalTask = tasks.find(t => t.id === editingTaskId);
         const previousTaskState = originalTask ? { ...originalTask } : null;
-        
-  const updatedTasks = tasks.map(task => 
-          task.id === editingTaskId 
+
+        const updatedTasks = tasks.map(task =>
+          task.id === editingTaskId
             ? {
-                ...task,
-                title: newTaskTitle.trim(),
-                description: newTaskDescription.trim(),
-                category: selectedCategory,
-                dueDate: finalDueDate,
-                dueTime: finalDueTime,
-                // Persistir recorrência (formato plano)
-                repeatOption: repeatTypeToOption(repeatType),
-                repeatDays: repeatType === RepeatType.CUSTOM ? customDays : undefined,
-                repeatIntervalDays: repeatType === RepeatType.INTERVAL ? intervalDays || 1 : undefined,
-                repeatDurationMonths: repeatType === RepeatType.INTERVAL ? durationMonths || 0 : undefined,
-                repeatStartDate: repeatType === RepeatType.INTERVAL ? (task.dueDate || tempDueDate || new Date()) : (task as any).repeatStartDate,
-                // Subtarefas do modal
-                subtasks: (subtasksDraftRef.current || subtasksDraft).map(st => ({ ...st })),
-                // Categorias de subtarefas
-                subtaskCategories: subtaskCategories.map(cat => ({ ...cat })),
-                // Campos de edição
-                editedBy: user.id,
-                editedByName: user.name,
-                editedAt: new Date()
-                ,
-                // Preservar/atualizar flag de privacidade baseada no estado do modal
-                private: newTaskPrivate
-              }
+              ...task,
+              title: newTaskTitle.trim(),
+              description: newTaskDescription.trim(),
+              category: selectedCategory,
+              dueDate: finalDueDate,
+              dueTime: finalDueTime,
+              // Persistir recorrência (formato plano)
+              repeatOption: repeatTypeToOption(repeatType),
+              repeatDays: repeatType === RepeatType.CUSTOM ? customDays : undefined,
+              repeatIntervalDays: repeatType === RepeatType.INTERVAL ? intervalDays || 1 : undefined,
+              repeatDurationMonths: repeatType === RepeatType.INTERVAL ? durationMonths || 0 : undefined,
+              repeatStartDate: repeatType === RepeatType.INTERVAL ? (task.dueDate || tempDueDate || new Date()) : (task as any).repeatStartDate,
+              // Subtarefas do modal
+              subtasks: (subtasksDraftRef.current || subtasksDraft).map(st => ({ ...st })),
+              // Categorias de subtarefas
+              subtaskCategories: subtaskCategories.map(cat => ({ ...cat })),
+              // Campos de edição
+              editedBy: user.id,
+              editedByName: user.name,
+              editedAt: new Date()
+              ,
+              // Preservar/atualizar flag de privacidade baseada no estado do modal
+              private: newTaskPrivate
+            }
             : task
         );
-        
+
         const updatedTask = updatedTasks.find(t => t.id === editingTaskId);
-        
+
         // Log da tarefa atualizada com valores de repetição
         logger.success('SAVE_TASK', `Tarefa editada: ${updatedTask?.title}`);
-        
+
         setTasks(updatedTasks);
-        
+
         // Adicionar ID à lista de pendentes de sincronização
         setPendingSyncIds(prev => [...prev, editingTaskId]);
         logger.debug('SYNC', `Tarefa enfileirada: ${editingTaskId}${currentFamily ? ` (family: ${currentFamily.id})` : ''}`);
@@ -1994,15 +2094,15 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
             // Agendar novamente com as subtarefas atualizadas
             if (Array.isArray((updatedTask as any).subtasks) && (updatedTask as any).subtasks.length > 0) {
               await NotificationService.scheduleSubtaskReminders(
-                updatedTask.id, 
-                updatedTask.title, 
+                updatedTask.id,
+                updatedTask.title,
                 (updatedTask as any).subtasks
               );
             }
           } catch (e) {
             logger.warn('NOTIFY', 'Falha ao reagendar subtarefas');
           }
-          
+
           // Determinar se é create ou update baseado no ID
           const isTemporaryId = updatedTask.id.startsWith('temp_') || updatedTask.id === 'temp';
           const operationType = isTemporaryId ? 'create' : 'update';
@@ -2038,20 +2138,20 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
               }
             }
           }
-          
+
           logger.debug('SAVE_TASK', `Tarefa atualizada e adicionada à fila de sincronização: taskId=${updatedTask?.id}` +
             `${currentFamily ? ` familyId=${currentFamily.id}` : ''}`);
         }
-        
+
         // Gerar detalhes das mudanças para o histórico
         const changes: string[] = [];
-        
+
         if (originalTask) {
           // Mudança de título
           if (originalTask.title !== newTaskTitle.trim()) {
             changes.push(`Título: "${originalTask.title}" → "${newTaskTitle.trim()}"`);
           }
-          
+
           // Mudança de descrição
           if (originalTask.description !== newTaskDescription.trim()) {
             if (!originalTask.description && newTaskDescription.trim()) {
@@ -2062,46 +2162,46 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
               changes.push(`Descrição: "${originalTask.description}" → "${newTaskDescription.trim()}"`);
             }
           }
-          
+
           // Mudança de categoria
           if (originalTask.category !== selectedCategory) {
             changes.push(`Categoria: ${originalTask.category} → ${selectedCategory}`);
           }
-          
+
           // Mudança de data
           const oldDate = originalTask.dueDate ? formatDate(originalTask.dueDate) : 'Sem data';
           const newDate = finalDueDate ? formatDate(finalDueDate) : 'Sem data';
           if (oldDate !== newDate) {
             changes.push(`Data: ${oldDate} → ${newDate}`);
           }
-          
+
           // Mudança de hora
           const oldTime = originalTask.dueTime ? formatTime(originalTask.dueTime) : 'Sem hora';
           const newTime = finalDueTime ? formatTime(finalDueTime) : 'Sem hora';
           if (oldTime !== newTime) {
             changes.push(`Hora: ${oldTime} → ${newTime}`);
           }
-          
+
           // Mudanças em subtarefas
           const oldSubtasks = (originalTask as any).subtasks || [];
           const newSubtasks = (subtasksDraftRef.current || subtasksDraft);
-          
+
           // Subtarefas adicionadas
-          const addedSubtasks = newSubtasks.filter((ns: any) => 
+          const addedSubtasks = newSubtasks.filter((ns: any) =>
             !oldSubtasks.find((os: any) => os.id === ns.id)
           );
           addedSubtasks.forEach((st: any) => {
             changes.push(`➕ Subtarefa adicionada: "${st.title}"`);
           });
-          
+
           // Subtarefas removidas
-          const removedSubtasks = oldSubtasks.filter((os: any) => 
+          const removedSubtasks = oldSubtasks.filter((os: any) =>
             !newSubtasks.find((ns: any) => ns.id === os.id)
           );
           removedSubtasks.forEach((st: any) => {
             changes.push(`➖ Subtarefa removida: "${st.title}"`);
           });
-          
+
           // Subtarefas editadas
           newSubtasks.forEach((ns: any) => {
             const old = oldSubtasks.find((os: any) => os.id === ns.id);
@@ -2110,12 +2210,12 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
             }
           });
         }
-        
+
         const detailsText = changes.length > 0 ? changes.join('\n') : undefined;
-        
+
         // Adicionar ao histórico com detalhes
         await addToHistory('edited', newTaskTitle.trim(), editingTaskId, detailsText);
-        
+
         // ✅ CONFIGURAR DESFAZER: Salvar ação de edição
         if (previousTaskState && updatedTask) {
           setLastAction({
@@ -2124,9 +2224,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
             previousState: previousTaskState,
             timestamp: Date.now()
           });
-          
+
           setShowUndoButton(true);
-          
+
           // Timer para esconder botão de desfazer após 10 segundos
           if (undoTimeoutRef.current) {
             clearTimeout(undoTimeoutRef.current);
@@ -2141,12 +2241,12 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
         logger.debug('CREATE_TASK', `Criando tarefa: ${newTaskTitle.trim()}`);
 
         const defaultDueDate = tempDueDate || (repeatType !== RepeatType.NONE ? getInitialDueDateForRecurrence(repeatType, customDays) : undefined);
-        
+
         // Calcular horário da task principal baseado nas subtarefas (se não tiver horário manual)
-  const subtaskBasedTime = calculateMainTaskTimeFromSubtasks(subtasksDraftRef.current || subtasksDraft);
+        const subtaskBasedTime = calculateMainTaskTimeFromSubtasks(subtasksDraftRef.current || subtasksDraft);
         const finalDueDate = subtaskBasedTime.date || defaultDueDate;
         const finalDueTime = tempDueTime || subtaskBasedTime.time;
-        
+
         // Atualizar os estados dos pickers se foram aplicados valores automáticos
         if (!tempDueDate && subtaskBasedTime.date) {
           setTempDueDate(subtaskBasedTime.date);
@@ -2154,15 +2254,15 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
         if (!tempDueTime && subtaskBasedTime.time) {
           setTempDueTime(subtaskBasedTime.time);
         }
-        
+
         logger.debug('CREATE_TASK', 'Data final calculada');
 
-  logger.debug('CREATE_TASK', 'Salvando tarefa com subtarefas');
-  
+        logger.debug('CREATE_TASK', 'Salvando tarefa com subtarefas');
+
         // Log dos valores de repetição
         logger.debug('REPEAT', `Repetição ao criar: ${repeatType}`);
-  
-  const newTask: Task = {
+
+        const newTask: Task = {
           id: uuidv4(), // Usar UUID para garantir ID único
           title: newTaskTitle.trim(),
           description: newTaskDescription.trim(),
@@ -2206,44 +2306,44 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
 
         logger.success('CREATE_TASK', `Nova tarefa criada: ${newTask.title}`);
 
-  const updatedTasks = [newTask, ...tasks];
-        
+        const updatedTasks = [newTask, ...tasks];
+
         // ✅ PROTEÇÃO CONTRA SOBRESCRITA: Adicionar ao pendingSyncIds para evitar que o listener sobrescreva
         setPendingSyncIds(prev => [...prev, newTask.id]);
         logger.debug('SYNC', `Tarefa protegida para sincronização: ${newTask.id}`);
-        
+
         // ATUALIZAÇÃO IMEDIATA: Atualizar o estado local primeiro para feedback instantâneo
         setTasks(updatedTasks);
         logger.debug('UPDATE_STATE', `Tarefa adicionada ao estado local: ${newTask.id}`);
-        
+
         // Forçar atualização da UI
         setLastUpdate(new Date());
-        
-        // Depois executar operações em background (notificações e sincronização)
-  // agendar lembrete da nova tarefa
-  try {
-    await NotificationService.scheduleTaskReminder(newTask as any);
-  } catch (e) {
-    logger.warn('NOTIFY', 'scheduleTaskReminder falhou');
-  }
 
-  // Agendar lembretes das subtarefas
-  try {
-    if (Array.isArray(subtasksDraftRef.current) && subtasksDraftRef.current.length > 0) {
-      await NotificationService.scheduleSubtaskReminders(newTask.id, newTask.title, subtasksDraftRef.current);
-    }
-  } catch (e) {
-    logger.warn('NOTIFY', 'scheduleSubtaskReminders falhou');
-  }
-        
+        // Depois executar operações em background (notificações e sincronização)
+        // agendar lembrete da nova tarefa
+        try {
+          await NotificationService.scheduleTaskReminder(newTask as any);
+        } catch (e) {
+          logger.warn('NOTIFY', 'scheduleTaskReminder falhou');
+        }
+
+        // Agendar lembretes das subtarefas
+        try {
+          if (Array.isArray(subtasksDraftRef.current) && subtasksDraftRef.current.length > 0) {
+            await NotificationService.scheduleSubtaskReminders(newTask.id, newTask.title, subtasksDraftRef.current);
+          }
+        } catch (e) {
+          logger.warn('NOTIFY', 'scheduleSubtaskReminders falhou');
+        }
+
         // Salvar no cache local
-  // Incluir flag 'private' no objeto que será convertido para envio remoto
-  const remoteTask = taskToRemoteTask({ ...newTask, private: newTaskPrivate } as any, currentFamily?.id);
-    await LocalStorageService.saveTask(remoteTask as any);
-        
+        // Incluir flag 'private' no objeto que será convertido para envio remoto
+        const remoteTask = taskToRemoteTask({ ...newTask, private: newTaskPrivate } as any, currentFamily?.id);
+        await LocalStorageService.saveTask(remoteTask as any);
+
         // Adicionar à fila de sincronização (online ou offline)
-  await SyncService.addOfflineOperation('create', 'tasks', remoteTask);
-        
+        await SyncService.addOfflineOperation('create', 'tasks', remoteTask);
+
         // Se o usuário pertence a uma família e a tarefa não for privada, salvar também na família (prefer Firestore quando online)
         if (currentFamily && (remoteTask as any)?.private !== true) {
           try {
@@ -2252,14 +2352,14 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
               const res = await FirestoreService.saveTask(toSave);
               await LocalStorageService.saveTask({ ...toSave, id: toSave.id || (res && (res as any).id) } as any);
               logger.success('FIRESTORE', `Nova tarefa salva: ${toSave.id || (res && (res as any).id)}`);
-              
+
               // ✅ REMOVER DO pendingSyncIds: Sincronização concluída com sucesso
               setPendingSyncIds(prev => prev.filter(id => id !== newTask.id));
               logger.debug('SYNC', `Tarefa sincronizada e removida do pendingSyncIds: ${newTask.id}`);
             } else {
               await SyncService.addOfflineOperation('create', 'tasks', { ...remoteTask, familyId: currentFamily.id });
               logger.debug('OFFLINE_SYNC', `Nova tarefa enfileirada: ${remoteTask.id}`);
-              
+
               // ✅ REMOVER DO pendingSyncIds: Tarefa enfileirada para sincronização offline
               // O listener do SyncService removerá quando sincronizar de fato
               setTimeout(() => {
@@ -2271,7 +2371,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
             logger.error('SAVE_FAMILY_TASK', 'Erro ao salvar tarefa na família', error);
             try { await FamilySyncHelper.saveTaskToFamily(remoteTask, currentFamily.id, 'create'); } catch (e) { logger.warn('FAMILY_SYNC_FALLBACK', 'saveFamilyTask falhou'); }
             await SyncService.addOfflineOperation('create', 'tasks', { ...remoteTask, familyId: currentFamily.id });
-            
+
             // ✅ REMOVER DO pendingSyncIds: Mesmo com erro, evitar bloquear a tarefa indefinidamente
             setTimeout(() => {
               setPendingSyncIds(prev => prev.filter(id => id !== newTask.id));
@@ -2285,35 +2385,35 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
             logger.debug('SYNC', `Tarefa privada/sem família removida do pendingSyncIds: ${newTask.id}`);
           }, 1000);
         }
-        
+
         logger.debug('CREATE_TASK', `Tarefa criada e enfileirada: ${remoteTask.id}`);
-        
+
         // Adicionar ao histórico
         await addToHistory('created', newTask.title, newTask.id);
       }
-      
+
       // ✅ GARANTIR ATUALIZAÇÃO DA UI ANTES DE FECHAR O MODAL
       // Pequeno delay para garantir que o React processou o setTasks
       await new Promise(resolve => setTimeout(resolve, 50));
-      
+
       // Reset form
       resetForm();
       setModalVisible(false);
-      
+
       logger.debug('UPDATE_STATE', 'Modal fechado, tarefa deve estar visível na lista');
-      
+
       // Mostrar loading de sincronização e forçar atualização dos dados
       setIsSyncing(true);
-      
+
       // Aguardar um momento para o modal de tarefa fechar
       await new Promise(resolve => setTimeout(resolve, 300));
-      
+
       // Usar a função forceRefresh para sincronizar os dados
       await forceRefresh();
-      
+
       setIsSyncing(false);
       setSyncMessage('');
-      
+
     } catch (error) {
       logger.error('CREATE_TASK', 'Erro ao salvar tarefa', error);
       Alert.alert('Erro', 'Não foi possível salvar a tarefa. Tente novamente.');
@@ -2332,8 +2432,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
     setTempDueTime(undefined);
     setRepeatType(RepeatType.NONE);
     setCustomDays([]);
-  setIntervalDays(0);
-  setDurationMonths(0);
+    setIntervalDays(0);
+    setDurationMonths(0);
     setSubtasksDraft([]);
     setSubtaskCategories([]);
     setNewSubtaskTitle('');
@@ -2390,8 +2490,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
     setTempDueTime(task.dueTime);
     setRepeatType(repeatConfig.type);
     setCustomDays(repeatConfig.days || []);
-  setIntervalDays(repeatConfig.intervalDays || (task as any).repeatIntervalDays || 0);
-  setDurationMonths(repeatConfig.durationMonths || (task as any).repeatDurationMonths || 0);
+    setIntervalDays(repeatConfig.intervalDays || (task as any).repeatIntervalDays || 0);
+    setDurationMonths(repeatConfig.durationMonths || (task as any).repeatDurationMonths || 0);
     setSubtasksDraft((task as any).subtasks ? (task as any).subtasks.map((st: any) => ({
       id: st.id,
       title: st.title,
@@ -2451,7 +2551,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
       if (filterCategory !== 'all' && task.category !== filterCategory) {
         return false;
       }
-      
+
       // Filtrar por familyId: apenas tarefas da família atual ou tarefas sem família do usuário
       if (currentFamily) {
         // Se tem família, mostrar tarefas da família atual OU tarefas privadas do próprio usuário (familyId null)
@@ -2465,28 +2565,32 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
           return false;
         }
       }
-      
+
+      // Excluir tarefas concluídas da página principal
       // Excluir tarefas concluídas da página principal
       if (task.completed) {
         return false;
       }
-      return !task.dueDate || isToday(task.dueDate);
+
+      // Incluir tarefas vencidas (não concluídas) na lista de hoje
+      const isOverdue = isTaskOverdue(task.dueDate, task.dueTime, task.completed);
+      return !task.dueDate || isToday(task.dueDate) || isOverdue;
     }).sort((a, b) => {
       // Priorizar tarefas vencidas
       const aOverdue = isTaskOverdue(a.dueDate, a.dueTime, a.completed);
       const bOverdue = isTaskOverdue(b.dueDate, b.dueTime, b.completed);
-      
+
       if (aOverdue && !bOverdue) return -1;
       if (!aOverdue && bOverdue) return 1;
-      
+
       // Se ambas vencidas ou não vencidas, ordenar por data
       if (!a.dueDate && !b.dueDate) return 0;
       if (!a.dueDate) return 1;
       if (!b.dueDate) return -1;
-      
+
       const dateA = new Date(a.dueDate);
       const dateB = new Date(b.dueDate);
-      
+
       if (a.dueTime) {
         const timeA = new Date(a.dueTime);
         dateA.setHours(timeA.getHours(), timeA.getMinutes());
@@ -2495,7 +2599,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
         const timeB = new Date(b.dueTime);
         dateB.setHours(timeB.getHours(), timeB.getMinutes());
       }
-      
+
       return dateA.getTime() - dateB.getTime();
     });
   }, [tasks, filterCategory, currentFamily, user.id, user.role]);
@@ -2507,7 +2611,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
       if (filterCategory !== 'all' && task.category !== filterCategory) {
         return false;
       }
-      
+
       // Filtrar por familyId: apenas tarefas da família atual ou tarefas sem família do usuário
       if (currentFamily) {
         // Se tem família, mostrar tarefas da família atual OU tarefas privadas do próprio usuário (familyId null)
@@ -2521,7 +2625,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
           return false;
         }
       }
-      
+
       // Filtrar tarefas concluídas antigas (mais de 7 dias)
       if (task.completed && (task as any).completedAt) {
         const sevenDaysAgo = new Date();
@@ -2531,7 +2635,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
           return false; // Não mostrar tarefas concluídas há mais de 7 dias
         }
       }
-      
+
       // Incluir tarefas recorrentes que foram concluídas e reagendadas para o futuro
       // ou tarefas não concluídas que têm data futura
       const repeatConfig = getRepeat(task);
@@ -2542,10 +2646,10 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
     }).sort((a, b) => {
       if (!a.dueDate) return 1;
       if (!b.dueDate) return -1;
-      
+
       const dateA = new Date(a.dueDate);
       const dateB = new Date(b.dueDate);
-      
+
       if (a.dueTime) {
         const timeA = new Date(a.dueTime);
         dateA.setHours(timeA.getHours(), timeA.getMinutes());
@@ -2554,7 +2658,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
         const timeB = new Date(b.dueTime);
         dateB.setHours(timeB.getHours(), timeB.getMinutes());
       }
-      
+
       return dateA.getTime() - dateB.getTime();
     });
   }, [tasks, filterCategory, currentFamily, user.id, getRepeat]);
@@ -2602,7 +2706,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
           const itemDate = item.timestamp instanceof Date ? item.timestamp : safeToDate(item.timestamp);
           return !!itemDate && itemDate >= cutoffDate;
         })
-        .sort((a,b)=> new Date(b.timestamp as any).getTime() - new Date(a.timestamp as any).getTime());
+        .sort((a, b) => new Date(b.timestamp as any).getTime() - new Date(a.timestamp as any).getTime());
     });
 
     // Salvar no cache local (LocalStorage)
@@ -2628,7 +2732,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
         logger.debug('HISTORY', 'Item adicionado ao histórico da família');
       } catch (error) {
         logger.error('HISTORY', 'Erro ao adicionar ao histórico da família', error);
-        
+
         // Se falhou salvar no Firebase, adicionar à fila de sincronização
         try {
           const toQueue = { ...historyItem, familyId: currentFamily.id } as any;
@@ -2662,7 +2766,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
         const itemDate = item.timestamp instanceof Date ? item.timestamp : safeToDate(item.timestamp);
         return !!itemDate && itemDate >= cutoffDate;
       })
-      .sort((a,b)=> new Date(b.timestamp as any).getTime() - new Date(a.timestamp as any).getTime())
+      .sort((a, b) => new Date(b.timestamp as any).getTime() - new Date(a.timestamp as any).getTime())
     );
   };
 
@@ -2670,6 +2774,93 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
   React.useEffect(() => {
     clearOldHistory();
   }, []);
+
+  const cleanupInactiveTasks = useCallback(() => {
+    Alert.alert(
+      'Limpar Tarefas Antigas',
+      'Deseja marcar como concluídas todas as tarefas que não aparecem nas listas "Hoje" e "Próximas"?\n\nIsso afetará tarefas antigas ou irrelevantes.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Limpar',
+          style: 'destructive',
+          onPress: async () => {
+            const activeIds = new Set<string>();
+
+            // Identificar tarefas visíveis em "Hoje"
+            tasks.forEach(t => {
+              if (t.completed) return;
+              const isOverdue = isTaskOverdue(t.dueDate, t.dueTime, t.completed);
+              // Mesma lógica do getTodayTasks atualizado
+              const isTodayTask = !t.dueDate || isToday(t.dueDate) || isOverdue;
+
+              // Filtrar por categoria e família (simplificado: se é visível para o usuário, conta)
+              // Assumindo que a limpeza é global para o usuário atual
+              if (isTodayTask) activeIds.add(t.id);
+            });
+
+            // Identificar tarefas visíveis em "Próximas"
+            tasks.forEach(t => {
+              const repeatConfig = getRepeat(t);
+              const isUpcomingTask = t.dueDate && (
+                (!t.completed && isUpcoming(t.dueDate)) ||
+                (t.completed && repeatConfig.type !== RepeatType.NONE && isUpcoming(t.dueDate))
+              );
+              if (isUpcomingTask) activeIds.add(t.id);
+            });
+
+            // Tarefas a limpar: Não concluídas E Não ativas
+            const tasksToCleanup = tasks.filter(t => !t.completed && !activeIds.has(t.id));
+
+            if (tasksToCleanup.length === 0) {
+              Alert.alert('Limpeza', 'Nenhuma tarefa inativa encontrada.');
+              return;
+            }
+
+            const updatedTasks = tasks.map(t => {
+              if (tasksToCleanup.find(cleanup => cleanup.id === t.id)) {
+                return { ...t, completed: true, status: 'concluida' as TaskStatus, completedAt: new Date() };
+              }
+              return t;
+            });
+
+            setTasks(updatedTasks);
+
+            // Salvar alterações
+            try {
+              await LocalStorageService.saveBatchTasks(updatedTasks as any[]);
+
+              if (currentFamily && !isOffline) {
+                // Salvar no Firestore
+                const promises = tasksToCleanup.map(t => {
+                  const toSave = {
+                    ...t,
+                    completed: true,
+                    status: 'concluida',
+                    completedAt: new Date(),
+                    familyId: currentFamily.id,
+                    // Garantir campos obrigatórios para passar na validação das regras
+                    userId: t.userId || user.id,
+                    title: t.title || 'Tarefa sem título',
+                    // Garantir consistência: se tem família, não pode ser privada
+                    private: false
+                  };
+                  return FirestoreService.saveTask(toSave as any);
+                });
+                await Promise.all(promises);
+              }
+
+              logger.success('CLEANUP', `${tasksToCleanup.length} tarefas limpas.`);
+            } catch (e) {
+              logger.error('CLEANUP', 'Erro ao salvar limpeza', e);
+            }
+
+            Alert.alert('Sucesso', `${tasksToCleanup.length} tarefas foram marcadas como concluídas.`);
+          }
+        }
+      ]
+    );
+  }, [tasks, currentFamily, isOffline, getRepeat]);
 
 
   const getActionText = (action: string): string => {
@@ -2707,7 +2898,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
 
   const renderHistoryItem = useCallback(({ item }: ListRenderItemInfo<any>) => {
     return (
-      <Pressable 
+      <Pressable
         style={styles.historyItem}
         onPress={() => {
           setSelectedHistoryItem(item);
@@ -2715,7 +2906,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
         }}
       >
         <View style={styles.historyIconContainer}>
-          <Ionicons 
+          <Ionicons
             name={getActionIcon(item.action)}
             size={20}
             color={getActionColor(item.action)}
@@ -2768,7 +2959,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
       // Atualizar estado local imediatamente
       const updatedCategories = [...categories, newCategory];
       setCategories(updatedCategories);
-      
+
       // 💾 Salvar no Firebase se houver família
       if (currentFamily && !isOffline) {
         // Filtrar apenas categorias personalizadas (não padrão) para salvar
@@ -2776,12 +2967,12 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
         await familyService.saveFamilyCategories(currentFamily.id, customCategories);
         logger.success('CATEGORIES', 'Categoria salva no Firebase: ' + newCategory.name);
       }
-      
+
       setNewCategoryName('');
       setSelectedIcon('star');
       setSelectedColorIndex(0);
       setCategoryModalVisible(false);
-      
+
       Alert.alert('✓', 'Categoria criada com sucesso!');
     } catch (error) {
       logger.error('CATEGORIES', 'Erro ao salvar categoria', error);
@@ -2793,14 +2984,14 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
 
   const deleteCategory = async (categoryId: string) => {
     const category = categories.find(cat => cat.id === categoryId);
-    
+
     if (category?.isDefault) {
       Alert.alert('Erro', 'Não é possível excluir categorias padrão.');
       return;
     }
 
     const tasksInCategory = tasks.filter(task => task.category === categoryId);
-    
+
     if (tasksInCategory.length > 0) {
       Alert.alert(
         'Categoria em uso',
@@ -2812,22 +3003,22 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
             onPress: async () => {
               try {
                 // Move tarefas para categoria "work"
-                setTasks(tasks.map(task => 
-                  task.category === categoryId 
+                setTasks(tasks.map(task =>
+                  task.category === categoryId
                     ? { ...task, category: 'work' }
                     : task
                 ));
-                
+
                 const updatedCategories = categories.filter(cat => cat.id !== categoryId);
                 setCategories(updatedCategories);
-                
+
                 // 💾 Sincronizar com Firebase
                 if (currentFamily && !isOffline) {
                   const customCategories = updatedCategories.filter(cat => !cat.isDefault);
                   await familyService.saveFamilyCategories(currentFamily.id, customCategories);
                   logger.success('CATEGORIES', 'Categoria removida do Firebase');
                 }
-                
+
                 if (filterCategory === categoryId) {
                   setFilterCategory('all');
                 }
@@ -2851,14 +3042,14 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
               try {
                 const updatedCategories = categories.filter(cat => cat.id !== categoryId);
                 setCategories(updatedCategories);
-                
+
                 // 💾 Sincronizar com Firebase
                 if (currentFamily && !isOffline) {
                   const customCategories = updatedCategories.filter(cat => !cat.isDefault);
                   await familyService.saveFamilyCategories(currentFamily.id, customCategories);
                   logger.success('CATEGORIES', 'Categoria removida do Firebase');
                 }
-                
+
                 if (filterCategory === categoryId) {
                   setFilterCategory('all');
                 }
@@ -2960,11 +3151,11 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
   // Handler para mudança de data da tarefa principal - USA APENAS REFS
   const onDateChange = useCallback((event: any, date?: Date) => {
     logger.debug('PICKERS', `onDateChange: platform=${Platform.OS}, eventType=${event?.type}, date=${date}`);
-    
+
     if (Platform.OS === 'android') {
       // Android: diálogo fecha automaticamente
       setShowDatePicker(false);
-      
+
       if (event?.type === 'set' && date) {
         pickerDateValueRef.current = date; // Atualiza APENAS a ref
         setTempDueDate(date); // Atualiza o estado para salvar depois
@@ -2986,11 +3177,11 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
   // Handler para mudança de hora da tarefa principal - USA APENAS REFS
   const onTimeChange = useCallback((event: any, time?: Date) => {
     logger.debug('PICKERS', `onTimeChange: platform=${Platform.OS}, eventType=${event?.type}, time=${time}`);
-    
+
     if (Platform.OS === 'android') {
       // Android: diálogo fecha automaticamente
       setShowTimePicker(false);
-      
+
       if (event?.type === 'set' && time) {
         // Preservar o dia previamente selecionado (se houver) ao ajustar a hora
         const base = tempDueDate || pickerDateValueRef.current;
@@ -3020,10 +3211,10 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
   // Handler para mudança de data de subtarefa - USA APENAS REFS
   const onSubtaskDateChange = useCallback((event: any, date?: Date) => {
     logger.debug('PICKERS', `onSubtaskDateChange: platform=${Platform.OS}, eventType=${event?.type}, date=${date}, editingSubtaskId=${editingSubtaskId}`);
-    
+
     if (Platform.OS === 'android') {
       setShowSubtaskDatePicker(false);
-      
+
       if (event?.type === 'set' && date && editingSubtaskId) {
         pickerSubtaskDateValueRef.current = date; // Atualiza APENAS a ref
         setSubtasksDraft(prev => {
@@ -3050,15 +3241,15 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
   // Handler para mudança de hora de subtarefa
   const onSubtaskTimeChange = useCallback((event: any, time?: Date) => {
     logger.debug('PICKERS', `onSubtaskTimeChange: platform=${Platform.OS}, eventType=${event?.type}, time=${time}, editingSubtaskId=${editingSubtaskId}`);
-    
+
     // Atualizar o ref sempre que o valor mudar
     if (time) {
       pickerSubtaskTimeValueRef.current = time;
     }
-    
+
     if (Platform.OS === 'android') {
       setShowSubtaskTimePicker(false);
-      
+
       if (event?.type === 'set' && time && editingSubtaskId) {
         setSubtasksDraft(prev => {
           const next = prev.map(st => {
@@ -3120,7 +3311,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
     // Sincronizar com Firebase
     try {
       const isFamilyTask = (task as any).familyId && !(task as any).private;
-      
+
       if (isFamilyTask && !isOffline) {
         // Tarefa da família online - atualizar no Firestore
         const toSave = {
@@ -3133,7 +3324,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
       } else {
         // Tarefa privada ou offline - salvar localmente
         await LocalStorageService.saveTask(updatedTask as any);
-        
+
         // Se for tarefa da família mas estiver offline, enfileirar
         if (isFamilyTask) {
           await SyncService.addOfflineOperation('update', 'tasks', {
@@ -3156,13 +3347,13 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
     // Inicializar com a data e horário atuais da tarefa
     const initialDate = task.dueDate ? new Date(task.dueDate) : new Date();
     const initialTime = task.dueTime ? new Date(task.dueTime) : new Date();
-    
+
     // Atualizar refs
     pickerPostponeDateValueRef.current = initialDate;
     pickerPostponeTimeValueRef.current = initialTime;
-  originalPostponeDateRef.current = new Date(initialDate);
-  originalPostponeTimeRef.current = new Date(initialTime);
-    
+    originalPostponeDateRef.current = new Date(initialDate);
+    originalPostponeTimeRef.current = new Date(initialTime);
+
     setPostponeDate(initialDate);
     setPostponeTime(initialTime);
     setPostponeModalVisible(true);
@@ -3170,7 +3361,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
 
   const postponeTask = useCallback(async () => {
     if (!selectedTaskForPostpone) return;
-    
+
     // Apenas admin pode adiar tarefas da família
     if (user.role !== 'admin' && (selectedTaskForPostpone as any).familyId) {
       Alert.alert('Permissão negada', 'Apenas administradores podem adiar tarefas da família.');
@@ -3204,7 +3395,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
     // Sincronizar com Firebase
     try {
       const isFamilyTask = (task as any).familyId && !(task as any).private;
-      
+
       if (isFamilyTask && !isOffline) {
         const toSave = {
           ...updatedTask,
@@ -3215,7 +3406,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
         logger.debug('SAVE_TASK', 'Data e horário da tarefa atualizados no Firestore');
       } else {
         await LocalStorageService.saveTask(updatedTask as any);
-        
+
         if (isFamilyTask) {
           await SyncService.addOfflineOperation('update', 'tasks', {
             ...updatedTask,
@@ -3245,7 +3436,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
   const onPostponeDateChange = useCallback((event: any, date?: Date) => {
     if (Platform.OS === 'android') {
       setShowPostponeDatePicker(false);
-      
+
       if (event?.type === 'set' && date) {
         pickerPostponeDateValueRef.current = date;
         setPostponeDate(date);
@@ -3262,7 +3453,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
   const onPostponeTimeChange = useCallback((event: any, time?: Date) => {
     if (Platform.OS === 'android') {
       setShowPostponeTimePicker(false);
-      
+
       if (event?.type === 'set' && time) {
         const base = postponeDate || pickerPostponeDateValueRef.current;
         const merged = new Date(base);
@@ -3287,8 +3478,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
     const origT = originalPostponeTimeRef.current;
     if (!origD || !origT) return true; // se não tivermos base, permitir confirmar
 
-    const d1 = new Date(origD); d1.setHours(0,0,0,0);
-    const d2 = new Date(postponeDate); d2.setHours(0,0,0,0);
+    const d1 = new Date(origD); d1.setHours(0, 0, 0, 0);
+    const d2 = new Date(postponeDate); d2.setHours(0, 0, 0, 0);
 
     const sameDate = d1.getTime() === d2.getTime();
 
@@ -3324,7 +3515,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
       }
       return;
     }
-    
+
     // Verificar se tarefa recorrente pode ser concluída
     const repeatConfig = getRepeat(task);
     if (!task.completed && repeatConfig.type !== RepeatType.NONE) {
@@ -3352,7 +3543,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
       }
       return;
     }
-    
+
     // Salvar estado anterior para funcionalidade de desfazer
     setLastAction({
       type: 'toggle',
@@ -3361,27 +3552,27 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
       timestamp: Date.now()
     });
     setShowUndoButton(true);
-    
+
     // Limpar timeout anterior se existir
     if (undoTimeoutRef.current) {
       clearTimeout(undoTimeoutRef.current);
     }
-    
+
     // Esconder botão de desfazer após 10 segundos
     undoTimeoutRef.current = setTimeout(() => {
       setShowUndoButton(false);
       setLastAction(null);
     }, 10000);
-    
+
     let updatedTasks: Task[];
-    
-      if (!task.completed) {
+
+    if (!task.completed) {
       // Marcando como concluída
       const repeatConfig = getRepeat(task);
       if (repeatConfig.type !== RepeatType.NONE) {
         // Tarefa recorrente: criar nova instância para a próxima ocorrência
         logger.debug('REPEAT', `Calculando próxima data: ${task.title}, currentDate=${task.dueDate}, repeatType=${repeatConfig.type}`);
-        
+
         // Respeitar duração em meses: se ultrapassou, não cria próxima
         if (repeatConfig.durationMonths && (task as any).repeatStartDate) {
           const start = safeToDate((task as any).repeatStartDate) || new Date();
@@ -3393,7 +3584,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
             logger.debug('REPEAT', 'Recorrência por intervalo expirou pela duração definida.');
             const updated = tasks.map(t => t.id === task.id ? { ...t, completed: true, status: 'concluida' as TaskStatus } : t);
             setTasks(updated);
-            
+
             // Remover do cache local pois está concluída
             await LocalStorageService.deleteTaskFromCache(task.id);
             console.log('🗑️ Tarefa recorrente expirada removida do cache local:', task.id);
@@ -3409,11 +3600,11 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
           const base = startDate || new Date();
           const hoje = new Date();
           hoje.setHours(0, 0, 0, 0);
-          
+
           // Calcular próxima data mantendo múltiplo do intervalo desde a data inicial
           nextDate = new Date(base);
           nextDate.setHours(0, 0, 0, 0);
-          
+
           // Se a data base já passou, calcular quantos ciclos se passaram
           if (nextDate < hoje) {
             const diffTime = hoje.getTime() - nextDate.getTime();
@@ -3424,18 +3615,18 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
             // Se ainda não passou, apenas adicionar o intervalo
             nextDate.setDate(nextDate.getDate() + step);
           }
-          
+
           logger.debug('REPEAT', `Próxima data (intervalo) calculada: nextDate=${nextDate}`);
         } else {
           nextDate = getNextRecurrenceDate(
-            task.dueDate || new Date(), 
-            repeatConfig.type, 
+            task.dueDate || new Date(),
+            repeatConfig.type,
             repeatConfig.days
           );
         }
-        
+
         logger.debug('REPEAT', `Próxima data calculada: ${nextDate}`);
-        
+
         // Preservar o horário original se existir
         let nextDateTime: Date | undefined = undefined;
         if (task.dueTime) {
@@ -3451,16 +3642,16 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
             logger.debug('REPEAT', `Horário preservado: original=${originalTime}, next=${nextDateTime}`);
           }
         }
-        
+
         // Resetar subtarefas para não concluídas
-        const resetSubtasks = Array.isArray((task as any).subtasks) 
+        const resetSubtasks = Array.isArray((task as any).subtasks)
           ? (task as any).subtasks.map((st: any) => ({
-              ...st,
-              done: false,
-              completedById: undefined,
-              completedByName: undefined,
-              completedAt: undefined
-            }))
+            ...st,
+            done: false,
+            completedById: undefined,
+            completedByName: undefined,
+            completedAt: undefined
+          }))
           : undefined;
 
         const nextTask: Task = {
@@ -3479,13 +3670,13 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
           editedByName: user.name,
           editedAt: new Date()
         } as any;
-        
+
         logger.success('REPEAT', `Nova tarefa recorrente criada: ${nextTask.title}, dueDate=${nextTask.dueDate}`);
-        
+
         // Marcar tarefa atual como concluída e adicionar nova tarefa
-        updatedTasks = tasks.map(t => 
-          t.id === task.id ? { 
-            ...t, 
+        updatedTasks = tasks.map(t =>
+          t.id === task.id ? {
+            ...t,
             completed: true,
             status: 'concluida' as TaskStatus,
             editedBy: user.id,
@@ -3493,43 +3684,43 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
             editedAt: new Date()
           } : t
         );
-        
+
         // Adicionar nova tarefa recorrente à lista
         updatedTasks.push(nextTask);
-        
+
         // Atualizar estado local imediatamente
         setTasks(updatedTasks);
-        
+
         // cancelar lembrete da tarefa atual concluída
         try {
           await NotificationService.cancelTaskReminder(task.id);
         } catch (e) {
           logger.warn('NOTIFY', 'cancelTaskReminder falhou', e);
         }
-        
+
         // Remover tarefa concluída do cache local (mantém no Firebase para histórico)
         await LocalStorageService.deleteTaskFromCache(task.id);
         console.log('🗑️ Tarefa recorrente concluída removida do cache local:', task.id);
-        
+
         // Salvar nova tarefa no Firebase e na família imediatamente
-            try {
-            const remoteNextTask = taskToRemoteTask(nextTask as any, currentFamily?.id);
+        try {
+          const remoteNextTask = taskToRemoteTask(nextTask as any, currentFamily?.id);
           await LocalStorageService.saveTask(remoteNextTask as any);
           await SyncService.addOfflineOperation('create', 'tasks', remoteNextTask);
-          
+
           // Salvar imediatamente no Firestore se online
-            if (currentFamily && !isOffline) {
-              try {
-                const toSave = { ...remoteNextTask, familyId: currentFamily.id } as any;
-                const res = await FirestoreService.saveTask(toSave);
-                await LocalStorageService.saveTask({ ...toSave, id: toSave.id || (res && (res as any).id) } as any);
-                logger.debug('SYNC', `Próxima ocorrência recorrente salva no Firestore: taskId=${toSave.id || (res && (res as any).id)} familyId=${currentFamily.id}`);
-              } catch (e) {
-                logger.warn('SYNC', 'Falha ao salvar próxima ocorrência no Firestore, fallback local', e);
-                try { await FamilySyncHelper.saveTaskToFamily(remoteNextTask as any, currentFamily.id, 'create'); } catch (_) {}
-                await SyncService.addOfflineOperation('create', 'tasks', { ...remoteNextTask, familyId: currentFamily.id });
-              }
-            } else if (currentFamily) {
+          if (currentFamily && !isOffline) {
+            try {
+              const toSave = { ...remoteNextTask, familyId: currentFamily.id } as any;
+              const res = await FirestoreService.saveTask(toSave);
+              await LocalStorageService.saveTask({ ...toSave, id: toSave.id || (res && (res as any).id) } as any);
+              logger.debug('SYNC', `Próxima ocorrência recorrente salva no Firestore: taskId=${toSave.id || (res && (res as any).id)} familyId=${currentFamily.id}`);
+            } catch (e) {
+              logger.warn('SYNC', 'Falha ao salvar próxima ocorrência no Firestore, fallback local', e);
+              try { await FamilySyncHelper.saveTaskToFamily(remoteNextTask as any, currentFamily.id, 'create'); } catch (_) { }
+              await SyncService.addOfflineOperation('create', 'tasks', { ...remoteNextTask, familyId: currentFamily.id });
+            }
+          } else if (currentFamily) {
             // Enfileirar como 'tasks' e incluir explicitamente familyId para que o SyncService envie para Firestore
             await SyncService.addOfflineOperation('create', 'tasks', {
               ...remoteNextTask,
@@ -3537,14 +3728,14 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
             });
             logger.debug('OFFLINE_SYNC', `Próxima ocorrência enfileirada (offline): taskId=${remoteNextTask.id} familyId=${currentFamily.id}`);
           }
-          
+
           // agendar lembrete da próxima ocorrência
           try {
             await NotificationService.scheduleTaskReminder(nextTask as any);
           } catch (e) {
             logger.warn('NOTIFY', 'scheduleTaskReminder falhou', e);
           }
-          
+
           logger.success('REPEAT', `Nova tarefa recorrente criada e sincronizada: taskId=${remoteNextTask.id}` +
             `${currentFamily ? ` familyId=${currentFamily.id}` : ''}`);
         } catch (error) {
@@ -3557,9 +3748,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
         }
       } else {
         // Tarefa normal: apenas marcar como concluída
-        updatedTasks = tasks.map(t => 
-          t.id === task.id ? { 
-            ...t, 
+        updatedTasks = tasks.map(t =>
+          t.id === task.id ? {
+            ...t,
             completed: true,
             status: 'concluida' as TaskStatus,
             editedBy: user.id,
@@ -3567,17 +3758,17 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
             editedAt: new Date()
           } : t
         );
-        
+
         // Atualizar estado local imediatamente
         setTasks(updatedTasks);
-        
+
         // cancelar lembrete
         try {
           await NotificationService.cancelTaskReminder(task.id);
         } catch (e) {
           logger.warn('NOTIFY', 'cancelTaskReminder falhou', e);
         }
-        
+
         // Remover tarefa concluída do cache local (mantém no Firebase para histórico)
         await LocalStorageService.deleteTaskFromCache(task.id);
         console.log('🗑️ Tarefa normal concluída removida do cache local:', task.id);
@@ -3586,9 +3777,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
       // Desmarcando como concluída (apenas para tarefas não recorrentes)
       const repeatConfig = getRepeat(task);
       if (repeatConfig.type === RepeatType.NONE) {
-        updatedTasks = tasks.map(t => 
-          t.id === task.id ? { 
-            ...t, 
+        updatedTasks = tasks.map(t =>
+          t.id === task.id ? {
+            ...t,
             completed: false,
             status: 'pendente' as TaskStatus,
             editedBy: user.id,
@@ -3596,10 +3787,10 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
             editedAt: new Date()
           } : t
         );
-        
+
         // Atualizar estado local imediatamente
         setTasks(updatedTasks);
-        
+
         // reprogramar lembrete se ainda futuro
         const t = updatedTasks.find(x => x.id === task.id);
         if (t) {
@@ -3619,13 +3810,13 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
         return;
       }
     }
-    
-  // Salvar tarefa atualizada no cache local e sincronizar com o servidor remoto
+
+    // Salvar tarefa atualizada no cache local e sincronizar com o servidor remoto
     const updatedTask = updatedTasks.find(t => t.id === task.id);
     if (updatedTask) {
       try {
         const remoteTask = taskToRemoteTask(updatedTask as any, currentFamily?.id);
-        
+
         // Se a tarefa foi CONCLUÍDA, remover do cache local (mantém apenas no Firebase para histórico)
         if (updatedTask.completed) {
           await LocalStorageService.deleteTaskFromCache(updatedTask.id);
@@ -3633,13 +3824,13 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
         } else {
           await LocalStorageService.saveTask(remoteTask as any);
         }
-        
+
         // Determinar se é create ou update baseado no ID
         const isTemporaryId = updatedTask.id.startsWith('temp_') || updatedTask.id === 'temp';
         const operationType = isTemporaryId ? 'create' : 'update';
-        
-  await SyncService.addOfflineOperation(operationType, 'tasks', remoteTask);
-        
+
+        await SyncService.addOfflineOperation(operationType, 'tasks', remoteTask);
+
         // Para tarefas da família, sincronizar imediatamente para evitar conflitos (prefer Firestore quando online)
         if (currentFamily && !isOffline) {
           try {
@@ -3656,14 +3847,14 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
           await SyncService.addOfflineOperation(operationType, 'tasks', { ...remoteTask, familyId: currentFamily.id });
           logger.debug('OFFLINE_SYNC', `Atualização enfileirada (offline): taskId=${remoteTask.id} familyId=${currentFamily.id}`);
         }
-        
+
         logger.success('SAVE_TASK', `Status da tarefa atualizado e sincronizado: taskId=${updatedTask.id}` +
           `${currentFamily ? ` familyId=${currentFamily.id}` : ''}`);
       } catch (error) {
         logger.error('SAVE_TASK', 'Erro ao sincronizar toggle da tarefa', error);
       }
     }
-    
+
     // Adicionar ao histórico
     await addToHistory(
       !task.completed ? 'completed' : 'uncompleted',
@@ -3675,7 +3866,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
   // Função para pular uma ocorrência de tarefa recorrente
   const handleSkipOccurrence = useCallback(async (task: Task) => {
     const repeatConfig = getRepeat(task);
-    
+
     // Só funciona para tarefas recorrentes não concluídas
     if (repeatConfig.type === RepeatType.NONE || task.completed) {
       Alert.alert('Ação inválida', 'Esta ação só está disponível para tarefas recorrentes não concluídas.');
@@ -3833,7 +4024,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
     if (subtaskToCheck && !subtaskToCheck.done && subtaskToCheck.dueDate) {
       const now = new Date();
       const dueDate = safeToDate(subtaskToCheck.dueDate);
-      
+
       if (dueDate) {
         // Se tem hora definida, considerar data+hora, senão apenas data
         if (subtaskToCheck.dueTime) {
@@ -3841,7 +4032,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
           if (dueTime) {
             const dueDateTimeCheck = new Date(dueDate);
             dueDateTimeCheck.setHours(dueTime.getHours(), dueTime.getMinutes(), 0, 0);
-            
+
             if (now < dueDateTimeCheck) {
               Alert.alert(
                 'Subtarefa Agendada',
@@ -3856,7 +4047,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
           dueDateStart.setHours(0, 0, 0, 0);
           const nowStart = new Date(now);
           nowStart.setHours(0, 0, 0, 0);
-          
+
           if (nowStart < dueDateStart) {
             Alert.alert(
               'Subtarefa Agendada',
@@ -3945,14 +4136,14 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
     } else {
       subtask = (updatedTask as any).subtasks?.find((st: any) => st.id === subtaskId);
     }
-    
+
     // Adicionar ao histórico com detalhes da subtarefa
     if (subtask) {
       const action = subtask.done ? 'completed' : 'uncompleted';
       const details = `Subtarefa: "${subtask.title}"`;
       await addToHistory(action, updatedTask.title, taskId, details);
     }
-    
+
     // Cancelar notificação da subtarefa se foi marcada como concluída
     if (subtask?.done) {
       try {
@@ -3961,7 +4152,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
         logger.warn('NOTIFY', 'Falha ao cancelar notificação de subtarefa', e);
       }
     }
-    
+
     try {
       const remoteTask = taskToRemoteTask(updatedTask as any, currentFamily?.id);
       await LocalStorageService.saveTask(remoteTask as any);
@@ -3973,7 +4164,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
             const res = await FirestoreService.saveTask(toSave);
             await LocalStorageService.saveTask({ ...toSave, id: toSave.id || (res && (res as any).id) } as any);
           } catch (e) {
-            try { await FamilySyncHelper.saveTaskToFamily(remoteTask as any, currentFamily.id, 'update'); } catch (_) {}
+            try { await FamilySyncHelper.saveTaskToFamily(remoteTask as any, currentFamily.id, 'update'); } catch (_) { }
             await SyncService.addOfflineOperation('update', 'tasks', { ...remoteTask, familyId: currentFamily.id });
           }
         } else {
@@ -4018,9 +4209,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
     setApprovals([...approvals, approval]);
 
     // Atualizar tarefa para status pendente aprovação (local)
-    setTasks(tasks.map(t => 
-      t.id === task.id ? { 
-        ...t, 
+    setTasks(tasks.map(t =>
+      t.id === task.id ? {
+        ...t,
         status: 'pendente_aprovacao',
         approvalId: approval.id
       } : t
@@ -4039,7 +4230,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
           await LocalStorageService.saveTask({ ...toSave, id: toSave.id || (res && (res as any).id) } as any);
         } catch (e) {
           logger.warn('APPROVAL', 'Falha ao salvar approval/task pending no Firestore, delegando ao FamilySyncHelper', e);
-          try { await FamilySyncHelper.saveTaskToFamily(remoteTask, currentFamily.id, 'update'); } catch (_) {}
+          try { await FamilySyncHelper.saveTaskToFamily(remoteTask, currentFamily.id, 'update'); } catch (_) { }
           await SyncService.addOfflineOperation('update', 'tasks', { ...remoteTask, familyId: currentFamily.id });
         }
       }
@@ -4051,7 +4242,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
         try {
           const fam = await familyService.getUserFamily(user.id);
           familyIdToSend = fam?.id;
-        } catch {}
+        } catch { }
       }
       await SyncService.addOfflineOperation('create', 'approvals', {
         ...approval,
@@ -4126,7 +4317,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
     if (!approval || user.role !== 'admin') return;
 
     // Atualizar aprovação
-    setApprovals(approvals.map(a => 
+    setApprovals(approvals.map(a =>
       a.id === approvalId ? {
         ...a,
         status: 'aprovada',
@@ -4137,7 +4328,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
     ));
 
     // Completar tarefa
-    setTasks(tasks.map(t => 
+    setTasks(tasks.map(t =>
       t.id === approval.taskId ? {
         ...t,
         completed: true,
@@ -4175,29 +4366,29 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
           editedByName: user.name,
         };
         const remoteTask = taskToRemoteTask(updatedTask as any, currentFamily?.id);
-        
+
         // Tarefa aprovada/concluída: remover do cache local (mantém no Firebase para histórico)
         await LocalStorageService.deleteTaskFromCache(updatedTask.id);
         console.log('🗑️ Tarefa aprovada removida do cache local:', updatedTask.id);
-        
+
         await SyncService.addOfflineOperation('update', 'tasks', remoteTask);
         if (currentFamily && !isOffline) {
           try {
             const toSave = { ...remoteTask, familyId: currentFamily.id } as any;
             await FirestoreService.saveTask(toSave);
-            } catch (e) {
-              logger.warn('APPROVAL', 'Falha ao salvar aprovação/tarefa aprovada no Firestore, delegando ao FamilySyncHelper', e);
-              try { await FamilySyncHelper.saveTaskToFamily(remoteTask as any, currentFamily.id, 'update'); } catch (_) {}
-              await SyncService.addOfflineOperation('update', 'tasks', { ...remoteTask, familyId: currentFamily.id });
-            }
+          } catch (e) {
+            logger.warn('APPROVAL', 'Falha ao salvar aprovação/tarefa aprovada no Firestore, delegando ao FamilySyncHelper', e);
+            try { await FamilySyncHelper.saveTaskToFamily(remoteTask as any, currentFamily.id, 'update'); } catch (_) { }
+            await SyncService.addOfflineOperation('update', 'tasks', { ...remoteTask, familyId: currentFamily.id });
+          }
         }
       }
     } catch (e) {
       logger.error('APPROVAL', 'Erro ao persistir aprovação/tarefa aprovada', e);
     }
 
-  // Remover notificação e a própria aprovação (local e remoto)
-  setNotifications(notifications.filter(n => n.taskId !== approval.taskId));
+    // Remover notificação e a própria aprovação (local e remoto)
+    setNotifications(notifications.filter(n => n.taskId !== approval.taskId));
     setApprovals(prev => prev.filter(a => a.id !== approvalId));
     try {
       await LocalStorageService.removeFromCache('approvals' as any, approvalId);
@@ -4216,7 +4407,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
     if (!approval || user.role !== 'admin') return;
 
     // Atualizar aprovação
-    setApprovals(approvals.map(a => 
+    setApprovals(approvals.map(a =>
       a.id === approvalId ? {
         ...a,
         status: 'rejeitada',
@@ -4227,7 +4418,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
     ));
 
     // Reverter tarefa para pendente
-    setTasks(tasks.map(t => 
+    setTasks(tasks.map(t =>
       t.id === approval.taskId ? {
         ...t,
         status: 'rejeitada',
@@ -4276,7 +4467,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
             await LocalStorageService.saveTask({ ...toSave, id: toSave.id || (res && (res as any).id) } as any);
           } catch (e) {
             logger.warn('APPROVAL', 'Falha ao salvar aprovação/tarefa rejeitada no Firestore, delegando ao FamilySyncHelper', e);
-            try { await FamilySyncHelper.saveTaskToFamily(remoteTask as any, currentFamily.id, 'update'); } catch (_) {}
+            try { await FamilySyncHelper.saveTaskToFamily(remoteTask as any, currentFamily.id, 'update'); } catch (_) { }
             await SyncService.addOfflineOperation('update', 'tasks', { ...remoteTask, familyId: currentFamily.id });
           }
         }
@@ -4285,8 +4476,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
       logger.error('APPROVAL', 'Erro ao persistir aprovação/tarefa rejeitada', e);
     }
 
-  // Remover notificação e a própria aprovação (local e remoto)
-  setNotifications(notifications.filter(n => n.taskId !== approval.taskId));
+    // Remover notificação e a própria aprovação (local e remoto)
+    setNotifications(notifications.filter(n => n.taskId !== approval.taskId));
     setApprovals(prev => prev.filter(a => a.id !== approvalId));
     try {
       await LocalStorageService.removeFromCache('approvals' as any, approvalId);
@@ -4322,7 +4513,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
           setCurrentFamily(updated);
           setFamilyMembers(updated.members);
         }
-      } catch {}
+      } catch { }
     } catch (e) {
       logger.error('ADMIN', 'Erro ao resolver solicitação de admin', e);
       Alert.alert('Erro', 'Não foi possível processar a solicitação.');
@@ -4338,9 +4529,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
       if (familyCode) {
         // Copia apenas o código para a área de transferência
         await Clipboard.setStringAsync(familyCode);
-        
+
         Alert.alert(
-          '✓ Código Copiado!', 
+          '✓ Código Copiado!',
           `O código "${familyCode}" foi copiado para a área de transferência.\n\nCompartilhe com quem você deseja adicionar à família.`,
           [{ text: 'OK' }]
         );
@@ -4360,14 +4551,14 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
       Alert.alert('Erro', 'Apenas administradores podem alterar funções de membros.');
       return;
     }
-    
+
     const member = familyMembers.find(m => m.id === memberId);
-    
+
     if (!member) {
       Alert.alert('Erro', 'Membro não encontrado.');
       return;
     }
-    
+
     if (member.id === user.id) {
       Alert.alert('Erro', 'Você não pode alterar sua própria função.');
       return;
@@ -4389,11 +4580,11 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
           onPress: async () => {
             try {
               // Atualizar localmente primeiro para responsividade
-              const updatedMembers = familyMembers.map(m => 
+              const updatedMembers = familyMembers.map(m =>
                 m.id === memberId ? { ...m, role: newRole } : m
               );
               setFamilyMembers(updatedMembers);
-              
+
               // Atualizar também no currentFamily se necessário
               if (currentFamily) {
                 const updatedFamily = {
@@ -4401,7 +4592,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
                   members: updatedMembers
                 };
                 setCurrentFamily(updatedFamily);
-                
+
                 // Sincronizar com Firebase e obter família atualizada
                 const refreshed = await familyService.updateMemberRole(currentFamily.id, memberId, newRole);
                 if (refreshed) {
@@ -4410,18 +4601,18 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
                   // Se o usuário atual foi promovido/demitido, atualizar role no app
                   const selfAfter = (refreshed as any).members?.find((m: any) => m.id === user.id);
                   if (selfAfter && selfAfter.role && selfAfter.role !== user.role && onUserRoleChange) {
-                    try { await onUserRoleChange(selfAfter.role, { silent: true }); } catch {}
+                    try { await onUserRoleChange(selfAfter.role, { silent: true }); } catch { }
                   }
                 }
               }
-              
+
               Alert.alert('Sucesso', `${member.name} agora é ${roleNames[newRole]}.`);
             } catch (error) {
               logger.error('FAMILY', 'Erro ao alterar função do membro', error);
               Alert.alert('Erro', 'Não foi possível alterar a função do membro.');
-              
+
               // Reverter mudança local em caso de erro
-              const revertedMembers = familyMembers.map(m => 
+              const revertedMembers = familyMembers.map(m =>
                 m.id === memberId ? { ...m, role: member.role } : m
               );
               setFamilyMembers(revertedMembers);
@@ -4462,12 +4653,12 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
 
       // Sincronizar com Firebase
       await familyService.updateFamilyName(currentFamily.id, newFamilyName.trim());
-      
+
       Alert.alert('Sucesso', 'Nome da família atualizado com sucesso!');
     } catch (error) {
       logger.error('FAMILY', 'Erro ao atualizar nome da família', error);
       Alert.alert('Erro', 'Não foi possível atualizar o nome da família.');
-      
+
       // Reverter mudança local em caso de erro
       setCurrentFamily(currentFamily);
       setNewFamilyName(currentFamily.name);
@@ -4507,7 +4698,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
     } catch (error) {
       logger.error('FAMILY', 'Erro ao carregar dados da família', error);
     }
-    
+
     setFamilyModalVisible(true);
     openManagedModal('family');
   };
@@ -4521,7 +4712,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
     setIsCreatingFamily(true);
     try {
       logger.debug('FAMILY', 'Criando nova família pelo modal: ' + newFamilyNameInput);
-      
+
       const newFamily = await familyService.createFamily(newFamilyNameInput.trim(), {
         id: user.id,
         email: user.email,
@@ -4532,7 +4723,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
       });
 
       logger.success('FAMILY', 'Família criada com sucesso: ' + newFamily.id);
-      
+
       // Atualizar estados
       setCurrentFamily(newFamily);
       setFamilyMembers(newFamily.members);
@@ -4575,15 +4766,15 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
     // ===== DESFAZER EXCLUSÃO =====
     if (lastAction.type === 'delete' && lastAction.previousState) {
       const taskToRestore = lastAction.previousState;
-      
+
       try {
         // Adicionar tarefa de volta ao estado
         setTasks(prev => [taskToRestore, ...prev]);
-        
+
         // Salvar no storage local e Firebase
         const remoteTask = taskToRemoteTask(taskToRestore as any, currentFamily?.id);
         await LocalStorageService.saveTask(remoteTask as any);
-        
+
         if (currentFamily && !isOffline) {
           const toSave = { ...remoteTask, familyId: currentFamily.id } as any;
           await FirestoreService.saveTask(toSave);
@@ -4591,12 +4782,12 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
         } else {
           await SyncService.addOfflineOperation('create', 'tasks', { ...remoteTask, familyId: (taskToRestore as any).familyId });
         }
-        
+
         // Reagendar notificações
         if (!taskToRestore.completed) {
           try {
             await NotificationService.scheduleTaskReminder(taskToRestore as any);
-            
+
             // Reagendar notificações de subtarefas
             if ((taskToRestore as any).subtasks && Array.isArray((taskToRestore as any).subtasks)) {
               await NotificationService.scheduleSubtaskReminders(
@@ -4609,33 +4800,33 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
             logger.warn('NOTIFY', 'Falha ao reagendar notificações', e);
           }
         }
-        
+
         // Adicionar ao histórico
         await addToHistory('created', taskToRestore.title, taskToRestore.id);
-        
+
         Alert.alert('✓', 'Exclusão desfeita! Tarefa restaurada com sucesso.');
       } catch (error) {
         logger.error('UNDO', 'Erro ao desfazer exclusão', error);
         Alert.alert('Erro', 'Não foi possível desfazer a exclusão.');
       }
     }
-    
+
     // ===== DESFAZER EDIÇÃO =====
     else if (lastAction.type === 'edit' && lastAction.previousState) {
       const taskToRestore = lastAction.previousState;
-      
+
       try {
         // Restaurar tarefa ao estado anterior
-        const updatedTasks = tasks.map(t => 
+        const updatedTasks = tasks.map(t =>
           t.id === taskToRestore.id ? { ...taskToRestore } : t
         );
-        
+
         setTasks(updatedTasks);
-        
+
         // Salvar no storage local e Firebase
         const remoteTask = taskToRemoteTask(taskToRestore as any, currentFamily?.id);
         await LocalStorageService.saveTask(remoteTask as any);
-        
+
         if (currentFamily && !isOffline) {
           const toSave = { ...remoteTask, familyId: currentFamily.id } as any;
           await FirestoreService.saveTask(toSave);
@@ -4643,12 +4834,12 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
         } else {
           await SyncService.addOfflineOperation('update', 'tasks', { ...remoteTask, familyId: (taskToRestore as any).familyId });
         }
-        
+
         // Reagendar notificações com base no estado anterior
         if (!taskToRestore.completed) {
           try {
             await NotificationService.scheduleTaskReminder(taskToRestore as any);
-            
+
             // Reagendar notificações de subtarefas
             if ((taskToRestore as any).subtasks && Array.isArray((taskToRestore as any).subtasks)) {
               await NotificationService.scheduleSubtaskReminders(
@@ -4668,20 +4859,20 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
             logger.warn('NOTIFY', 'Falha ao cancelar notificações', e);
           }
         }
-        
+
         Alert.alert('✓', 'Edição desfeita! Tarefa restaurada ao estado anterior.');
       } catch (error) {
         logger.error('UNDO', 'Erro ao desfazer edição', error);
         Alert.alert('Erro', 'Não foi possível desfazer a edição.');
       }
     }
-    
+
     // ===== DESFAZER CONCLUSÃO/TOGGLE =====
     else if (lastAction.type === 'toggle' && lastAction.previousState) {
       const taskToRestore = lastAction.previousState;
-      
+
       // Encontrar todas as tasks relacionadas (no caso de recorrente, pode ter criado uma nova)
-      const updatedTasks = tasks.map(t => 
+      const updatedTasks = tasks.map(t =>
         t.id === taskToRestore.id ? { ...taskToRestore } : t
       );
 
@@ -4692,7 +4883,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
         if (repeatConfig.type !== RepeatType.NONE) {
           // Encontrar e remover a tarefa recorrente que foi criada
           // (será a mais recente com o mesmo título e categoria)
-          const possibleNewTask = tasks.find(t => 
+          const possibleNewTask = tasks.find(t =>
             t.id !== taskToRestore.id &&
             t.title === taskToRestore.title &&
             t.category === taskToRestore.category &&
@@ -4712,7 +4903,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
                 logger.debug('UNDO', `Tarefa recorrente removida do Firestore: ${possibleNewTask.id}`);
               }
               await SyncService.addOfflineOperation('delete', 'tasks', { id: possibleNewTask.id, familyId: (possibleNewTask as any).familyId });
-              
+
               // Cancelar notificação da tarefa removida
               try {
                 await NotificationService.cancelTaskReminder(possibleNewTask.id);
@@ -4736,7 +4927,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
       try {
         const remoteTask = taskToRemoteTask(taskToRestore as any, currentFamily?.id);
         await LocalStorageService.saveTask(remoteTask as any);
-        
+
         if (currentFamily && !isOffline) {
           const toSave = { ...remoteTask, familyId: currentFamily.id } as any;
           await FirestoreService.saveTask(toSave);
@@ -4781,7 +4972,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
         return;
       }
     }
-    
+
     Alert.alert(
       'Excluir Tarefa',
       'Tem certeza que deseja excluir esta tarefa?',
@@ -4793,13 +4984,13 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
             try {
               // 🔄 SALVAR ESTADO PARA DESFAZER: Salvar tarefa completa antes de excluir
               const taskToDelete = { ...task };
-              
+
               // Mostrar loading enquanto aguardamos sincronização de exclusão (apenas se online)
               if (!isOffline) setGlobalLoading(true);
               // Atualizar UI imediatamente
               setTasks(prev => prev.filter(t => t.id !== taskId));
-              await NotificationService.cancelTaskReminder(taskId).catch(()=>{});
-              
+              await NotificationService.cancelTaskReminder(taskId).catch(() => { });
+
               // Cancelar todas as notificações de subtarefas
               try {
                 await NotificationService.cancelAllSubtaskReminders(taskId);
@@ -4817,7 +5008,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
 
               // Histórico
               await addToHistory('deleted', task.title, taskId);
-              
+
               // ✅ CONFIGURAR DESFAZER: Salvar ação de exclusão
               setLastAction({
                 type: 'delete',
@@ -4825,9 +5016,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
                 previousState: taskToDelete, // Guardar tarefa completa para restauração
                 timestamp: Date.now()
               });
-              
+
               setShowUndoButton(true);
-              
+
               // Timer para esconder botão de desfazer após 10 segundos
               if (undoTimeoutRef.current) {
                 clearTimeout(undoTimeoutRef.current);
@@ -4836,7 +5027,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
                 setShowUndoButton(false);
                 setLastAction(null);
               }, 10000);
-              
+
             } catch (error) {
               logger.error('DELETE_TASK', 'Erro ao deletar tarefa', error);
               Alert.alert('Erro', 'Não foi possível deletar a tarefa. Tente novamente.');
@@ -4891,7 +5082,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
                   setCurrentFamily(refreshed);
                   setFamilyMembers(refreshed.members);
                 }
-              } catch {}
+              } catch { }
 
               Alert.alert('Sucesso', `${member.name} foi removido da família.`);
             } catch (e) {
@@ -4910,22 +5101,22 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
 
   const handleUpdateData = async () => {
     setSettingsModalVisible(false);
-    
+
     // Usar a mesma lógica do carregamento inicial
     try {
       if (user?.id) {
         logger.debug('UPDATE_STATE', `Recarregando dados do usuário: userId=${user.id}, familyId=${user.familyId}, isOffline=${isOffline}`);
-        
+
         // Não mostra overlay - usa apenas o banner do header
         // setIsBootstrapping(true);
-        
+
         const userFamily = await familyService.getUserFamily(user.id);
         logger.debug('FAMILY', `Resultado da busca por família: ${userFamily?.name || 'nenhuma'}`);
-        
+
         if (userFamily) {
           setCurrentFamily(userFamily);
           logger.success('FAMILY', `Família recarregada: ${userFamily.name}`);
-          
+
           // Carregar tarefas da família
           const familyTasks = await familyService.getFamilyTasks(userFamily.id, user.id);
           let convertedTasks: Task[] = familyTasks.map(remoteTaskToTask as any);
@@ -4936,7 +5127,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
             return true;
           });
           setTasks(convertedTasks);
-          
+
           logger.success('SYNC', `${familyTasks.length} tarefas da família recarregadas`);
           // Disparar sync completo em background para atualizar tudo sem travar a UI
           if (!isOffline) {
@@ -4944,7 +5135,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
           }
         } else {
           logger.info('FAMILY', 'Usuário não possui família');
-          
+
           // Se não tem família, carregar tarefas do cache local
           const cachedTasks = await LocalStorageService.getTasks();
           if (cachedTasks.length > 0) {
@@ -4953,13 +5144,13 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
             logger.success('SYNC', `${localTasks.length} tarefas locais recarregadas do cache`);
           }
         }
-        
+
         // Atualizar timestamp
         setLastUpdate(new Date());
       }
     } catch (error) {
       logger.error('UPDATE_STATE', 'Erro ao recarregar dados', error);
-      
+
       // Em caso de erro, tentar carregar do cache local
       try {
         const cachedTasks = await LocalStorageService.getTasks();
@@ -4984,9 +5175,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
       hour: '2-digit',
       minute: '2-digit',
     });
-    
+
     setSettingsModalVisible(false);
-    
+
     Alert.alert(
       'Informações do Sistema',
       `Última atualização: ${lastUpdateTime}\n\n` +
@@ -5026,37 +5217,37 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
     const isRecurring = repeatConfig.type !== RepeatType.NONE;
     const canComplete = isRecurringTaskCompletable(item.dueDate, isRecurring);
     const isPendingRecurring = isRecurring && !canComplete && !item.completed;
-    
+
     // Verificar se está na aba Próximas e se a tarefa está desbloqueada
     const isUpcomingTab = activeTab === 'upcoming';
     const isTaskUnlocked = (item as any).unlocked === true;
     const shouldDisableCheckbox = isUpcomingTab && !isTaskUnlocked && !item.completed;
-    
+
     // Sanitizar valores para evitar "Unexpected text node: ." no web
     const sanitizedTitle = (item.title === '.' || !item.title) ? '' : item.title;
     const sanitizedDescription = (item.description === '.' || !item.description) ? '' : item.description;
     const sanitizedCreatedByName = (item.createdByName === '.' || !item.createdByName) ? 'Usuário' : item.createdByName;
     const sanitizedEditedByName = (item.editedByName === '.' || !item.editedByName) ? '' : item.editedByName;
-    
+
     return (
-      <View 
+      <View
         style={[
-          styles.taskItem, 
+          styles.taskItem,
           item.completed && styles.taskCompleted,
           isOverdue && styles.taskOverdue,
           { borderColor: isOverdue ? APP_COLORS.status.error : categoryConfig.color }
         ]}
       >
         {/* Header da Categoria - Topo do Card */}
-        <Pressable 
+        <Pressable
           style={[styles.categoryHeader, { backgroundColor: categoryConfig.bgColor }]}
           onPress={() => toggleCardCollapse(item.id)}
         >
           <View style={styles.categoryHeaderContent}>
-            <Ionicons 
-              name={categoryConfig.icon as any} 
-              size={14} 
-              color={categoryConfig.color} 
+            <Ionicons
+              name={categoryConfig.icon as any}
+              size={14}
+              color={categoryConfig.color}
             />
             <Text style={[styles.categoryHeaderText, { color: categoryConfig.color }]}>
               {categoryConfig.name}
@@ -5064,25 +5255,25 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
             {/* Badge de tarefa recorrente */}
             {isRecurring && (
               <View style={styles.repeatBadge}>
-                <Ionicons 
+                <Ionicons
                   name={
                     repeatConfig.type === RepeatType.DAILY ? 'today' :
-                    repeatConfig.type === RepeatType.MONTHLY ? 'calendar-outline' :
-                    repeatConfig.type === RepeatType.YEARLY ? 'gift' :
-                    repeatConfig.type === RepeatType.BIWEEKLY ? 'repeat' :
-                    repeatConfig.type === RepeatType.INTERVAL ? 'time' :
-                    'calendar'
-                  } 
-                  size={10} 
-                  color={APP_COLORS.text.white} 
+                      repeatConfig.type === RepeatType.MONTHLY ? 'calendar-outline' :
+                        repeatConfig.type === RepeatType.YEARLY ? 'gift' :
+                          repeatConfig.type === RepeatType.BIWEEKLY ? 'repeat' :
+                            repeatConfig.type === RepeatType.INTERVAL ? 'time' :
+                              'calendar'
+                  }
+                  size={10}
+                  color={APP_COLORS.text.white}
                 />
                 <Text style={styles.repeatBadgeText}>
                   {repeatConfig.type === RepeatType.DAILY ? 'Diário' :
-                   repeatConfig.type === RepeatType.MONTHLY ? 'Mensal' :
-                   repeatConfig.type === RepeatType.YEARLY ? 'Anual' :
-                   repeatConfig.type === RepeatType.BIWEEKLY ? 'Quinzenal' :
-                   repeatConfig.type === RepeatType.INTERVAL ? 'Intervalo' :
-                   'Semanal'}
+                    repeatConfig.type === RepeatType.MONTHLY ? 'Mensal' :
+                      repeatConfig.type === RepeatType.YEARLY ? 'Anual' :
+                        repeatConfig.type === RepeatType.BIWEEKLY ? 'Quinzenal' :
+                          repeatConfig.type === RepeatType.INTERVAL ? 'Intervalo' :
+                            'Semanal'}
                 </Text>
               </View>
             )}
@@ -5092,10 +5283,10 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
             {((item as any).private === true) && item.createdBy === user.id && (
               <Ionicons name="lock-closed" size={14} color={APP_COLORS.text.secondary} />
             )}
-            <Ionicons 
-              name={collapsedCards.has(item.id) ? "chevron-down-outline" : "chevron-up-outline"} 
-              size={16} 
-              color={categoryConfig.color} 
+            <Ionicons
+              name={collapsedCards.has(item.id) ? "chevron-down-outline" : "chevron-up-outline"}
+              size={16}
+              color={categoryConfig.color}
             />
           </View>
         </Pressable>
@@ -5130,7 +5321,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
                   </Text>
                 )}
               </Pressable>
-              
+
               {/* Botões de ação rápida (admin apenas) */}
               {!item.completed && user.role === 'admin' && (
                 <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -5140,37 +5331,37 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
                       onPress={() => toggleLockTask(item.id)}
                       style={styles.unlockIconButton}
                     >
-                      <Ionicons 
-                        name={isTaskUnlocked ? "lock-open-outline" : "lock-closed-outline"} 
-                        size={22} 
-                        color={isTaskUnlocked ? APP_COLORS.primary.main : "#999"} 
+                      <Ionicons
+                        name={isTaskUnlocked ? "lock-open-outline" : "lock-closed-outline"}
+                        size={22}
+                        color={isTaskUnlocked ? APP_COLORS.primary.main : "#999"}
                       />
                     </Pressable>
                   )}
-                  
+
                   {/* Botão de Pular Ocorrência - apenas para tarefas recorrentes */}
                   {isRecurring && (
                     <Pressable
                       onPress={() => handleSkipOccurrence(item)}
                       style={styles.unlockIconButton}
                     >
-                      <Ionicons 
-                        name="play-skip-forward-outline" 
-                        size={22} 
-                        color="#999" 
+                      <Ionicons
+                        name="play-skip-forward-outline"
+                        size={22}
+                        color="#999"
                       />
                     </Pressable>
                   )}
-                  
+
                   {/* Ícone de Adiar - visível em todas as abas */}
                   <Pressable
                     onPress={() => openPostponeModal(item)}
                     style={styles.unlockIconButton}
                   >
-                    <Ionicons 
-                      name="calendar-outline" 
-                      size={22} 
-                      color="#999" 
+                    <Ionicons
+                      name="calendar-outline"
+                      size={22}
+                      color="#999"
                     />
                   </Pressable>
                 </View>
@@ -5183,10 +5374,10 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
         <View style={styles.scheduleInfo}>
           {(item.dueTime || item.dueDate) && (
             <View style={styles.scheduleItem}>
-              <Ionicons 
-                name="time-outline" 
-                size={14} 
-                color={isOverdue ? APP_COLORS.status.error : APP_COLORS.text.secondary} 
+              <Ionicons
+                name="time-outline"
+                size={14}
+                color={isOverdue ? APP_COLORS.status.error : APP_COLORS.text.secondary}
               />
               <Text style={[styles.scheduleText, isOverdue && styles.overdueText]}>
                 {item.dueDate ? `${formatDate(item.dueDate)} ` : ''}{formatTime(item.dueTime)}
@@ -5204,10 +5395,10 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
 
           {repeatConfig.type !== RepeatType.NONE && (
             <View style={styles.scheduleItem}>
-              <Ionicons 
-                name="repeat-outline" 
-                size={14} 
-                color={APP_COLORS.text.secondary} 
+              <Ionicons
+                name="repeat-outline"
+                size={14}
+                color={APP_COLORS.text.secondary}
               />
               <Text style={styles.scheduleText}>
                 {getRepeatText(repeatConfig)}
@@ -5227,7 +5418,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
                     <Pressable
                       onPress={() => toggleSubtask(item.id, st.id)}
                       style={[
-                        styles.checkbox, 
+                        styles.checkbox,
                         st.done && styles.checkboxCompleted,
                         shouldDisableCheckbox && styles.checkboxDisabled
                       ]}
@@ -5265,23 +5456,23 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
             {Array.isArray((item as any).subtaskCategories) && (item as any).subtaskCategories.length > 0 && (
               <View style={{ paddingHorizontal: 12, paddingBottom: 8, gap: 10 }}>
                 {(item as any).subtaskCategories.map((category: any) => (
-                  <View key={category.id} style={{ 
-                    borderWidth: 1, 
+                  <View key={category.id} style={{
+                    borderWidth: 1,
                     borderColor: activeTheme === 'dark' ? '#333' : '#e0e0e0',
                     borderRadius: 8,
                     overflow: 'hidden'
                   }}>
                     {/* Cabeçalho da categoria */}
-                    <View style={{ 
-                      flexDirection: 'row', 
-                      alignItems: 'center', 
+                    <View style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
                       justifyContent: 'space-between',
                       paddingHorizontal: 10,
                       paddingVertical: 8,
                       backgroundColor: activeTheme === 'dark' ? '#2a2a2a' : '#f5f5f5'
                     }}>
-                      <Text style={{ 
-                        fontSize: 12, 
+                      <Text style={{
+                        fontSize: 12,
                         fontWeight: '600',
                         color: activeTheme === 'dark' ? '#aaa' : '#666',
                         textTransform: 'uppercase',
@@ -5289,8 +5480,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
                       }}>
                         {category.name}
                       </Text>
-                      <Text style={{ 
-                        fontSize: 11, 
+                      <Text style={{
+                        fontSize: 11,
                         color: activeTheme === 'dark' ? '#888' : '#999'
                       }}>
                         {category.subtasks?.filter((st: any) => st.done).length || 0}/{category.subtasks?.length || 0}
@@ -5299,8 +5490,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
 
                     {/* Lista de subtarefas da categoria */}
                     {Array.isArray(category.subtasks) && category.subtasks.length > 0 && (
-                      <View style={{ 
-                        paddingHorizontal: 10, 
+                      <View style={{
+                        paddingHorizontal: 10,
                         paddingVertical: 8,
                         gap: 6,
                         backgroundColor: activeTheme === 'dark' ? '#1a1a1a' : '#fff'
@@ -5321,7 +5512,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
                             <View style={{ flex: 1 }}>
                               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                                 <Text style={[
-                                  styles.taskDescription, 
+                                  styles.taskDescription,
                                   st.done && styles.taskDescriptionCompleted,
                                   { flexShrink: 1 }
                                 ]}>
@@ -5390,7 +5581,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
                   </View>
                 )}
               </View>
-              
+
               {/* Botões de ação: sempre clicáveis; handlers validam permissão em runtime */}
               {(user.role === 'admin' || user.role === 'dependente') && (
                 (() => {
@@ -5431,7 +5622,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
   return (
     <GestureHandlerRootView style={styles.container}>
       <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-        <Header 
+        <Header
           userName={user?.name || 'Usuário'}
           userImage={user?.picture}
           userProfileIcon={user?.profileIcon}
@@ -5447,7 +5638,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
           onHistory={() => setHistoryModalVisible(true)}
           onInfo={() => { setSettingsModalVisible(true); openManagedModal('settings'); }}
           onLogout={handleLogout}
+          onLogout={handleLogout}
           onRefresh={handleUpdateData}
+          onCleanupTasks={cleanupInactiveTasks}
           showUndoButton={showUndoButton}
           onUndo={handleUndo}
           notificationCount={user.role === 'admin' ? (notifications.filter(n => !n.read).length + adminRoleRequests.length) : 0}
@@ -5457,13 +5650,13 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
             try {
               const ids = notifications.map(n => n.id);
               await LocalStorageService.setNotificationsRead(ids, true);
-            } catch {}
+            } catch { }
             setApprovalModalVisible(true);
           } : undefined}
           onManageFamily={user.role === 'admin' ? handleManageFamily : undefined}
           tasks={allTasks.length > 0 ? allTasks : tasks}
           onCalendarDaySelect={(date: Date) => {
-            try { Keyboard.dismiss(); } catch {}
+            try { Keyboard.dismiss(); } catch { }
             // Preparar criação de tarefa com data selecionada
             setIsEditing(false);
             setEditingTaskId(null as any);
@@ -5528,96 +5721,96 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
             isSyncing: syncStatus.isSyncing
           }}
         />
-        
+
         {/* Árvore de Natal decorativa no background - ocupa tela toda */}
         {/* Wrapper centralizado (apenas Web aplica largura 70%) */}
         <View style={[styles.pageContainer, Platform.OS === 'web' && styles.pageContainerWeb]}>
           <PanGestureHandler
-          onGestureEvent={onSwipeGestureEvent}
+            onGestureEvent={onSwipeGestureEvent}
             onHandlerStateChange={handleSwipeGesture}
-          activeOffsetX={[-10, 10]} // mais responsivo
-          failOffsetY={[-10, 10]}
-        >
-          <Animated.View style={[styles.content, Platform.OS === 'web' && styles.contentWeb, { opacity: tabFade }] }>
+            activeOffsetX={[-10, 10]} // mais responsivo
+            failOffsetY={[-10, 10]}
+          >
+            <Animated.View style={[styles.content, Platform.OS === 'web' && styles.contentWeb, { opacity: tabFade }]}>
 
-        {/* Header com Tabs e Filtro */}
-        <View style={styles.tabsHeaderContainer}>
-          {/* Indicador de Tabs Simplificado */}
-          <View style={styles.simpleTabContainer}>
-            <Pressable
-              style={[styles.simpleTab, activeTab === 'today' && styles.activeSimpleTab]}
-              onPress={() => changeTab('today')}
-            >
-              <Text style={[styles.simpleTabText, activeTab === 'today' && styles.activeSimpleTabText]}>
-                Hoje ({getTodayTasks().length})
-              </Text>
-            </Pressable>
-            
-            <Pressable
-              style={[styles.simpleTab, activeTab === 'upcoming' && styles.activeSimpleTab]}
-              onPress={() => changeTab('upcoming')}
-            >
-              <Text style={[styles.simpleTabText, activeTab === 'upcoming' && styles.activeSimpleTabText]}>
-                Próximas ({getUpcomingTasks().length})
-              </Text>
-            </Pressable>
-          </View>
-          
-          {/* Botão de Filtro separado */}
-          <TaskFilterButton 
-            buttonRef={filterButtonRef}
-            onPress={() => {
-              if (!filterDropdownVisible) {
-                // Calcular posição do botão antes de abrir
-                filterButtonRef.current?.measure((x: number, y: number, width: number, height: number, pageX: number, pageY: number) => {
-                  setFilterButtonLayout({
-                    top: pageY + height + 4, // 4px de espaçamento abaixo do botão
-                    right: Dimensions.get('window').width - (pageX + width)
-                  });
-                });
-              }
-              setFilterDropdownVisible(!filterDropdownVisible);
-            }}
-          />
-        </View>
-        
-        <View style={styles.summaryContainer}>
-          <Text style={styles.summaryText}>
-            {getCurrentTasks().filter((task: Task) => !task.completed).length} pendentes • {getCurrentTasks().filter((task: Task) => task.completed).length} concluídas
-          </Text>
-        </View>
+              {/* Header com Tabs e Filtro */}
+              <View style={styles.tabsHeaderContainer}>
+                {/* Indicador de Tabs Simplificado */}
+                <View style={styles.simpleTabContainer}>
+                  <Pressable
+                    style={[styles.simpleTab, activeTab === 'today' && styles.activeSimpleTab]}
+                    onPress={() => changeTab('today')}
+                  >
+                    <Text style={[styles.simpleTabText, activeTab === 'today' && styles.activeSimpleTabText]}>
+                      Hoje ({getTodayTasks().length})
+                    </Text>
+                  </Pressable>
 
-        {getCurrentTasks().length === 0 ? (
-          <EmptyState activeTab={activeTab} />
-        ) : (
-          <FlatList
-            data={getCurrentTasks()}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item: task }) => (
-              <View style={{ width: '100%', alignSelf: 'stretch' }}>
-                {renderTask({ item: task })}
+                  <Pressable
+                    style={[styles.simpleTab, activeTab === 'upcoming' && styles.activeSimpleTab]}
+                    onPress={() => changeTab('upcoming')}
+                  >
+                    <Text style={[styles.simpleTabText, activeTab === 'upcoming' && styles.activeSimpleTabText]}>
+                      Próximas ({getUpcomingTasks().length})
+                    </Text>
+                  </Pressable>
+                </View>
+
+                {/* Botão de Filtro separado */}
+                <TaskFilterButton
+                  buttonRef={filterButtonRef}
+                  onPress={() => {
+                    if (!filterDropdownVisible) {
+                      // Calcular posição do botão antes de abrir
+                      filterButtonRef.current?.measure((x: number, y: number, width: number, height: number, pageX: number, pageY: number) => {
+                        setFilterButtonLayout({
+                          top: pageY + height + 4, // 4px de espaçamento abaixo do botão
+                          right: Dimensions.get('window').width - (pageX + width)
+                        });
+                      });
+                    }
+                    setFilterDropdownVisible(!filterDropdownVisible);
+                  }}
+                />
               </View>
-            )}
-            style={styles.taskList}
-            contentContainerStyle={styles.taskListContent}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-            bounces={true}
-            removeClippedSubviews={true}
-            maxToRenderPerBatch={10}
-            updateCellsBatchingPeriod={50}
-            initialNumToRender={15}
-            scrollEventThrottle={16}
-          />
-        )}
-          </Animated.View>
-        </PanGestureHandler>
+
+              <View style={styles.summaryContainer}>
+                <Text style={styles.summaryText}>
+                  {getCurrentTasks().filter((task: Task) => !task.completed).length} pendentes • {getCurrentTasks().filter((task: Task) => task.completed).length} concluídas
+                </Text>
+              </View>
+
+              {getCurrentTasks().length === 0 ? (
+                <EmptyState activeTab={activeTab} />
+              ) : (
+                <FlatList
+                  data={getCurrentTasks()}
+                  keyExtractor={(item) => item.id}
+                  renderItem={({ item: task }) => (
+                    <View style={{ width: '100%', alignSelf: 'stretch' }}>
+                      {renderTask({ item: task })}
+                    </View>
+                  )}
+                  style={styles.taskList}
+                  contentContainerStyle={styles.taskListContent}
+                  showsVerticalScrollIndicator={false}
+                  keyboardShouldPersistTaps="handled"
+                  bounces={true}
+                  removeClippedSubviews={true}
+                  maxToRenderPerBatch={10}
+                  updateCellsBatchingPeriod={50}
+                  initialNumToRender={15}
+                  scrollEventThrottle={16}
+                />
+              )}
+            </Animated.View>
+          </PanGestureHandler>
 
         </View>
 
         {/* Botão Nova Tarefa Fixo */}
         <SafeAreaView style={styles.fixedButtonContainer} edges={['bottom']}>
-          <Pressable 
+          <Pressable
             style={({ pressed }) => [
               styles.createTaskButtonFixed,
               pressed && { opacity: 0.9 }
@@ -5630,815 +5823,194 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
           </Pressable>
         </SafeAreaView>
 
-      {/* Dropdown de Filtros - posicionado para abrir à esquerda */}
-      <TaskFilterDropdown
-        visible={filterDropdownVisible}
-        onClose={() => setFilterDropdownVisible(false)}
-        position={filterButtonLayout}
-        categories={categories}
-        selectedCategory={filterCategory}
-        onSelect={(id) => {
-          setFilterCategory(id);
-          setFilterDropdownVisible(false);
-        }}
-        onDeleteCategory={deleteCategory}
-      />
+        {/* Dropdown de Filtros - posicionado para abrir à esquerda */}
+        <TaskFilterDropdown
+          visible={filterDropdownVisible}
+          onClose={() => setFilterDropdownVisible(false)}
+          position={filterButtonLayout}
+          categories={categories}
+          selectedCategory={filterCategory}
+          onSelect={(id) => {
+            setFilterCategory(id);
+            setFilterDropdownVisible(false);
+          }}
+          onDeleteCategory={deleteCategory}
+        />
 
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={modalVisible && (isTopModal('task') || isTopModal('picker') || isTopModal('subtaskPicker'))}
-        onRequestClose={() => {
-          if (isAddingTask) return; // bloquear fechamento durante salvamento
-          setModalVisible(false);
-          closeManagedModal('task');
-        }}
-      >
-        <KeyboardAvoidingView 
-          style={styles.keyboardAvoidingView}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        <Modal
+          animationType="slide"
+          transparent={true}
+          visible={modalVisible && (isTopModal('task') || isTopModal('picker') || isTopModal('subtaskPicker'))}
+          onRequestClose={() => {
+            if (isAddingTask) return; // bloquear fechamento durante salvamento
+            setModalVisible(false);
+            closeManagedModal('task');
+          }}
         >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              {/* Cabeçalho: Título + Toggle Privado + Botão Fechar */}
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>{isEditing ? 'Editar Tarefa' : 'Nova Tarefa'}</Text>
-                
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                  {/* Toggle Privado no cabeçalho */}
-                  <Pressable
-                    style={[
-                      styles.privateToggleButtonCompact, 
-                      newTaskPrivate && styles.privateToggleButtonActive,
-                      user.role !== 'admin' && styles.opacityDisabled
-                    ]}
-                    onPress={() => {
-                      if (user.role !== 'admin') {
-                        Alert.alert('Sem permissão', 'Apenas administradores podem criar tarefas privadas.');
-                        return;
-                      }
-                      setNewTaskPrivate(prev => !prev);
-                    }}
-                    disabled={user.role !== 'admin'}
-                  >
-                    <Ionicons 
-                      name={newTaskPrivate ? "lock-closed" : "lock-open-outline"} 
-                      size={14} 
-                      color={newTaskPrivate ? "#fff" : "#666"} 
+          <KeyboardAvoidingView
+            style={styles.keyboardAvoidingView}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={styles.modalContent}>
+                {/* Cabeçalho: Título + Toggle Privado + Botão Fechar */}
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>{isEditing ? 'Editar Tarefa' : 'Nova Tarefa'}</Text>
+
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    {/* Toggle Privado no cabeçalho */}
+                    <Pressable
+                      style={[
+                        styles.privateToggleButtonCompact,
+                        newTaskPrivate && styles.privateToggleButtonActive,
+                        user.role !== 'admin' && styles.opacityDisabled
+                      ]}
+                      onPress={() => {
+                        if (user.role !== 'admin') {
+                          Alert.alert('Sem permissão', 'Apenas administradores podem criar tarefas privadas.');
+                          return;
+                        }
+                        setNewTaskPrivate(prev => !prev);
+                      }}
+                      disabled={user.role !== 'admin'}
+                    >
+                      <Ionicons
+                        name={newTaskPrivate ? "lock-closed" : "lock-open-outline"}
+                        size={14}
+                        color={newTaskPrivate ? "#fff" : "#666"}
+                      />
+                      <Text style={[
+                        styles.privateToggleTextCompact,
+                        newTaskPrivate && styles.privateToggleTextActive
+                      ]}>
+                        Privado
+                      </Text>
+                    </Pressable>
+
+                    <Pressable onPress={resetForm} disabled={isAddingTask}>
+                      <Ionicons name="close" size={24} color="#666" />
+                    </Pressable>
+                  </View>
+                </View>
+
+                <ScrollView
+                  style={styles.modalScrollView}
+                  contentContainerStyle={styles.modalScrollContent}
+                  showsVerticalScrollIndicator={false}
+                  keyboardShouldPersistTaps="handled"
+                >
+                  {/* 1. CATEGORIAS */}
+                  <Text style={styles.categoryLabel}>Categoria:</Text>
+                  <View style={styles.categorySelectorContainer}>
+                    <CategorySelector
+                      categories={categories}
+                      selectedCategory={selectedCategory}
+                      onSelect={setSelectedCategory}
+                      onAddCategory={() => {
+                        setCategoryModalVisible(true);
+                        openManagedModal('category');
+                      }}
                     />
-                    <Text style={[
-                      styles.privateToggleTextCompact, 
-                      newTaskPrivate && styles.privateToggleTextActive
-                    ]}>
-                      Privado
-                    </Text>
-                  </Pressable>
-                  
-                  <Pressable onPress={resetForm} disabled={isAddingTask}>
-                    <Ionicons name="close" size={24} color="#666" />
-                  </Pressable>
-                </View>
-              </View>
-
-              <ScrollView 
-                style={styles.modalScrollView}
-                contentContainerStyle={styles.modalScrollContent}
-                showsVerticalScrollIndicator={false}
-                keyboardShouldPersistTaps="handled"
-              >
-                {/* 1. CATEGORIAS */}
-                <Text style={styles.categoryLabel}>Categoria:</Text>
-                <View style={styles.categorySelectorContainer}>
-                <CategorySelector 
-                  categories={categories}
-                  selectedCategory={selectedCategory}
-                  onSelect={setSelectedCategory}
-                  onAddCategory={() => {
-                    setCategoryModalVisible(true);
-                    openManagedModal('category');
-                  }}
-                />
-                </View>
-
-                {/* 2. TÍTULO E DESCRIÇÃO */}
-                <TextInput
-                  style={[styles.input, { color: colors.textPrimary }]}
-                  placeholder="Título da tarefa"
-                  placeholderTextColor={activeTheme === 'dark' ? '#888' : '#999'}
-                  value={newTaskTitle}
-                  onChangeText={setNewTaskTitle}
-                  maxLength={100}
-                />
-
-                <TextInput
-                  style={[styles.input, styles.textArea, { color: colors.textPrimary }]}
-                  placeholder="Descrição (opcional)"
-                  placeholderTextColor={activeTheme === 'dark' ? '#888' : '#999'}
-                  value={newTaskDescription}
-                  onChangeText={setNewTaskDescription}
-                  multiline
-                  numberOfLines={3}
-                  maxLength={300}
-                />
-
-                {/* 3. SUBTAREFAS */}
-                <View style={{ marginTop: 12 }}>
-                  <View style={{ marginBottom: 12 }}>
-                    <Text style={[styles.categoryLabel, { marginBottom: 8 }]}>Categorias de Subtarefas:</Text>
-                    <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-                      <Pressable
-                        onPress={() => setSubtaskMode(subtaskMode === 'simple' ? 'none' : 'simple')}
-                        style={[
-                          styles.scheduleActionButton,
-                          { flex: 1, minWidth: 140 },
-                          subtaskMode === 'simple' && { backgroundColor: APP_COLORS.primary.main }
-                        ]}
-                      >
-                        <Ionicons name="add" size={16} color={subtaskMode === 'simple' ? "#fff" : APP_COLORS.primary.main} />
-                        <Text style={{ 
-                          color: subtaskMode === 'simple' ? '#fff' : APP_COLORS.primary.main, 
-                          fontSize: 12, 
-                          marginLeft: 4 
-                        }}>
-                          Subtarefas
-                        </Text>
-                      </Pressable>
-                      
-                      <Pressable
-                        onPress={() => setSubtaskMode(subtaskMode === 'category' ? 'none' : 'category')}
-                        style={[
-                          styles.scheduleActionButton,
-                          { flex: 1, minWidth: 140 },
-                          subtaskMode === 'category' && { backgroundColor: APP_COLORS.primary.main }
-                        ]}
-                      >
-                        <Ionicons name="add" size={16} color={subtaskMode === 'category' ? "#fff" : APP_COLORS.primary.main} />
-                        <Text style={{ 
-                          color: subtaskMode === 'category' ? '#fff' : APP_COLORS.primary.main, 
-                          fontSize: 12, 
-                          marginLeft: 4 
-                        }}>
-                          Com Categoria
-                        </Text>
-                      </Pressable>
-                    </View>
                   </View>
 
-                  {/* Modo: Subtarefas Simples */}
-                  {subtaskMode === 'simple' && (
-                    <View>
-                      {subtasksDraft.length > 0 && (
-                        <View style={{ gap: 8, marginBottom: 8 }}>
-                          {subtasksDraft.map((st, idx) => (
-                            <View key={st.id} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6, flexWrap: 'nowrap' }}>
-                              <View style={{ flex: 1, minWidth: 0 }}>
-                                <TextInput
-                                  style={[styles.input, { color: colors.textPrimary }]}
-                                  placeholder={`Subtarefa ${idx + 1}`}
-                                  placeholderTextColor={activeTheme === 'dark' ? '#888' : '#999'}
-                                  value={st.title}
-                                  onChangeText={(txt) => setSubtasksDraft(prev => {
-                                    const next = prev.map(s => s.id === st.id ? { ...s, title: txt } : s);
-                                    return next;
-                                  })}
-                                />
-                              </View>
-                              <Pressable 
-                                onPress={() => {
-                                  logger.debug('PICKERS', `Botão de data da subtarefa clicado! ID: ${st.id}`);
-                                  setEditingSubtaskId(st.id);
-                                  if (Platform.OS === 'web') {
-                                    const inputElement = webSubtaskDateInputRef.current as HTMLInputElement | null;
-                                    if (inputElement) {
-                                      (inputElement as any)._editingSubtaskId = st.id;
-                                      if (st.dueDate) {
-                                        datePickerBaseRef.current = st.dueDate;
-                                      }
-                                      if (st.dueDate) {
-                                        const y = st.dueDate.getFullYear();
-                                        const m = String(st.dueDate.getMonth() + 1).padStart(2, '0');
-                                        const d = String(st.dueDate.getDate()).padStart(2, '0');
-                                        inputElement.value = `${y}-${m}-${d}`;
-                                      } else {
-                                        const now = new Date();
-                                        const y = now.getFullYear();
-                                        const m = String(now.getMonth() + 1).padStart(2, '0');
-                                        inputElement.value = `${y}-${m}-01`;
-                                      }
-                                      logger.debug('PICKERS', `ID armazenado no input: ${st.id}`);
-                                      try {
-                                        (inputElement as any).focus?.();
-                                        if (typeof (inputElement as any).showPicker === 'function') {
-                                          logger.debug('PICKERS', 'Usando showPicker() para subtarefa');
-                                          (inputElement as any).showPicker();
-                                        } else {
-                                          logger.debug('PICKERS', 'Usando click() para subtarefa');
-                                          (inputElement as any).click();
-                                        }
-                                      } catch (error) {
-                                        logger.error('PICKERS', 'Erro ao abrir picker de subtarefa', error);
-                                      }
-                                    }
-                                  } else {
-                                    if (st.dueDate) {
-                                      datePickerBaseRef.current = st.dueDate;
-                                      pickerSubtaskDateValueRef.current = st.dueDate;
-                                    } else {
-                                      datePickerBaseRef.current = null;
-                                      pickerSubtaskDateValueRef.current = stableNowRef.current;
-                                    }
-                                    setShowSubtaskDatePicker(true);
-                                    openManagedModal('subtaskPicker');
-                                  }
-                                }}
-                                style={[styles.scheduleActionButton, { flexShrink: 0 }, st.dueDate && styles.scheduleActionButtonActive]}
-                              >
-                                <Ionicons 
-                                  name="calendar-outline" 
-                                  size={14} 
-                                  color={st.dueDate ? "#fff" : APP_COLORS.primary.main} 
-                                />
-                                {st.dueDate && (
-                                  <Text style={styles.scheduleActionButtonText}>
-                                    {formatDate(st.dueDate)}
-                                  </Text>
-                                )}
-                              </Pressable>
-                              <Pressable 
-                                onPress={() => {
-                                  logger.debug('PICKERS', `Botão de hora da subtarefa clicado! ID: ${st.id}`);
-                                  setEditingSubtaskId(st.id);
-                                  if (Platform.OS === 'web') {
-                                    const inputElement = webSubtaskTimeInputRef.current as HTMLInputElement | null;
-                                    if (inputElement) {
-                                      (inputElement as any)._editingSubtaskId = st.id;
-                                      if (st.dueTime) {
-                                        timePickerBaseRef.current = st.dueTime;
-                                      }
-                                      if (st.dueTime) {
-                                        const hh = String(st.dueTime.getHours()).padStart(2, '0');
-                                        const mm = String(st.dueTime.getMinutes()).padStart(2, '0');
-                                        inputElement.value = `${hh}:${mm}`;
-                                      } else {
-                                        inputElement.value = '';
-                                      }
-                                      logger.debug('PICKERS', `ID armazenado no input: ${st.id}`);
-                                      try {
-                                        (inputElement as any).focus?.();
-                                        if (typeof (inputElement as any).showPicker === 'function') {
-                                          logger.debug('PICKERS', 'Usando showPicker() para subtarefa');
-                                          (inputElement as any).showPicker();
-                                        } else {
-                                          logger.debug('PICKERS', 'Usando click() para subtarefa');
-                                          (inputElement as any).click();
-                                        }
-                                      } catch (error) {
-                                        logger.error('PICKERS', 'Erro ao abrir picker de subtarefa', error);
-                                      }
-                                    }
-                                  } else {
-                                    if (st.dueTime) {
-                                      timePickerBaseRef.current = st.dueTime;
-                                      pickerSubtaskTimeValueRef.current = st.dueTime;
-                                    } else {
-                                      timePickerBaseRef.current = null;
-                                      pickerSubtaskTimeValueRef.current = stableNowRef.current;
-                                    }
-                                    setShowSubtaskTimePicker(true);
-                                    openManagedModal('subtaskPicker');
-                                  }
-                                }}
-                                style={[styles.scheduleActionButton, { flexShrink: 0 }, st.dueTime && styles.scheduleActionButtonActive]}
-                              >
-                                <Ionicons 
-                                  name="time-outline" 
-                                  size={14} 
-                                  color={st.dueTime ? "#fff" : APP_COLORS.primary.main} 
-                                />
-                                {st.dueTime && (
-                                  <Text style={styles.scheduleActionButtonText}>
-                                    {formatTime(st.dueTime)}
-                                  </Text>
-                                )}
-                              </Pressable>
-                              <Pressable 
-                                onPress={() => setSubtasksDraft(prev => {
-                                  const next = prev.filter(s => s.id !== st.id);
-                                  return next;
-                                })}
-                                style={[styles.scheduleActionButton, { flexShrink: 0 }]}
-                              >
-                                <Ionicons name="trash-outline" size={16} color="#e74c3c" />
-                              </Pressable>
-                            </View>
-                          ))}
-                        </View>
-                      )}
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'nowrap' }}>
-                        <TextInput
-                          style={[styles.input, { flex: 1, marginBottom: 0, minWidth: 0, color: colors.textPrimary }]}
-                          placeholder="Adicionar subtarefa"
-                          placeholderTextColor={activeTheme === 'dark' ? '#888' : '#999'}
-                          value={newSubtaskTitle}
-                          onChangeText={setNewSubtaskTitle}
-                        />
+                  {/* 2. TÍTULO E DESCRIÇÃO */}
+                  <TextInput
+                    style={[styles.input, { color: colors.textPrimary }]}
+                    placeholder="Título da tarefa"
+                    placeholderTextColor={activeTheme === 'dark' ? '#888' : '#999'}
+                    value={newTaskTitle}
+                    onChangeText={setNewTaskTitle}
+                    maxLength={100}
+                  />
+
+                  <TextInput
+                    style={[styles.input, styles.textArea, { color: colors.textPrimary }]}
+                    placeholder="Descrição (opcional)"
+                    placeholderTextColor={activeTheme === 'dark' ? '#888' : '#999'}
+                    value={newTaskDescription}
+                    onChangeText={setNewTaskDescription}
+                    multiline
+                    numberOfLines={3}
+                    maxLength={300}
+                  />
+
+                  {/* 3. SUBTAREFAS */}
+                  <View style={{ marginTop: 12 }}>
+                    <View style={{ marginBottom: 12 }}>
+                      <Text style={[styles.categoryLabel, { marginBottom: 8 }]}>Categorias de Subtarefas:</Text>
+                      <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
                         <Pressable
-                          onPress={() => {
-                            if (Platform.OS === 'web') {
-                              const inputElement = webSubtaskDateInputRef.current as HTMLInputElement | null;
-                              if (inputElement) {
-                                (inputElement as any)._editingSubtaskId = 'new-subtask';
-                                (inputElement as any)._categoryId = null;
-                                if (newSubtaskDate) {
-                                  datePickerBaseRef.current = newSubtaskDate;
-                                  const y = newSubtaskDate.getFullYear();
-                                  const m = String(newSubtaskDate.getMonth() + 1).padStart(2, '0');
-                                  const d = String(newSubtaskDate.getDate()).padStart(2, '0');
-                                  inputElement.value = `${y}-${m}-${d}`;
-                                } else {
-                                  const now = new Date();
-                                  const y = now.getFullYear();
-                                  const m = String(now.getMonth() + 1).padStart(2, '0');
-                                  inputElement.value = `${y}-${m}-01`;
-                                }
-                                try {
-                                  (inputElement as any).focus?.();
-                                  if (typeof (inputElement as any).showPicker === 'function') {
-                                    (inputElement as any).showPicker();
-                                  } else {
-                                    (inputElement as any).click();
-                                  }
-                                } catch (error) {
-                                  logger.error('PICKERS', 'Erro ao abrir picker', error);
-                                }
-                              }
-                            } else {
-                              if (newSubtaskDate) {
-                                datePickerBaseRef.current = newSubtaskDate;
-                                pickerSubtaskDateValueRef.current = newSubtaskDate;
-                              } else {
-                                datePickerBaseRef.current = null;
-                                pickerSubtaskDateValueRef.current = stableNowRef.current;
-                              }
-                              setEditingSubtaskId('new-subtask');
-                              setShowSubtaskDatePicker(true);
-                              openManagedModal('subtaskPicker');
-                            }
-                          }}
-                          style={[styles.scheduleActionButton, { marginBottom: 0, flexShrink: 0 }, newSubtaskDate && styles.scheduleActionButtonActive]}
+                          onPress={() => setSubtaskMode(subtaskMode === 'simple' ? 'none' : 'simple')}
+                          style={[
+                            styles.scheduleActionButton,
+                            { flex: 1, minWidth: 140 },
+                            subtaskMode === 'simple' && { backgroundColor: APP_COLORS.primary.main }
+                          ]}
                         >
-                          <Ionicons 
-                            name="calendar-outline" 
-                            size={12} 
-                            color={newSubtaskDate ? "#fff" : APP_COLORS.primary.main} 
-                          />
-                          {newSubtaskDate && (
-                            <Text style={[styles.scheduleActionButtonText, { fontSize: 10 }]}>
-                              {formatDate(newSubtaskDate)}
-                            </Text>
-                          )}
+                          <Ionicons name="add" size={16} color={subtaskMode === 'simple' ? "#fff" : APP_COLORS.primary.main} />
+                          <Text style={{
+                            color: subtaskMode === 'simple' ? '#fff' : APP_COLORS.primary.main,
+                            fontSize: 12,
+                            marginLeft: 4
+                          }}>
+                            Subtarefas
+                          </Text>
                         </Pressable>
-                        
+
                         <Pressable
-                          onPress={() => {
-                            if (Platform.OS === 'web') {
-                              const inputElement = webSubtaskTimeInputRef.current as HTMLInputElement | null;
-                              if (inputElement) {
-                                (inputElement as any)._editingSubtaskId = 'new-subtask';
-                                (inputElement as any)._categoryId = null;
-                                if (newSubtaskTime) {
-                                  timePickerBaseRef.current = newSubtaskTime;
-                                  const hh = String(newSubtaskTime.getHours()).padStart(2, '0');
-                                  const mm = String(newSubtaskTime.getMinutes()).padStart(2, '0');
-                                  inputElement.value = `${hh}:${mm}`;
-                                } else {
-                                  inputElement.value = '';
-                                }
-                                try {
-                                  (inputElement as any).focus?.();
-                                  if (typeof (inputElement as any).showPicker === 'function') {
-                                    (inputElement as any).showPicker();
-                                  } else {
-                                    (inputElement as any).click();
-                                  }
-                                } catch (error) {
-                                  logger.error('PICKERS', 'Erro ao abrir picker', error);
-                                }
-                              }
-                            } else {
-                              if (newSubtaskTime) {
-                                timePickerBaseRef.current = newSubtaskTime;
-                                pickerSubtaskTimeValueRef.current = newSubtaskTime;
-                              } else {
-                                timePickerBaseRef.current = null;
-                                pickerSubtaskTimeValueRef.current = stableNowRef.current;
-                              }
-                              setEditingSubtaskId('new-subtask');
-                              setShowSubtaskTimePicker(true);
-                              openManagedModal('subtaskPicker');
-                            }
-                          }}
-                          style={[styles.scheduleActionButton, { marginBottom: 0, flexShrink: 0 }, newSubtaskTime && styles.scheduleActionButtonActive]}
+                          onPress={() => setSubtaskMode(subtaskMode === 'category' ? 'none' : 'category')}
+                          style={[
+                            styles.scheduleActionButton,
+                            { flex: 1, minWidth: 140 },
+                            subtaskMode === 'category' && { backgroundColor: APP_COLORS.primary.main }
+                          ]}
                         >
-                          <Ionicons 
-                            name="time-outline" 
-                            size={12} 
-                            color={newSubtaskTime ? "#fff" : APP_COLORS.primary.main} 
-                          />
-                          {newSubtaskTime && (
-                            <Text style={[styles.scheduleActionButtonText, { fontSize: 10 }]}>
-                              {formatTime(newSubtaskTime)}
-                            </Text>
-                          )}
-                        </Pressable>
-                        
-                        <Pressable
-                          onPress={() => {
-                            const title = newSubtaskTitle.trim();
-                            if (!title) return;
-                            setSubtasksDraft(prev => {
-                              const next = [...prev, { 
-                                id: uuidv4(), 
-                                title, 
-                                done: false,
-                                dueDate: newSubtaskDate,
-                                dueTime: newSubtaskTime
-                              }];
-                              return next;
-                            });
-                            setNewSubtaskTitle('');
-                            setNewSubtaskDate(undefined);
-                            setNewSubtaskTime(undefined);
-                          }}
-                          style={[styles.scheduleActionButton, { marginBottom: 0, flexShrink: 0 }]}
-                        >
-                          <Ionicons name="add" size={18} color={APP_COLORS.primary.main} />
+                          <Ionicons name="add" size={16} color={subtaskMode === 'category' ? "#fff" : APP_COLORS.primary.main} />
+                          <Text style={{
+                            color: subtaskMode === 'category' ? '#fff' : APP_COLORS.primary.main,
+                            fontSize: 12,
+                            marginLeft: 4
+                          }}>
+                            Com Categoria
+                          </Text>
                         </Pressable>
                       </View>
                     </View>
-                  )}
 
-                  {/* Modo: Com Categoria */}
-                  {subtaskMode === 'category' && (
-                    <View>
-                      {/* Input para adicionar nova categoria */}
-                      {isAddingCategory && (
-                        <View style={{ 
-                          flexDirection: 'row', 
-                          alignItems: 'center', 
-                          gap: 8, 
-                          marginBottom: 12, 
-                          padding: 12, 
-                          backgroundColor: activeTheme === 'dark' ? '#2a2a2a' : '#f0f0f0', 
-                          borderRadius: 8 
-                        }}>
-                          <TextInput
-                            style={[styles.input, { 
-                              flex: 1, 
-                              marginBottom: 0, 
-                              backgroundColor: activeTheme === 'dark' ? '#1a1a1a' : '#fff',
-                              color: colors.textPrimary
-                            }]}
-                            placeholder="Nome da categoria"
-                            placeholderTextColor={activeTheme === 'dark' ? '#888' : '#999'}
-                            value={newCategoryTitle}
-                            onChangeText={setNewCategoryTitle}
-                            autoFocus
-                          />
-                          <Pressable
-                            onPress={() => {
-                              const title = newCategoryTitle.trim();
-                              if (!title) {
-                                Alert.alert('Erro', 'Digite um nome para a categoria');
-                                return;
-                              }
-                              const newCategory: SubtaskCategory = {
-                                id: uuidv4(),
-                                name: title,
-                                subtasks: [],
-                                isExpanded: true,
-                                createdAt: new Date()
-                              };
-                              setSubtaskCategories(prev => [...prev, newCategory]);
-                              setNewCategoryTitle('');
-                              setIsAddingCategory(false);
-                            }}
-                            style={[styles.scheduleActionButton, { backgroundColor: APP_COLORS.primary.main, marginBottom: 0 }]}
-                          >
-                            <Ionicons name="checkmark" size={18} color="#fff" />
-                          </Pressable>
-                          <Pressable
-                            onPress={() => {
-                              setIsAddingCategory(false);
-                              setNewCategoryTitle('');
-                            }}
-                            style={[styles.scheduleActionButton, { marginBottom: 0 }]}
-                          >
-                            <Ionicons name="close" size={18} color="#e74c3c" />
-                          </Pressable>
-                        </View>
-                      )}
-
-                      {/* Botão para adicionar categoria se não estiver adicionando */}
-                      {!isAddingCategory && (
-                        <Pressable
-                          onPress={() => setIsAddingCategory(true)}
-                          style={[styles.scheduleActionButton, { backgroundColor: APP_COLORS.primary.main, marginBottom: 12 }]}
-                        >
-                          <Ionicons name="add" size={16} color="#fff" />
-                          <Text style={{ color: '#fff', fontSize: 12, marginLeft: 4 }}>Nova Categoria</Text>
-                        </Pressable>
-                      )}
-
-                      {/* Lista de categorias */}
-                      {subtaskCategories.map((category) => (
-                        <View key={category.id} style={{ 
-                          marginBottom: 12, 
-                          borderWidth: 1, 
-                          borderColor: activeTheme === 'dark' ? '#444' : '#e0e0e0', 
-                          borderRadius: 8, 
-                          overflow: 'hidden',
-                          backgroundColor: activeTheme === 'dark' ? '#1a1a1a' : '#fff'
-                        }}>
-                          {/* Cabeçalho da categoria */}
-                          <View style={{ 
-                            flexDirection: 'row', 
-                            alignItems: 'center', 
-                            padding: 12, 
-                            backgroundColor: activeTheme === 'dark' ? '#2a2a2a' : '#f8f8f8' 
-                          }}>
-                            <Pressable
-                              onPress={() => {
-                                setSubtaskCategories(prev =>
-                                  prev.map(cat =>
-                                    cat.id === category.id
-                                      ? { ...cat, isExpanded: !cat.isExpanded }
-                                      : cat
-                                  )
-                                );
-                              }}
-                              style={{ marginRight: 8 }}
-                            >
-                              <Ionicons 
-                                name={category.isExpanded ? "chevron-down" : "chevron-forward"} 
-                                size={20} 
-                                color={activeTheme === 'dark' ? '#aaa' : '#666'} 
-                              />
-                            </Pressable>
-                            <Text style={{ 
-                              flex: 1, 
-                              fontSize: 16, 
-                              fontWeight: '600', 
-                              color: activeTheme === 'dark' ? '#fff' : '#333' 
-                            }}>
-                              {category.name}
-                            </Text>
-                            <Text style={{ 
-                              fontSize: 12, 
-                              color: activeTheme === 'dark' ? '#aaa' : '#666', 
-                              marginRight: 8 
-                            }}>
-                              {category.subtasks.filter(st => st.done).length}/{category.subtasks.length}
-                            </Text>
-                            <Pressable
-                              onPress={() => {
-                                Alert.alert(
-                                  'Remover Categoria',
-                                  `Deseja remover a categoria "${category.name}" e todas as suas subtarefas?`,
-                                  [
-                                    { text: 'Cancelar', style: 'cancel' },
-                                    {
-                                      text: 'Remover',
-                                      style: 'destructive',
-                                      onPress: () => {
-                                        setSubtaskCategories(prev => prev.filter(cat => cat.id !== category.id));
-                                      }
-                                    }
-                                  ]
-                                );
-                              }}
-                            >
-                              <Ionicons name="trash-outline" size={18} color="#e74c3c" />
-                            </Pressable>
-                          </View>
-
-                          {/* Conteúdo da categoria (expandido) */}
-                          {category.isExpanded && (
-                            <View style={{ 
-                              padding: 12, 
-                              backgroundColor: activeTheme === 'dark' ? '#1a1a1a' : '#fff' 
-                            }}>
-                              {/* Lista de subtarefas da categoria */}
-                              {category.subtasks.map((subtask) => (
-                                <View key={subtask.id} style={{ marginBottom: 8 }}>
-                                  <View style={{ 
-                                    flexDirection: 'row', 
-                                    alignItems: 'center', 
-                                    padding: 8, 
-                                    backgroundColor: activeTheme === 'dark' ? '#2a2a2a' : '#f9f9f9', 
-                                    borderRadius: 6 
-                                  }}>
-                                    <Pressable
-                                      onPress={() => {
-                                        setSubtaskCategories(prev =>
-                                          prev.map(cat =>
-                                            cat.id === category.id
-                                              ? {
-                                                  ...cat,
-                                                  subtasks: cat.subtasks.map(st =>
-                                                    st.id === subtask.id
-                                                      ? { ...st, done: !st.done }
-                                                      : st
-                                                  )
-                                                }
-                                              : cat
-                                          )
-                                        );
-                                      }}
-                                      style={{ marginRight: 8 }}
-                                    >
-                                      <Ionicons
-                                        name={subtask.done ? "checkbox" : "square-outline"}
-                                        size={20}
-                                        color={subtask.done ? APP_COLORS.primary.main : (activeTheme === 'dark' ? '#666' : '#999')}
-                                      />
-                                    </Pressable>
-                                    <Text style={{ 
-                                      flex: 1, 
-                                      color: subtask.done ? (activeTheme === 'dark' ? '#666' : '#999') : (activeTheme === 'dark' ? '#ddd' : '#333'), 
-                                      textDecorationLine: subtask.done ? 'line-through' : 'none' 
-                                    }}>
-                                      {subtask.title}
-                                    </Text>
-                                    <Pressable
-                                      onPress={() => {
-                                        setSubtaskCategories(prev =>
-                                          prev.map(cat =>
-                                            cat.id === category.id
-                                              ? {
-                                                  ...cat,
-                                                  subtasks: cat.subtasks.filter(st => st.id !== subtask.id)
-                                                }
-                                              : cat
-                                          )
-                                        );
-                                      }}
-                                    >
-                                      <Ionicons name="close-circle" size={20} color="#e74c3c" />
-                                    </Pressable>
-                                  </View>
-                                  
-                                  {/* Botões de data e hora da subtarefa */}
-                                  <View style={{ flexDirection: 'row', gap: 6, marginTop: 4, paddingLeft: 8, flexWrap: 'nowrap' }}>
-                                    <Pressable
-                                      onPress={() => {
-                                        logger.debug('PICKERS', `Botão de data da subtarefa de categoria clicado! ID: ${subtask.id}`);
-                                        setEditingSubtaskId(subtask.id);
-                                        setEditingSubtaskCategoryId(category.id);
-                                        if (Platform.OS === 'web') {
-                                          const inputElement = webSubtaskDateInputRef.current as HTMLInputElement | null;
-                                          if (inputElement) {
-                                            (inputElement as any)._editingSubtaskId = subtask.id;
-                                            (inputElement as any)._categoryId = category.id;
-                                            if (subtask.dueDate) {
-                                              datePickerBaseRef.current = subtask.dueDate;
-                                            }
-                                            if (subtask.dueDate) {
-                                              const y = subtask.dueDate.getFullYear();
-                                              const m = String(subtask.dueDate.getMonth() + 1).padStart(2, '0');
-                                              const d = String(subtask.dueDate.getDate()).padStart(2, '0');
-                                              inputElement.value = `${y}-${m}-${d}`;
-                                            } else {
-                                              const now = new Date();
-                                              const y = now.getFullYear();
-                                              const m = String(now.getMonth() + 1).padStart(2, '0');
-                                              inputElement.value = `${y}-${m}-01`;
-                                            }
-                                            try {
-                                              (inputElement as any).focus?.();
-                                              if (typeof (inputElement as any).showPicker === 'function') {
-                                                (inputElement as any).showPicker();
-                                              } else {
-                                                (inputElement as any).click();
-                                              }
-                                            } catch (error) {
-                                              logger.error('PICKERS', 'Erro ao abrir picker', error);
-                                            }
-                                          }
-                                        } else {
-                                          if (subtask.dueDate) {
-                                            datePickerBaseRef.current = subtask.dueDate;
-                                            pickerSubtaskDateValueRef.current = subtask.dueDate;
-                                          } else {
-                                            datePickerBaseRef.current = null;
-                                            pickerSubtaskDateValueRef.current = stableNowRef.current;
-                                          }
-                                          setShowSubtaskDatePicker(true);
-                                          openManagedModal('subtaskPicker');
-                                        }
-                                      }}
-                                      style={[styles.scheduleActionButton, { marginBottom: 0, flexShrink: 0 }, subtask.dueDate && styles.scheduleActionButtonActive]}
-                                    >
-                                      <Ionicons 
-                                        name="calendar-outline" 
-                                        size={12} 
-                                        color={subtask.dueDate ? "#fff" : APP_COLORS.primary.main} 
-                                      />
-                                      {subtask.dueDate && (
-                                        <Text style={[styles.scheduleActionButtonText, { fontSize: 10 }]}>
-                                          {formatDate(subtask.dueDate)}
-                                        </Text>
-                                      )}
-                                    </Pressable>
-                                    
-                                    <Pressable
-                                      onPress={() => {
-                                        logger.debug('PICKERS', `Botão de hora da subtarefa de categoria clicado! ID: ${subtask.id}`);
-                                        setEditingSubtaskId(subtask.id);
-                                        setEditingSubtaskCategoryId(category.id);
-                                        if (Platform.OS === 'web') {
-                                          const inputElement = webSubtaskTimeInputRef.current as HTMLInputElement | null;
-                                          if (inputElement) {
-                                            (inputElement as any)._editingSubtaskId = subtask.id;
-                                            (inputElement as any)._categoryId = category.id;
-                                            if (subtask.dueTime) {
-                                              timePickerBaseRef.current = subtask.dueTime;
-                                            }
-                                            if (subtask.dueTime) {
-                                              const hh = String(subtask.dueTime.getHours()).padStart(2, '0');
-                                              const mm = String(subtask.dueTime.getMinutes()).padStart(2, '0');
-                                              inputElement.value = `${hh}:${mm}`;
-                                            } else {
-                                              inputElement.value = '';
-                                            }
-                                            try {
-                                              (inputElement as any).focus?.();
-                                              if (typeof (inputElement as any).showPicker === 'function') {
-                                                (inputElement as any).showPicker();
-                                              } else {
-                                                (inputElement as any).click();
-                                              }
-                                            } catch (error) {
-                                              logger.error('PICKERS', 'Erro ao abrir picker', error);
-                                            }
-                                          }
-                                        } else {
-                                          if (subtask.dueTime) {
-                                            timePickerBaseRef.current = subtask.dueTime;
-                                            pickerSubtaskTimeValueRef.current = subtask.dueTime;
-                                          } else {
-                                            timePickerBaseRef.current = null;
-                                            pickerSubtaskTimeValueRef.current = stableNowRef.current;
-                                          }
-                                          setShowSubtaskTimePicker(true);
-                                          openManagedModal('subtaskPicker');
-                                        }
-                                      }}
-                                      style={[styles.scheduleActionButton, { marginBottom: 0, flexShrink: 0 }, subtask.dueTime && styles.scheduleActionButtonActive]}
-                                    >
-                                      <Ionicons 
-                                        name="time-outline" 
-                                        size={12} 
-                                        color={subtask.dueTime ? "#fff" : APP_COLORS.primary.main} 
-                                      />
-                                      {subtask.dueTime && (
-                                        <Text style={[styles.scheduleActionButtonText, { fontSize: 10 }]}>
-                                          {formatTime(subtask.dueTime)}
-                                        </Text>
-                                      )}
-                                    </Pressable>
-                                  </View>
+                    {/* Modo: Subtarefas Simples */}
+                    {subtaskMode === 'simple' && (
+                      <View>
+                        {subtasksDraft.length > 0 && (
+                          <View style={{ gap: 8, marginBottom: 8 }}>
+                            {subtasksDraft.map((st, idx) => (
+                              <View key={st.id} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6, flexWrap: 'nowrap' }}>
+                                <View style={{ flex: 1, minWidth: 0 }}>
+                                  <TextInput
+                                    style={[styles.input, { color: colors.textPrimary }]}
+                                    placeholder={`Subtarefa ${idx + 1}`}
+                                    placeholderTextColor={activeTheme === 'dark' ? '#888' : '#999'}
+                                    value={st.title}
+                                    onChangeText={(txt) => setSubtasksDraft(prev => {
+                                      const next = prev.map(s => s.id === st.id ? { ...s, title: txt } : s);
+                                      return next;
+                                    })}
+                                  />
                                 </View>
-                              ))}
-
-                              {/* Input para adicionar subtarefa na categoria */}
-                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8, flexWrap: 'nowrap' }}>
-                                <TextInput
-                                  style={[styles.input, { 
-                                    flex: 1, 
-                                    marginBottom: 0, 
-                                    fontSize: 14,
-                                    minWidth: 0,
-                                    backgroundColor: activeTheme === 'dark' ? '#2a2a2a' : '#fff',
-                                    color: colors.textPrimary
-                                  }]}
-                                  placeholder="Adicionar subtarefa"
-                                  placeholderTextColor={activeTheme === 'dark' ? '#888' : '#999'}
-                                  value={newSubtaskInCategory?.categoryId === category.id ? newSubtaskInCategory.title : ''}
-                                  onChangeText={(text) => setNewSubtaskInCategory({ categoryId: category.id, title: text })}
-                                />
                                 <Pressable
                                   onPress={() => {
+                                    logger.debug('PICKERS', `Botão de data da subtarefa clicado! ID: ${st.id}`);
+                                    setEditingSubtaskId(st.id);
                                     if (Platform.OS === 'web') {
                                       const inputElement = webSubtaskDateInputRef.current as HTMLInputElement | null;
                                       if (inputElement) {
-                                        (inputElement as any)._editingSubtaskId = 'new-category-subtask';
-                                        (inputElement as any)._categoryId = category.id;
-                                        if (newCategorySubtaskDate) {
-                                          datePickerBaseRef.current = newCategorySubtaskDate;
-                                          const y = newCategorySubtaskDate.getFullYear();
-                                          const m = String(newCategorySubtaskDate.getMonth() + 1).padStart(2, '0');
-                                          const d = String(newCategorySubtaskDate.getDate()).padStart(2, '0');
+                                        (inputElement as any)._editingSubtaskId = st.id;
+                                        if (st.dueDate) {
+                                          datePickerBaseRef.current = st.dueDate;
+                                        }
+                                        if (st.dueDate) {
+                                          const y = st.dueDate.getFullYear();
+                                          const m = String(st.dueDate.getMonth() + 1).padStart(2, '0');
+                                          const d = String(st.dueDate.getDate()).padStart(2, '0');
                                           inputElement.value = `${y}-${m}-${d}`;
                                         } else {
                                           const now = new Date();
@@ -6446,511 +6018,1132 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
                                           const m = String(now.getMonth() + 1).padStart(2, '0');
                                           inputElement.value = `${y}-${m}-01`;
                                         }
+                                        logger.debug('PICKERS', `ID armazenado no input: ${st.id}`);
                                         try {
                                           (inputElement as any).focus?.();
                                           if (typeof (inputElement as any).showPicker === 'function') {
+                                            logger.debug('PICKERS', 'Usando showPicker() para subtarefa');
                                             (inputElement as any).showPicker();
                                           } else {
+                                            logger.debug('PICKERS', 'Usando click() para subtarefa');
                                             (inputElement as any).click();
                                           }
                                         } catch (error) {
-                                          logger.error('PICKERS', 'Erro ao abrir picker', error);
+                                          logger.error('PICKERS', 'Erro ao abrir picker de subtarefa', error);
                                         }
                                       }
                                     } else {
-                                      if (newCategorySubtaskDate) {
-                                        datePickerBaseRef.current = newCategorySubtaskDate;
-                                        pickerSubtaskDateValueRef.current = newCategorySubtaskDate;
+                                      if (st.dueDate) {
+                                        datePickerBaseRef.current = st.dueDate;
+                                        pickerSubtaskDateValueRef.current = st.dueDate;
                                       } else {
                                         datePickerBaseRef.current = null;
                                         pickerSubtaskDateValueRef.current = stableNowRef.current;
                                       }
-                                      setEditingSubtaskId('new-category-subtask');
-                                      setEditingSubtaskCategoryId(category.id);
                                       setShowSubtaskDatePicker(true);
                                       openManagedModal('subtaskPicker');
                                     }
                                   }}
-                                  style={[styles.scheduleActionButton, { marginBottom: 0, flexShrink: 0 }, newCategorySubtaskDate && styles.scheduleActionButtonActive]}
+                                  style={[styles.scheduleActionButton, { flexShrink: 0 }, st.dueDate && styles.scheduleActionButtonActive]}
                                 >
-                                  <Ionicons 
-                                    name="calendar-outline" 
-                                    size={12} 
-                                    color={newCategorySubtaskDate ? "#fff" : APP_COLORS.primary.main} 
+                                  <Ionicons
+                                    name="calendar-outline"
+                                    size={14}
+                                    color={st.dueDate ? "#fff" : APP_COLORS.primary.main}
                                   />
-                                  {newCategorySubtaskDate && (
-                                    <Text style={[styles.scheduleActionButtonText, { fontSize: 10 }]}>
-                                      {formatDate(newCategorySubtaskDate)}
+                                  {st.dueDate && (
+                                    <Text style={styles.scheduleActionButtonText}>
+                                      {formatDate(st.dueDate)}
                                     </Text>
                                   )}
                                 </Pressable>
-                                
                                 <Pressable
                                   onPress={() => {
+                                    logger.debug('PICKERS', `Botão de hora da subtarefa clicado! ID: ${st.id}`);
+                                    setEditingSubtaskId(st.id);
                                     if (Platform.OS === 'web') {
                                       const inputElement = webSubtaskTimeInputRef.current as HTMLInputElement | null;
                                       if (inputElement) {
-                                        (inputElement as any)._editingSubtaskId = 'new-category-subtask';
-                                        (inputElement as any)._categoryId = category.id;
-                                        if (newCategorySubtaskTime) {
-                                          timePickerBaseRef.current = newCategorySubtaskTime;
-                                          const hh = String(newCategorySubtaskTime.getHours()).padStart(2, '0');
-                                          const mm = String(newCategorySubtaskTime.getMinutes()).padStart(2, '0');
+                                        (inputElement as any)._editingSubtaskId = st.id;
+                                        if (st.dueTime) {
+                                          timePickerBaseRef.current = st.dueTime;
+                                        }
+                                        if (st.dueTime) {
+                                          const hh = String(st.dueTime.getHours()).padStart(2, '0');
+                                          const mm = String(st.dueTime.getMinutes()).padStart(2, '0');
                                           inputElement.value = `${hh}:${mm}`;
                                         } else {
                                           inputElement.value = '';
                                         }
+                                        logger.debug('PICKERS', `ID armazenado no input: ${st.id}`);
                                         try {
                                           (inputElement as any).focus?.();
                                           if (typeof (inputElement as any).showPicker === 'function') {
+                                            logger.debug('PICKERS', 'Usando showPicker() para subtarefa');
                                             (inputElement as any).showPicker();
                                           } else {
+                                            logger.debug('PICKERS', 'Usando click() para subtarefa');
                                             (inputElement as any).click();
                                           }
                                         } catch (error) {
-                                          logger.error('PICKERS', 'Erro ao abrir picker', error);
+                                          logger.error('PICKERS', 'Erro ao abrir picker de subtarefa', error);
                                         }
                                       }
                                     } else {
-                                      if (newCategorySubtaskTime) {
-                                        timePickerBaseRef.current = newCategorySubtaskTime;
-                                        pickerSubtaskTimeValueRef.current = newCategorySubtaskTime;
+                                      if (st.dueTime) {
+                                        timePickerBaseRef.current = st.dueTime;
+                                        pickerSubtaskTimeValueRef.current = st.dueTime;
                                       } else {
                                         timePickerBaseRef.current = null;
                                         pickerSubtaskTimeValueRef.current = stableNowRef.current;
                                       }
-                                      setEditingSubtaskId('new-category-subtask');
-                                      setEditingSubtaskCategoryId(category.id);
                                       setShowSubtaskTimePicker(true);
                                       openManagedModal('subtaskPicker');
                                     }
                                   }}
-                                  style={[styles.scheduleActionButton, { marginBottom: 0, flexShrink: 0 }, newCategorySubtaskTime && styles.scheduleActionButtonActive]}
+                                  style={[styles.scheduleActionButton, { flexShrink: 0 }, st.dueTime && styles.scheduleActionButtonActive]}
                                 >
-                                  <Ionicons 
-                                    name="time-outline" 
-                                    size={12} 
-                                    color={newCategorySubtaskTime ? "#fff" : APP_COLORS.primary.main} 
+                                  <Ionicons
+                                    name="time-outline"
+                                    size={14}
+                                    color={st.dueTime ? "#fff" : APP_COLORS.primary.main}
                                   />
-                                  {newCategorySubtaskTime && (
-                                    <Text style={[styles.scheduleActionButtonText, { fontSize: 10 }]}>
-                                      {formatTime(newCategorySubtaskTime)}
+                                  {st.dueTime && (
+                                    <Text style={styles.scheduleActionButtonText}>
+                                      {formatTime(st.dueTime)}
                                     </Text>
                                   )}
                                 </Pressable>
-                                
                                 <Pressable
-                                  onPress={() => {
-                                    const title = newSubtaskInCategory?.categoryId === category.id ? newSubtaskInCategory.title.trim() : '';
-                                    if (!title) return;
-                                    
-                                    const newSubtask: Subtask = {
-                                      id: uuidv4(),
-                                      title,
-                                      done: false,
-                                      dueDate: newCategorySubtaskDate,
-                                      dueTime: newCategorySubtaskTime
-                                    };
-                                    
-                                    setSubtaskCategories(prev =>
-                                      prev.map(cat =>
-                                        cat.id === category.id
-                                          ? { ...cat, subtasks: [...cat.subtasks, newSubtask] }
-                                          : cat
-                                      )
-                                    );
-                                    setNewSubtaskInCategory(null);
-                                    setNewCategorySubtaskDate(undefined);
-                                    setNewCategorySubtaskTime(undefined);
-                                  }}
-                                  style={[styles.scheduleActionButton, { marginBottom: 0, flexShrink: 0 }]}
+                                  onPress={() => setSubtasksDraft(prev => {
+                                    const next = prev.filter(s => s.id !== st.id);
+                                    return next;
+                                  })}
+                                  style={[styles.scheduleActionButton, { flexShrink: 0 }]}
                                 >
-                                  <Ionicons name="add" size={16} color={APP_COLORS.primary.main} />
+                                  <Ionicons name="trash-outline" size={16} color="#e74c3c" />
                                 </Pressable>
                               </View>
+                            ))}
+                          </View>
+                        )}
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'nowrap' }}>
+                          <TextInput
+                            style={[styles.input, { flex: 1, marginBottom: 0, minWidth: 0, color: colors.textPrimary }]}
+                            placeholder="Adicionar subtarefa"
+                            placeholderTextColor={activeTheme === 'dark' ? '#888' : '#999'}
+                            value={newSubtaskTitle}
+                            onChangeText={setNewSubtaskTitle}
+                          />
+                          <Pressable
+                            onPress={() => {
+                              if (Platform.OS === 'web') {
+                                const inputElement = webSubtaskDateInputRef.current as HTMLInputElement | null;
+                                if (inputElement) {
+                                  (inputElement as any)._editingSubtaskId = 'new-subtask';
+                                  (inputElement as any)._categoryId = null;
+                                  if (newSubtaskDate) {
+                                    datePickerBaseRef.current = newSubtaskDate;
+                                    const y = newSubtaskDate.getFullYear();
+                                    const m = String(newSubtaskDate.getMonth() + 1).padStart(2, '0');
+                                    const d = String(newSubtaskDate.getDate()).padStart(2, '0');
+                                    inputElement.value = `${y}-${m}-${d}`;
+                                  } else {
+                                    const now = new Date();
+                                    const y = now.getFullYear();
+                                    const m = String(now.getMonth() + 1).padStart(2, '0');
+                                    inputElement.value = `${y}-${m}-01`;
+                                  }
+                                  try {
+                                    (inputElement as any).focus?.();
+                                    if (typeof (inputElement as any).showPicker === 'function') {
+                                      (inputElement as any).showPicker();
+                                    } else {
+                                      (inputElement as any).click();
+                                    }
+                                  } catch (error) {
+                                    logger.error('PICKERS', 'Erro ao abrir picker', error);
+                                  }
+                                }
+                              } else {
+                                if (newSubtaskDate) {
+                                  datePickerBaseRef.current = newSubtaskDate;
+                                  pickerSubtaskDateValueRef.current = newSubtaskDate;
+                                } else {
+                                  datePickerBaseRef.current = null;
+                                  pickerSubtaskDateValueRef.current = stableNowRef.current;
+                                }
+                                setEditingSubtaskId('new-subtask');
+                                setShowSubtaskDatePicker(true);
+                                openManagedModal('subtaskPicker');
+                              }
+                            }}
+                            style={[styles.scheduleActionButton, { marginBottom: 0, flexShrink: 0 }, newSubtaskDate && styles.scheduleActionButtonActive]}
+                          >
+                            <Ionicons
+                              name="calendar-outline"
+                              size={12}
+                              color={newSubtaskDate ? "#fff" : APP_COLORS.primary.main}
+                            />
+                            {newSubtaskDate && (
+                              <Text style={[styles.scheduleActionButtonText, { fontSize: 10 }]}>
+                                {formatDate(newSubtaskDate)}
+                              </Text>
+                            )}
+                          </Pressable>
 
-                              {/* Botão OK para minimizar */}
+                          <Pressable
+                            onPress={() => {
+                              if (Platform.OS === 'web') {
+                                const inputElement = webSubtaskTimeInputRef.current as HTMLInputElement | null;
+                                if (inputElement) {
+                                  (inputElement as any)._editingSubtaskId = 'new-subtask';
+                                  (inputElement as any)._categoryId = null;
+                                  if (newSubtaskTime) {
+                                    timePickerBaseRef.current = newSubtaskTime;
+                                    const hh = String(newSubtaskTime.getHours()).padStart(2, '0');
+                                    const mm = String(newSubtaskTime.getMinutes()).padStart(2, '0');
+                                    inputElement.value = `${hh}:${mm}`;
+                                  } else {
+                                    inputElement.value = '';
+                                  }
+                                  try {
+                                    (inputElement as any).focus?.();
+                                    if (typeof (inputElement as any).showPicker === 'function') {
+                                      (inputElement as any).showPicker();
+                                    } else {
+                                      (inputElement as any).click();
+                                    }
+                                  } catch (error) {
+                                    logger.error('PICKERS', 'Erro ao abrir picker', error);
+                                  }
+                                }
+                              } else {
+                                if (newSubtaskTime) {
+                                  timePickerBaseRef.current = newSubtaskTime;
+                                  pickerSubtaskTimeValueRef.current = newSubtaskTime;
+                                } else {
+                                  timePickerBaseRef.current = null;
+                                  pickerSubtaskTimeValueRef.current = stableNowRef.current;
+                                }
+                                setEditingSubtaskId('new-subtask');
+                                setShowSubtaskTimePicker(true);
+                                openManagedModal('subtaskPicker');
+                              }
+                            }}
+                            style={[styles.scheduleActionButton, { marginBottom: 0, flexShrink: 0 }, newSubtaskTime && styles.scheduleActionButtonActive]}
+                          >
+                            <Ionicons
+                              name="time-outline"
+                              size={12}
+                              color={newSubtaskTime ? "#fff" : APP_COLORS.primary.main}
+                            />
+                            {newSubtaskTime && (
+                              <Text style={[styles.scheduleActionButtonText, { fontSize: 10 }]}>
+                                {formatTime(newSubtaskTime)}
+                              </Text>
+                            )}
+                          </Pressable>
+
+                          <Pressable
+                            onPress={() => {
+                              const title = newSubtaskTitle.trim();
+                              if (!title) return;
+                              setSubtasksDraft(prev => {
+                                const next = [...prev, {
+                                  id: uuidv4(),
+                                  title,
+                                  done: false,
+                                  dueDate: newSubtaskDate,
+                                  dueTime: newSubtaskTime
+                                }];
+                                return next;
+                              });
+                              setNewSubtaskTitle('');
+                              setNewSubtaskDate(undefined);
+                              setNewSubtaskTime(undefined);
+                            }}
+                            style={[styles.scheduleActionButton, { marginBottom: 0, flexShrink: 0 }]}
+                          >
+                            <Ionicons name="add" size={18} color={APP_COLORS.primary.main} />
+                          </Pressable>
+                        </View>
+                      </View>
+                    )}
+
+                    {/* Modo: Com Categoria */}
+                    {subtaskMode === 'category' && (
+                      <View>
+                        {/* Input para adicionar nova categoria */}
+                        {isAddingCategory && (
+                          <View style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 8,
+                            marginBottom: 12,
+                            padding: 12,
+                            backgroundColor: activeTheme === 'dark' ? '#2a2a2a' : '#f0f0f0',
+                            borderRadius: 8
+                          }}>
+                            <TextInput
+                              style={[styles.input, {
+                                flex: 1,
+                                marginBottom: 0,
+                                backgroundColor: activeTheme === 'dark' ? '#1a1a1a' : '#fff',
+                                color: colors.textPrimary
+                              }]}
+                              placeholder="Nome da categoria"
+                              placeholderTextColor={activeTheme === 'dark' ? '#888' : '#999'}
+                              value={newCategoryTitle}
+                              onChangeText={setNewCategoryTitle}
+                              autoFocus
+                            />
+                            <Pressable
+                              onPress={() => {
+                                const title = newCategoryTitle.trim();
+                                if (!title) {
+                                  Alert.alert('Erro', 'Digite um nome para a categoria');
+                                  return;
+                                }
+                                const newCategory: SubtaskCategory = {
+                                  id: uuidv4(),
+                                  name: title,
+                                  subtasks: [],
+                                  isExpanded: true,
+                                  createdAt: new Date()
+                                };
+                                setSubtaskCategories(prev => [...prev, newCategory]);
+                                setNewCategoryTitle('');
+                                setIsAddingCategory(false);
+                              }}
+                              style={[styles.scheduleActionButton, { backgroundColor: APP_COLORS.primary.main, marginBottom: 0 }]}
+                            >
+                              <Ionicons name="checkmark" size={18} color="#fff" />
+                            </Pressable>
+                            <Pressable
+                              onPress={() => {
+                                setIsAddingCategory(false);
+                                setNewCategoryTitle('');
+                              }}
+                              style={[styles.scheduleActionButton, { marginBottom: 0 }]}
+                            >
+                              <Ionicons name="close" size={18} color="#e74c3c" />
+                            </Pressable>
+                          </View>
+                        )}
+
+                        {/* Botão para adicionar categoria se não estiver adicionando */}
+                        {!isAddingCategory && (
+                          <Pressable
+                            onPress={() => setIsAddingCategory(true)}
+                            style={[styles.scheduleActionButton, { backgroundColor: APP_COLORS.primary.main, marginBottom: 12 }]}
+                          >
+                            <Ionicons name="add" size={16} color="#fff" />
+                            <Text style={{ color: '#fff', fontSize: 12, marginLeft: 4 }}>Nova Categoria</Text>
+                          </Pressable>
+                        )}
+
+                        {/* Lista de categorias */}
+                        {subtaskCategories.map((category) => (
+                          <View key={category.id} style={{
+                            marginBottom: 12,
+                            borderWidth: 1,
+                            borderColor: activeTheme === 'dark' ? '#444' : '#e0e0e0',
+                            borderRadius: 8,
+                            overflow: 'hidden',
+                            backgroundColor: activeTheme === 'dark' ? '#1a1a1a' : '#fff'
+                          }}>
+                            {/* Cabeçalho da categoria */}
+                            <View style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              padding: 12,
+                              backgroundColor: activeTheme === 'dark' ? '#2a2a2a' : '#f8f8f8'
+                            }}>
                               <Pressable
                                 onPress={() => {
                                   setSubtaskCategories(prev =>
                                     prev.map(cat =>
                                       cat.id === category.id
-                                        ? { ...cat, isExpanded: false }
+                                        ? { ...cat, isExpanded: !cat.isExpanded }
                                         : cat
                                     )
                                   );
                                 }}
-                                style={{ marginTop: 12, padding: 8, backgroundColor: APP_COLORS.primary.main, borderRadius: 6, alignItems: 'center' }}
+                                style={{ marginRight: 8 }}
                               >
-                                <Text style={{ color: '#fff', fontWeight: '600' }}>OK</Text>
+                                <Ionicons
+                                  name={category.isExpanded ? "chevron-down" : "chevron-forward"}
+                                  size={20}
+                                  color={activeTheme === 'dark' ? '#aaa' : '#666'}
+                                />
+                              </Pressable>
+                              <Text style={{
+                                flex: 1,
+                                fontSize: 16,
+                                fontWeight: '600',
+                                color: activeTheme === 'dark' ? '#fff' : '#333'
+                              }}>
+                                {category.name}
+                              </Text>
+                              <Text style={{
+                                fontSize: 12,
+                                color: activeTheme === 'dark' ? '#aaa' : '#666',
+                                marginRight: 8
+                              }}>
+                                {category.subtasks.filter(st => st.done).length}/{category.subtasks.length}
+                              </Text>
+                              <Pressable
+                                onPress={() => {
+                                  Alert.alert(
+                                    'Remover Categoria',
+                                    `Deseja remover a categoria "${category.name}" e todas as suas subtarefas?`,
+                                    [
+                                      { text: 'Cancelar', style: 'cancel' },
+                                      {
+                                        text: 'Remover',
+                                        style: 'destructive',
+                                        onPress: () => {
+                                          setSubtaskCategories(prev => prev.filter(cat => cat.id !== category.id));
+                                        }
+                                      }
+                                    ]
+                                  );
+                                }}
+                              >
+                                <Ionicons name="trash-outline" size={18} color="#e74c3c" />
                               </Pressable>
                             </View>
-                          )}
-                        </View>
-                      ))}
-                    </View>
-                  )}
-                </View>
 
-                {/* 4. AGENDAMENTO */}
-                <Text style={[styles.categoryLabel, { marginTop: 16 }]}>Agendamento:</Text>
-                
-                <View style={[
-                  styles.dateTimeContainer,
-                  Platform.OS === 'web' && styles.dateTimeContainerWeb
-                ]}>
-                  {/* Botões de Data e Hora */}
-                  <Pressable 
-                    style={[
-                      styles.dateTimeButton,
-                      Platform.OS === 'web' && styles.dateTimeButtonWeb
-                    ]}
-                    onPress={() => {
-                      logger.debug('PICKERS', `Botão de data clicado! Platform: ${Platform.OS}`);
-                      if (Platform.OS === 'web') {
-                        logger.debug('PICKERS', 'Tentando abrir input de data web');
-                        const inputElement = webDateInputRef.current as HTMLInputElement | null;
-                        logger.debug('PICKERS', `Input element: ${inputElement ? 'encontrado' : 'não encontrado'}`);
-                        
-                        if (inputElement) {
-                          try {
-                            if (tempDueDate) {
-                              const y = tempDueDate.getFullYear();
-                              const m = String(tempDueDate.getMonth() + 1).padStart(2, '0');
-                              const d = String(tempDueDate.getDate()).padStart(2, '0');
-                              inputElement.value = `${y}-${m}-${d}`;
-                            } else {
-                              const now = new Date();
-                              const y = now.getFullYear();
-                              const m = String(now.getMonth() + 1).padStart(2, '0');
-                              inputElement.value = `${y}-${m}-01`;
-                            }
-                            (inputElement as any).focus?.();
-                            if (typeof (inputElement as any).showPicker === 'function') {
-                              logger.debug('PICKERS', 'Usando showPicker()');
-                              (inputElement as any).showPicker();
-                            } else {
-                              logger.debug('PICKERS', 'Usando click()');
-                              (inputElement as any).click();
-                            }
-                          } catch (error) {
-                            logger.error('PICKERS', 'Erro ao abrir picker', error);
-                          }
-                        } else {
-                          logger.error('PICKERS', 'Input element não encontrado!');
-                        }
-                      } else {
-                        // Mobile: Inicializar a ref com o valor atual antes de abrir o picker
-                        logger.debug('PICKERS', 'Mobile: Inicializando picker de data');
-                        logger.debug('PICKERS', `repeatModalVisible: ${repeatModalVisible}, tempDueDate: ${tempDueDate?.toISOString() || 'null'}`);
+                            {/* Conteúdo da categoria (expandido) */}
+                            {category.isExpanded && (
+                              <View style={{
+                                padding: 12,
+                                backgroundColor: activeTheme === 'dark' ? '#1a1a1a' : '#fff'
+                              }}>
+                                {/* Lista de subtarefas da categoria */}
+                                {category.subtasks.map((subtask) => (
+                                  <View key={subtask.id} style={{ marginBottom: 8 }}>
+                                    <View style={{
+                                      flexDirection: 'row',
+                                      alignItems: 'center',
+                                      padding: 8,
+                                      backgroundColor: activeTheme === 'dark' ? '#2a2a2a' : '#f9f9f9',
+                                      borderRadius: 6
+                                    }}>
+                                      <Pressable
+                                        onPress={() => {
+                                          setSubtaskCategories(prev =>
+                                            prev.map(cat =>
+                                              cat.id === category.id
+                                                ? {
+                                                  ...cat,
+                                                  subtasks: cat.subtasks.map(st =>
+                                                    st.id === subtask.id
+                                                      ? { ...st, done: !st.done }
+                                                      : st
+                                                  )
+                                                }
+                                                : cat
+                                            )
+                                          );
+                                        }}
+                                        style={{ marginRight: 8 }}
+                                      >
+                                        <Ionicons
+                                          name={subtask.done ? "checkbox" : "square-outline"}
+                                          size={20}
+                                          color={subtask.done ? APP_COLORS.primary.main : (activeTheme === 'dark' ? '#666' : '#999')}
+                                        />
+                                      </Pressable>
+                                      <Text style={{
+                                        flex: 1,
+                                        color: subtask.done ? (activeTheme === 'dark' ? '#666' : '#999') : (activeTheme === 'dark' ? '#ddd' : '#333'),
+                                        textDecorationLine: subtask.done ? 'line-through' : 'none'
+                                      }}>
+                                        {subtask.title}
+                                      </Text>
+                                      <Pressable
+                                        onPress={() => {
+                                          setSubtaskCategories(prev =>
+                                            prev.map(cat =>
+                                              cat.id === category.id
+                                                ? {
+                                                  ...cat,
+                                                  subtasks: cat.subtasks.filter(st => st.id !== subtask.id)
+                                                }
+                                                : cat
+                                            )
+                                          );
+                                        }}
+                                      >
+                                        <Ionicons name="close-circle" size={20} color="#e74c3c" />
+                                      </Pressable>
+                                    </View>
 
-                        // iOS: fechar teclado para evitar que cubra o picker
-                        Keyboard.dismiss();
+                                    {/* Botões de data e hora da subtarefa */}
+                                    <View style={{ flexDirection: 'row', gap: 6, marginTop: 4, paddingLeft: 8, flexWrap: 'nowrap' }}>
+                                      <Pressable
+                                        onPress={() => {
+                                          logger.debug('PICKERS', `Botão de data da subtarefa de categoria clicado! ID: ${subtask.id}`);
+                                          setEditingSubtaskId(subtask.id);
+                                          setEditingSubtaskCategoryId(category.id);
+                                          if (Platform.OS === 'web') {
+                                            const inputElement = webSubtaskDateInputRef.current as HTMLInputElement | null;
+                                            if (inputElement) {
+                                              (inputElement as any)._editingSubtaskId = subtask.id;
+                                              (inputElement as any)._categoryId = category.id;
+                                              if (subtask.dueDate) {
+                                                datePickerBaseRef.current = subtask.dueDate;
+                                              }
+                                              if (subtask.dueDate) {
+                                                const y = subtask.dueDate.getFullYear();
+                                                const m = String(subtask.dueDate.getMonth() + 1).padStart(2, '0');
+                                                const d = String(subtask.dueDate.getDate()).padStart(2, '0');
+                                                inputElement.value = `${y}-${m}-${d}`;
+                                              } else {
+                                                const now = new Date();
+                                                const y = now.getFullYear();
+                                                const m = String(now.getMonth() + 1).padStart(2, '0');
+                                                inputElement.value = `${y}-${m}-01`;
+                                              }
+                                              try {
+                                                (inputElement as any).focus?.();
+                                                if (typeof (inputElement as any).showPicker === 'function') {
+                                                  (inputElement as any).showPicker();
+                                                } else {
+                                                  (inputElement as any).click();
+                                                }
+                                              } catch (error) {
+                                                logger.error('PICKERS', 'Erro ao abrir picker', error);
+                                              }
+                                            }
+                                          } else {
+                                            if (subtask.dueDate) {
+                                              datePickerBaseRef.current = subtask.dueDate;
+                                              pickerSubtaskDateValueRef.current = subtask.dueDate;
+                                            } else {
+                                              datePickerBaseRef.current = null;
+                                              pickerSubtaskDateValueRef.current = stableNowRef.current;
+                                            }
+                                            setShowSubtaskDatePicker(true);
+                                            openManagedModal('subtaskPicker');
+                                          }
+                                        }}
+                                        style={[styles.scheduleActionButton, { marginBottom: 0, flexShrink: 0 }, subtask.dueDate && styles.scheduleActionButtonActive]}
+                                      >
+                                        <Ionicons
+                                          name="calendar-outline"
+                                          size={12}
+                                          color={subtask.dueDate ? "#fff" : APP_COLORS.primary.main}
+                                        />
+                                        {subtask.dueDate && (
+                                          <Text style={[styles.scheduleActionButtonText, { fontSize: 10 }]}>
+                                            {formatDate(subtask.dueDate)}
+                                          </Text>
+                                        )}
+                                      </Pressable>
 
-                        const initialValue = tempDueDate || todayStart;
-                        pickerDateValueRef.current = initialValue;
-                        
-                        if (!repeatModalVisible) {
-                          logger.debug('PICKERS', 'Abrindo date picker - setShowDatePicker(true)');
-                          setShowDatePicker(true);
-                          openManagedModal('picker');
-                        } else {
-                          logger.warn('PICKERS', 'Modal de repetição está visível, não abrindo picker');
-                        }
-                      }
-                    }}
-                  >
-                    <Ionicons name="calendar-outline" size={16} color="#666" />
-                    <Text style={styles.dateTimeButtonText}>
-                      {tempDueDate ? formatDate(tempDueDate) : 'Selecionar data'}
-                    </Text>
-                  </Pressable>
-                  
-                  <Pressable 
-                    style={[
-                      styles.dateTimeButton,
-                      Platform.OS === 'web' && styles.dateTimeButtonWeb
-                    ]}
-                    onPress={() => {
-                      logger.debug('PICKERS', `Botão de hora clicado! Platform: ${Platform.OS}`);
-                      if (Platform.OS === 'web') {
-                        logger.debug('PICKERS', 'Tentando abrir input de hora web');
-                        const inputElement = webTimeInputRef.current as HTMLInputElement | null;
-                        logger.debug('PICKERS', `Input element: ${inputElement ? 'encontrado' : 'não encontrado'}`);
-                        
-                        if (inputElement) {
-                          try {
-                            if (tempDueTime) {
-                              const hh = String(tempDueTime.getHours()).padStart(2, '0');
-                              const mm = String(tempDueTime.getMinutes()).padStart(2, '0');
-                              inputElement.value = `${hh}:${mm}`;
-                            } else {
-                              inputElement.value = '';
-                            }
-                            (inputElement as any).focus?.();
-                            if (typeof (inputElement as any).showPicker === 'function') {
-                              logger.debug('PICKERS', 'Usando showPicker()');
-                              (inputElement as any).showPicker();
-                            } else {
-                              logger.debug('PICKERS', 'Usando click()');
-                              (inputElement as any).click();
-                            }
-                          } catch (error) {
-                            logger.error('PICKERS', 'Erro ao abrir picker', error);
-                          }
-                        } else {
-                          logger.error('PICKERS', 'Input element não encontrado!');
-                        }
-                      } else {
-                        // Mobile: Inicializar a ref com o valor atual antes de abrir o picker
-                        // iOS: fechar teclado para evitar que cubra o picker
-                        Keyboard.dismiss();
+                                      <Pressable
+                                        onPress={() => {
+                                          logger.debug('PICKERS', `Botão de hora da subtarefa de categoria clicado! ID: ${subtask.id}`);
+                                          setEditingSubtaskId(subtask.id);
+                                          setEditingSubtaskCategoryId(category.id);
+                                          if (Platform.OS === 'web') {
+                                            const inputElement = webSubtaskTimeInputRef.current as HTMLInputElement | null;
+                                            if (inputElement) {
+                                              (inputElement as any)._editingSubtaskId = subtask.id;
+                                              (inputElement as any)._categoryId = category.id;
+                                              if (subtask.dueTime) {
+                                                timePickerBaseRef.current = subtask.dueTime;
+                                              }
+                                              if (subtask.dueTime) {
+                                                const hh = String(subtask.dueTime.getHours()).padStart(2, '0');
+                                                const mm = String(subtask.dueTime.getMinutes()).padStart(2, '0');
+                                                inputElement.value = `${hh}:${mm}`;
+                                              } else {
+                                                inputElement.value = '';
+                                              }
+                                              try {
+                                                (inputElement as any).focus?.();
+                                                if (typeof (inputElement as any).showPicker === 'function') {
+                                                  (inputElement as any).showPicker();
+                                                } else {
+                                                  (inputElement as any).click();
+                                                }
+                                              } catch (error) {
+                                                logger.error('PICKERS', 'Erro ao abrir picker', error);
+                                              }
+                                            }
+                                          } else {
+                                            if (subtask.dueTime) {
+                                              timePickerBaseRef.current = subtask.dueTime;
+                                              pickerSubtaskTimeValueRef.current = subtask.dueTime;
+                                            } else {
+                                              timePickerBaseRef.current = null;
+                                              pickerSubtaskTimeValueRef.current = stableNowRef.current;
+                                            }
+                                            setShowSubtaskTimePicker(true);
+                                            openManagedModal('subtaskPicker');
+                                          }
+                                        }}
+                                        style={[styles.scheduleActionButton, { marginBottom: 0, flexShrink: 0 }, subtask.dueTime && styles.scheduleActionButtonActive]}
+                                      >
+                                        <Ionicons
+                                          name="time-outline"
+                                          size={12}
+                                          color={subtask.dueTime ? "#fff" : APP_COLORS.primary.main}
+                                        />
+                                        {subtask.dueTime && (
+                                          <Text style={[styles.scheduleActionButtonText, { fontSize: 10 }]}>
+                                            {formatTime(subtask.dueTime)}
+                                          </Text>
+                                        )}
+                                      </Pressable>
+                                    </View>
+                                  </View>
+                                ))}
 
-                        const initialValue = tempDueTime || stableNowRef.current;
-                        pickerTimeValueRef.current = initialValue;
-                        if (!repeatModalVisible) {
-                          setShowTimePicker(true);
-                          openManagedModal('picker');
-                        }
-                      }
-                    }}
-                  >
-                    <Ionicons name="time-outline" size={16} color="#666" />
-                    <Text style={styles.dateTimeButtonText}>
-                      {tempDueTime ? formatTime(tempDueTime) : 'Selecionar hora'}
-                    </Text>
-                  </Pressable>
-                </View>
+                                {/* Input para adicionar subtarefa na categoria */}
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8, flexWrap: 'nowrap' }}>
+                                  <TextInput
+                                    style={[styles.input, {
+                                      flex: 1,
+                                      marginBottom: 0,
+                                      fontSize: 14,
+                                      minWidth: 0,
+                                      backgroundColor: activeTheme === 'dark' ? '#2a2a2a' : '#fff',
+                                      color: colors.textPrimary
+                                    }]}
+                                    placeholder="Adicionar subtarefa"
+                                    placeholderTextColor={activeTheme === 'dark' ? '#888' : '#999'}
+                                    value={newSubtaskInCategory?.categoryId === category.id ? newSubtaskInCategory.title : ''}
+                                    onChangeText={(text) => setNewSubtaskInCategory({ categoryId: category.id, title: text })}
+                                  />
+                                  <Pressable
+                                    onPress={() => {
+                                      if (Platform.OS === 'web') {
+                                        const inputElement = webSubtaskDateInputRef.current as HTMLInputElement | null;
+                                        if (inputElement) {
+                                          (inputElement as any)._editingSubtaskId = 'new-category-subtask';
+                                          (inputElement as any)._categoryId = category.id;
+                                          if (newCategorySubtaskDate) {
+                                            datePickerBaseRef.current = newCategorySubtaskDate;
+                                            const y = newCategorySubtaskDate.getFullYear();
+                                            const m = String(newCategorySubtaskDate.getMonth() + 1).padStart(2, '0');
+                                            const d = String(newCategorySubtaskDate.getDate()).padStart(2, '0');
+                                            inputElement.value = `${y}-${m}-${d}`;
+                                          } else {
+                                            const now = new Date();
+                                            const y = now.getFullYear();
+                                            const m = String(now.getMonth() + 1).padStart(2, '0');
+                                            inputElement.value = `${y}-${m}-01`;
+                                          }
+                                          try {
+                                            (inputElement as any).focus?.();
+                                            if (typeof (inputElement as any).showPicker === 'function') {
+                                              (inputElement as any).showPicker();
+                                            } else {
+                                              (inputElement as any).click();
+                                            }
+                                          } catch (error) {
+                                            logger.error('PICKERS', 'Erro ao abrir picker', error);
+                                          }
+                                        }
+                                      } else {
+                                        if (newCategorySubtaskDate) {
+                                          datePickerBaseRef.current = newCategorySubtaskDate;
+                                          pickerSubtaskDateValueRef.current = newCategorySubtaskDate;
+                                        } else {
+                                          datePickerBaseRef.current = null;
+                                          pickerSubtaskDateValueRef.current = stableNowRef.current;
+                                        }
+                                        setEditingSubtaskId('new-category-subtask');
+                                        setEditingSubtaskCategoryId(category.id);
+                                        setShowSubtaskDatePicker(true);
+                                        openManagedModal('subtaskPicker');
+                                      }
+                                    }}
+                                    style={[styles.scheduleActionButton, { marginBottom: 0, flexShrink: 0 }, newCategorySubtaskDate && styles.scheduleActionButtonActive]}
+                                  >
+                                    <Ionicons
+                                      name="calendar-outline"
+                                      size={12}
+                                      color={newCategorySubtaskDate ? "#fff" : APP_COLORS.primary.main}
+                                    />
+                                    {newCategorySubtaskDate && (
+                                      <Text style={[styles.scheduleActionButtonText, { fontSize: 10 }]}>
+                                        {formatDate(newCategorySubtaskDate)}
+                                      </Text>
+                                    )}
+                                  </Pressable>
 
-                {/* Seleção de Repetição */}
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                  <Text style={styles.categoryLabel}>Repetir:</Text>
-                  <Text style={{ 
-                    fontSize: 13, 
-                    color: repeatType === RepeatType.NONE ? '#999' : APP_COLORS.primary.main,
-                    fontWeight: repeatType === RepeatType.NONE ? 'normal' : '500'
-                  }}>
-                    {getRepeatLabel()}
-                  </Text>
-                </View>
-                <View style={styles.repeatContainer}>
-                  {[
-                    { type: RepeatType.NONE, icon: 'ban-outline' },
-                    { type: RepeatType.DAILY, icon: 'repeat-outline' },
-                    { type: RepeatType.MONTHLY, icon: 'calendar-number-outline' },
-                    { type: RepeatType.CUSTOM, icon: 'calendar-outline' },
-                    { type: RepeatType.INTERVAL, icon: 'time-outline' }
-                  ].map((option) => (
+                                  <Pressable
+                                    onPress={() => {
+                                      if (Platform.OS === 'web') {
+                                        const inputElement = webSubtaskTimeInputRef.current as HTMLInputElement | null;
+                                        if (inputElement) {
+                                          (inputElement as any)._editingSubtaskId = 'new-category-subtask';
+                                          (inputElement as any)._categoryId = category.id;
+                                          if (newCategorySubtaskTime) {
+                                            timePickerBaseRef.current = newCategorySubtaskTime;
+                                            const hh = String(newCategorySubtaskTime.getHours()).padStart(2, '0');
+                                            const mm = String(newCategorySubtaskTime.getMinutes()).padStart(2, '0');
+                                            inputElement.value = `${hh}:${mm}`;
+                                          } else {
+                                            inputElement.value = '';
+                                          }
+                                          try {
+                                            (inputElement as any).focus?.();
+                                            if (typeof (inputElement as any).showPicker === 'function') {
+                                              (inputElement as any).showPicker();
+                                            } else {
+                                              (inputElement as any).click();
+                                            }
+                                          } catch (error) {
+                                            logger.error('PICKERS', 'Erro ao abrir picker', error);
+                                          }
+                                        }
+                                      } else {
+                                        if (newCategorySubtaskTime) {
+                                          timePickerBaseRef.current = newCategorySubtaskTime;
+                                          pickerSubtaskTimeValueRef.current = newCategorySubtaskTime;
+                                        } else {
+                                          timePickerBaseRef.current = null;
+                                          pickerSubtaskTimeValueRef.current = stableNowRef.current;
+                                        }
+                                        setEditingSubtaskId('new-category-subtask');
+                                        setEditingSubtaskCategoryId(category.id);
+                                        setShowSubtaskTimePicker(true);
+                                        openManagedModal('subtaskPicker');
+                                      }
+                                    }}
+                                    style={[styles.scheduleActionButton, { marginBottom: 0, flexShrink: 0 }, newCategorySubtaskTime && styles.scheduleActionButtonActive]}
+                                  >
+                                    <Ionicons
+                                      name="time-outline"
+                                      size={12}
+                                      color={newCategorySubtaskTime ? "#fff" : APP_COLORS.primary.main}
+                                    />
+                                    {newCategorySubtaskTime && (
+                                      <Text style={[styles.scheduleActionButtonText, { fontSize: 10 }]}>
+                                        {formatTime(newCategorySubtaskTime)}
+                                      </Text>
+                                    )}
+                                  </Pressable>
+
+                                  <Pressable
+                                    onPress={() => {
+                                      const title = newSubtaskInCategory?.categoryId === category.id ? newSubtaskInCategory.title.trim() : '';
+                                      if (!title) return;
+
+                                      const newSubtask: Subtask = {
+                                        id: uuidv4(),
+                                        title,
+                                        done: false,
+                                        dueDate: newCategorySubtaskDate,
+                                        dueTime: newCategorySubtaskTime
+                                      };
+
+                                      setSubtaskCategories(prev =>
+                                        prev.map(cat =>
+                                          cat.id === category.id
+                                            ? { ...cat, subtasks: [...cat.subtasks, newSubtask] }
+                                            : cat
+                                        )
+                                      );
+                                      setNewSubtaskInCategory(null);
+                                      setNewCategorySubtaskDate(undefined);
+                                      setNewCategorySubtaskTime(undefined);
+                                    }}
+                                    style={[styles.scheduleActionButton, { marginBottom: 0, flexShrink: 0 }]}
+                                  >
+                                    <Ionicons name="add" size={16} color={APP_COLORS.primary.main} />
+                                  </Pressable>
+                                </View>
+
+                                {/* Botão OK para minimizar */}
+                                <Pressable
+                                  onPress={() => {
+                                    setSubtaskCategories(prev =>
+                                      prev.map(cat =>
+                                        cat.id === category.id
+                                          ? { ...cat, isExpanded: false }
+                                          : cat
+                                      )
+                                    );
+                                  }}
+                                  style={{ marginTop: 12, padding: 8, backgroundColor: APP_COLORS.primary.main, borderRadius: 6, alignItems: 'center' }}
+                                >
+                                  <Text style={{ color: '#fff', fontWeight: '600' }}>OK</Text>
+                                </Pressable>
+                              </View>
+                            )}
+                          </View>
+                        ))}
+                      </View>
+                    )}
+                  </View>
+
+                  {/* 4. AGENDAMENTO */}
+                  <Text style={[styles.categoryLabel, { marginTop: 16 }]}>Agendamento:</Text>
+
+                  <View style={[
+                    styles.dateTimeContainer,
+                    Platform.OS === 'web' && styles.dateTimeContainerWeb
+                  ]}>
+                    {/* Botões de Data e Hora */}
                     <Pressable
-                      key={option.type}
                       style={[
-                        styles.repeatIconButton,
-                        repeatType === option.type && styles.repeatIconButtonActive
+                        styles.dateTimeButton,
+                        Platform.OS === 'web' && styles.dateTimeButtonWeb
                       ]}
                       onPress={() => {
-                        // Não abrir modal de repetição se há pickers ativos
-                        if (showDatePicker || showTimePicker || showSubtaskDatePicker || showSubtaskTimePicker) {
-                          return;
-                        }
-                        
-                        if (option.type === RepeatType.CUSTOM || option.type === RepeatType.INTERVAL) {
-                          setRepeatType(option.type);
-                          // Pré-carregar os valores atuais para edição
-                          setTempCustomDays(customDays);
-                          const iv = intervalDays || 7; // Default: 7 dias (1 semana)
-                          setTempIntervalDays(iv);
-                          setTempDurationMonths(durationMonths || 0);
-                          // Se o intervalo é múltiplo de 7, mostrar em semanas
-                          const isWeekly = iv > 0 && iv % 7 === 0;
-                          setTempWeekly(isWeekly);
-                          setTempWeeksCount(Math.max(1, Math.round(iv / 7)));
-                          // Fechar teclado antes de abrir modal de repetição
-                          Keyboard.dismiss();
-                          setRepeatModalVisible(true);
-                          openManagedModal('repeat');
+                        logger.debug('PICKERS', `Botão de data clicado! Platform: ${Platform.OS}`);
+                        if (Platform.OS === 'web') {
+                          logger.debug('PICKERS', 'Tentando abrir input de data web');
+                          const inputElement = webDateInputRef.current as HTMLInputElement | null;
+                          logger.debug('PICKERS', `Input element: ${inputElement ? 'encontrado' : 'não encontrado'}`);
+
+                          if (inputElement) {
+                            try {
+                              if (tempDueDate) {
+                                const y = tempDueDate.getFullYear();
+                                const m = String(tempDueDate.getMonth() + 1).padStart(2, '0');
+                                const d = String(tempDueDate.getDate()).padStart(2, '0');
+                                inputElement.value = `${y}-${m}-${d}`;
+                              } else {
+                                const now = new Date();
+                                const y = now.getFullYear();
+                                const m = String(now.getMonth() + 1).padStart(2, '0');
+                                inputElement.value = `${y}-${m}-01`;
+                              }
+                              (inputElement as any).focus?.();
+                              if (typeof (inputElement as any).showPicker === 'function') {
+                                logger.debug('PICKERS', 'Usando showPicker()');
+                                (inputElement as any).showPicker();
+                              } else {
+                                logger.debug('PICKERS', 'Usando click()');
+                                (inputElement as any).click();
+                              }
+                            } catch (error) {
+                              logger.error('PICKERS', 'Erro ao abrir picker', error);
+                            }
+                          } else {
+                            logger.error('PICKERS', 'Input element não encontrado!');
+                          }
                         } else {
-                          setRepeatType(option.type);
+                          // Mobile: Inicializar a ref com o valor atual antes de abrir o picker
+                          logger.debug('PICKERS', 'Mobile: Inicializando picker de data');
+                          logger.debug('PICKERS', `repeatModalVisible: ${repeatModalVisible}, tempDueDate: ${tempDueDate?.toISOString() || 'null'}`);
+
+                          // iOS: fechar teclado para evitar que cubra o picker
+                          Keyboard.dismiss();
+
+                          const initialValue = tempDueDate || todayStart;
+                          pickerDateValueRef.current = initialValue;
+
+                          if (!repeatModalVisible) {
+                            logger.debug('PICKERS', 'Abrindo date picker - setShowDatePicker(true)');
+                            setShowDatePicker(true);
+                            openManagedModal('picker');
+                          } else {
+                            logger.warn('PICKERS', 'Modal de repetição está visível, não abrindo picker');
+                          }
                         }
                       }}
                     >
-                      <Ionicons 
-                        name={option.icon as any} 
-                        size={18} 
-                        color={repeatType === option.type ? APP_COLORS.primary.main : '#666'} 
-                      />
+                      <Ionicons name="calendar-outline" size={16} color="#666" />
+                      <Text style={styles.dateTimeButtonText}>
+                        {tempDueDate ? formatDate(tempDueDate) : 'Selecionar data'}
+                      </Text>
                     </Pressable>
-                  ))}
-                </View>
 
-                {/* As opções CUSTOM/INTERVAL agora abrem um mini modal */}
-              </ScrollView>
-
-              {!(Platform.OS === 'ios' && (showDatePicker || showTimePicker || showSubtaskDatePicker || showSubtaskTimePicker)) && (
-              <View style={styles.modalButtons}>
-                <Pressable 
-                  style={({ pressed }) => [
-                    styles.button,
-                    styles.cancelButton,
-                    (pressed && !isAddingTask) && { opacity: 0.7 },
-                    isAddingTask && styles.buttonDisabled
-                  ]}
-                  onPress={resetForm}
-                  disabled={isAddingTask}
-                  android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
-                >
-                  <Text style={styles.cancelButtonText}>Cancelar</Text>
-                </Pressable>
-                
-                <Pressable 
-                  style={({ pressed }) => [
-                    styles.button,
-                    styles.addButton,
-                    isAddingTask && styles.buttonDisabled,
-                    pressed && !isAddingTask && { opacity: 0.8, transform: [{ scale: 0.98 }] }
-                  ]}
-                  onPress={addTask}
-                  disabled={isAddingTask}
-                  android_ripple={{ color: 'rgba(255, 255, 255, 0.3)' }}
-                >
-                  {isAddingTask ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <Text style={styles.addButtonText}>{isEditing ? 'Salvar' : 'Adicionar'}</Text>
-                  )}
-                </Pressable>
-              </View>
-              )}
-
-              {/* iOS inline picker dentro do fluxo do conteúdo, abaixo dos botões de data/hora */}
-              {Platform.OS === 'ios' && (showDatePicker || showTimePicker) && (
-                <View style={styles.iosInlinePickerBox}>
-                  {showDatePicker && (
-                    <DateTimePicker
-                      value={stableDatePickerValue}
-                      mode="date"
-                      display="spinner"
-                      onChange={onDateChange}
-                      style={styles.iosDateTimePicker}
-                    />
-                  )}
-                  {showTimePicker && (
-                    <DateTimePicker
-                      value={stableTimePickerValue}
-                      mode="time"
-                      display="spinner"
-                      onChange={onTimeChange}
-                      is24Hour={true}
-                      style={styles.iosDateTimePicker}
-                    />
-                  )}
-                  <View style={styles.iosInlinePickerActions}>
-                    <Pressable 
-                      style={[styles.button, styles.cancelButton]}
-                      onPress={closeAllPickers}
-                    >
-                      <Text style={styles.cancelButtonText}>Cancelar</Text>
-                    </Pressable>
-                    <Pressable 
-                      style={[styles.button, styles.saveButton]}
+                    <Pressable
+                      style={[
+                        styles.dateTimeButton,
+                        Platform.OS === 'web' && styles.dateTimeButtonWeb
+                      ]}
                       onPress={() => {
-                        if (showDatePicker) setTempDueDate(pickerDateValueRef.current);
-                        if (showTimePicker) setTempDueTime(pickerTimeValueRef.current);
-                        closeAllPickers();
+                        logger.debug('PICKERS', `Botão de hora clicado! Platform: ${Platform.OS}`);
+                        if (Platform.OS === 'web') {
+                          logger.debug('PICKERS', 'Tentando abrir input de hora web');
+                          const inputElement = webTimeInputRef.current as HTMLInputElement | null;
+                          logger.debug('PICKERS', `Input element: ${inputElement ? 'encontrado' : 'não encontrado'}`);
+
+                          if (inputElement) {
+                            try {
+                              if (tempDueTime) {
+                                const hh = String(tempDueTime.getHours()).padStart(2, '0');
+                                const mm = String(tempDueTime.getMinutes()).padStart(2, '0');
+                                inputElement.value = `${hh}:${mm}`;
+                              } else {
+                                inputElement.value = '';
+                              }
+                              (inputElement as any).focus?.();
+                              if (typeof (inputElement as any).showPicker === 'function') {
+                                logger.debug('PICKERS', 'Usando showPicker()');
+                                (inputElement as any).showPicker();
+                              } else {
+                                logger.debug('PICKERS', 'Usando click()');
+                                (inputElement as any).click();
+                              }
+                            } catch (error) {
+                              logger.error('PICKERS', 'Erro ao abrir picker', error);
+                            }
+                          } else {
+                            logger.error('PICKERS', 'Input element não encontrado!');
+                          }
+                        } else {
+                          // Mobile: Inicializar a ref com o valor atual antes de abrir o picker
+                          // iOS: fechar teclado para evitar que cubra o picker
+                          Keyboard.dismiss();
+
+                          const initialValue = tempDueTime || stableNowRef.current;
+                          pickerTimeValueRef.current = initialValue;
+                          if (!repeatModalVisible) {
+                            setShowTimePicker(true);
+                            openManagedModal('picker');
+                          }
+                        }
                       }}
                     >
-                      <Text style={styles.saveButtonText}>OK</Text>
+                      <Ionicons name="time-outline" size={16} color="#666" />
+                      <Text style={styles.dateTimeButtonText}>
+                        {tempDueTime ? formatTime(tempDueTime) : 'Selecionar hora'}
+                      </Text>
                     </Pressable>
                   </View>
-                </View>
-              )}
 
-              {/* iOS inline picker para subtasks */}
-              {Platform.OS === 'ios' && (showSubtaskDatePicker || showSubtaskTimePicker) && editingSubtaskId && (
-                <View style={styles.iosInlinePickerBox}>
-                  {showSubtaskDatePicker && (
-                    <DateTimePicker
-                      value={stableSubtaskDatePickerValue}
-                      mode="date"
-                      display="spinner"
-                      onChange={onSubtaskDateChange}
-                      style={styles.iosDateTimePicker}
-                    />
-                  )}
-                  {showSubtaskTimePicker && (
-                    <DateTimePicker
-                      value={stableSubtaskTimePickerValue}
-                      mode="time"
-                      display="spinner"
-                      onChange={onSubtaskTimeChange}
-                      is24Hour={true}
-                      style={styles.iosDateTimePicker}
-                    />
-                  )}
-                  <View style={styles.iosInlinePickerActions}>
-                    <Pressable 
-                      style={[styles.button, styles.cancelButton]}
-                      onPress={closeAllPickers}
+                  {/* Seleção de Repetição */}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                    <Text style={styles.categoryLabel}>Repetir:</Text>
+                    <Text style={{
+                      fontSize: 13,
+                      color: repeatType === RepeatType.NONE ? '#999' : APP_COLORS.primary.main,
+                      fontWeight: repeatType === RepeatType.NONE ? 'normal' : '500'
+                    }}>
+                      {getRepeatLabel()}
+                    </Text>
+                  </View>
+                  <View style={styles.repeatContainer}>
+                    {[
+                      { type: RepeatType.NONE, icon: 'ban-outline' },
+                      { type: RepeatType.DAILY, icon: 'repeat-outline' },
+                      { type: RepeatType.MONTHLY, icon: 'calendar-number-outline' },
+                      { type: RepeatType.CUSTOM, icon: 'calendar-outline' },
+                      { type: RepeatType.INTERVAL, icon: 'time-outline' }
+                    ].map((option) => (
+                      <Pressable
+                        key={option.type}
+                        style={[
+                          styles.repeatIconButton,
+                          repeatType === option.type && styles.repeatIconButtonActive
+                        ]}
+                        onPress={() => {
+                          // Não abrir modal de repetição se há pickers ativos
+                          if (showDatePicker || showTimePicker || showSubtaskDatePicker || showSubtaskTimePicker) {
+                            return;
+                          }
+
+                          if (option.type === RepeatType.CUSTOM || option.type === RepeatType.INTERVAL) {
+                            setRepeatType(option.type);
+                            // Pré-carregar os valores atuais para edição
+                            setTempCustomDays(customDays);
+                            const iv = intervalDays || 7; // Default: 7 dias (1 semana)
+                            setTempIntervalDays(iv);
+                            setTempDurationMonths(durationMonths || 0);
+                            // Se o intervalo é múltiplo de 7, mostrar em semanas
+                            const isWeekly = iv > 0 && iv % 7 === 0;
+                            setTempWeekly(isWeekly);
+                            setTempWeeksCount(Math.max(1, Math.round(iv / 7)));
+                            // Fechar teclado antes de abrir modal de repetição
+                            Keyboard.dismiss();
+                            setRepeatModalVisible(true);
+                            openManagedModal('repeat');
+                          } else {
+                            setRepeatType(option.type);
+                          }
+                        }}
+                      >
+                        <Ionicons
+                          name={option.icon as any}
+                          size={18}
+                          color={repeatType === option.type ? APP_COLORS.primary.main : '#666'}
+                        />
+                      </Pressable>
+                    ))}
+                  </View>
+
+                  {/* As opções CUSTOM/INTERVAL agora abrem um mini modal */}
+                </ScrollView>
+
+                {!(Platform.OS === 'ios' && (showDatePicker || showTimePicker || showSubtaskDatePicker || showSubtaskTimePicker)) && (
+                  <View style={styles.modalButtons}>
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.button,
+                        styles.cancelButton,
+                        (pressed && !isAddingTask) && { opacity: 0.7 },
+                        isAddingTask && styles.buttonDisabled
+                      ]}
+                      onPress={resetForm}
+                      disabled={isAddingTask}
+                      android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
                     >
                       <Text style={styles.cancelButtonText}>Cancelar</Text>
                     </Pressable>
-                    <Pressable 
-                      style={[styles.button, styles.saveButton]}
-                      onPress={() => {
-                        if (showSubtaskDatePicker && editingSubtaskId) {
-                          const selectedDate = pickerSubtaskDateValueRef.current;
-                          if (selectedDate) {
-                            // Se é nova subtarefa simples
-                            if (editingSubtaskId === 'new-subtask') {
-                              setNewSubtaskDate(selectedDate);
-                            }
-                            // Se é nova subtarefa de categoria
-                            else if (editingSubtaskId === 'new-category-subtask') {
-                              setNewCategorySubtaskDate(selectedDate);
-                            }
-                            // Se tem categoryId, atualizar subtarefa da categoria existente
-                            else if (editingSubtaskCategoryId) {
-                              setSubtaskCategories(prev =>
-                                prev.map(cat =>
-                                  cat.id === editingSubtaskCategoryId
-                                    ? {
+
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.button,
+                        styles.addButton,
+                        isAddingTask && styles.buttonDisabled,
+                        pressed && !isAddingTask && { opacity: 0.8, transform: [{ scale: 0.98 }] }
+                      ]}
+                      onPress={addTask}
+                      disabled={isAddingTask}
+                      android_ripple={{ color: 'rgba(255, 255, 255, 0.3)' }}
+                    >
+                      {isAddingTask ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                      ) : (
+                        <Text style={styles.addButtonText}>{isEditing ? 'Salvar' : 'Adicionar'}</Text>
+                      )}
+                    </Pressable>
+                  </View>
+                )}
+
+                {/* iOS inline picker dentro do fluxo do conteúdo, abaixo dos botões de data/hora */}
+                {Platform.OS === 'ios' && (showDatePicker || showTimePicker) && (
+                  <View style={styles.iosInlinePickerBox}>
+                    {showDatePicker && (
+                      <DateTimePicker
+                        value={stableDatePickerValue}
+                        mode="date"
+                        display="spinner"
+                        onChange={onDateChange}
+                        style={styles.iosDateTimePicker}
+                      />
+                    )}
+                    {showTimePicker && (
+                      <DateTimePicker
+                        value={stableTimePickerValue}
+                        mode="time"
+                        display="spinner"
+                        onChange={onTimeChange}
+                        is24Hour={true}
+                        style={styles.iosDateTimePicker}
+                      />
+                    )}
+                    <View style={styles.iosInlinePickerActions}>
+                      <Pressable
+                        style={[styles.button, styles.cancelButton]}
+                        onPress={closeAllPickers}
+                      >
+                        <Text style={styles.cancelButtonText}>Cancelar</Text>
+                      </Pressable>
+                      <Pressable
+                        style={[styles.button, styles.saveButton]}
+                        onPress={() => {
+                          if (showDatePicker) setTempDueDate(pickerDateValueRef.current);
+                          if (showTimePicker) setTempDueTime(pickerTimeValueRef.current);
+                          closeAllPickers();
+                        }}
+                      >
+                        <Text style={styles.saveButtonText}>OK</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                )}
+
+                {/* iOS inline picker para subtasks */}
+                {Platform.OS === 'ios' && (showSubtaskDatePicker || showSubtaskTimePicker) && editingSubtaskId && (
+                  <View style={styles.iosInlinePickerBox}>
+                    {showSubtaskDatePicker && (
+                      <DateTimePicker
+                        value={stableSubtaskDatePickerValue}
+                        mode="date"
+                        display="spinner"
+                        onChange={onSubtaskDateChange}
+                        style={styles.iosDateTimePicker}
+                      />
+                    )}
+                    {showSubtaskTimePicker && (
+                      <DateTimePicker
+                        value={stableSubtaskTimePickerValue}
+                        mode="time"
+                        display="spinner"
+                        onChange={onSubtaskTimeChange}
+                        is24Hour={true}
+                        style={styles.iosDateTimePicker}
+                      />
+                    )}
+                    <View style={styles.iosInlinePickerActions}>
+                      <Pressable
+                        style={[styles.button, styles.cancelButton]}
+                        onPress={closeAllPickers}
+                      >
+                        <Text style={styles.cancelButtonText}>Cancelar</Text>
+                      </Pressable>
+                      <Pressable
+                        style={[styles.button, styles.saveButton]}
+                        onPress={() => {
+                          if (showSubtaskDatePicker && editingSubtaskId) {
+                            const selectedDate = pickerSubtaskDateValueRef.current;
+                            if (selectedDate) {
+                              // Se é nova subtarefa simples
+                              if (editingSubtaskId === 'new-subtask') {
+                                setNewSubtaskDate(selectedDate);
+                              }
+                              // Se é nova subtarefa de categoria
+                              else if (editingSubtaskId === 'new-category-subtask') {
+                                setNewCategorySubtaskDate(selectedDate);
+                              }
+                              // Se tem categoryId, atualizar subtarefa da categoria existente
+                              else if (editingSubtaskCategoryId) {
+                                setSubtaskCategories(prev =>
+                                  prev.map(cat =>
+                                    cat.id === editingSubtaskCategoryId
+                                      ? {
                                         ...cat,
                                         subtasks: cat.subtasks.map(st =>
                                           st.id === editingSubtaskId ? { ...st, dueDate: selectedDate } : st
                                         )
                                       }
-                                    : cat
-                                )
-                              );
-                            } else {
-                              // Atualizar subtarefa simples existente
-                              setSubtasksDraft(prev => {
-                                const next = prev.map(st => {
-                                  if (st.id !== editingSubtaskId) return st;
-                                  return { ...st, dueDate: selectedDate };
+                                      : cat
+                                  )
+                                );
+                              } else {
+                                // Atualizar subtarefa simples existente
+                                setSubtasksDraft(prev => {
+                                  const next = prev.map(st => {
+                                    if (st.id !== editingSubtaskId) return st;
+                                    return { ...st, dueDate: selectedDate };
+                                  });
+                                  return next;
                                 });
-                                return next;
-                              });
+                              }
                             }
                           }
-                        }
-                        if (showSubtaskTimePicker && editingSubtaskId) {
-                          const selectedTime = pickerSubtaskTimeValueRef.current;
-                          if (selectedTime) {
-                            // Se é nova subtarefa simples
-                            if (editingSubtaskId === 'new-subtask') {
-                              setNewSubtaskTime(selectedTime);
-                            }
-                            // Se é nova subtarefa de categoria
-                            else if (editingSubtaskId === 'new-category-subtask') {
-                              setNewCategorySubtaskTime(selectedTime);
-                            }
-                            // Se tem categoryId, atualizar subtarefa da categoria existente
-                            else if (editingSubtaskCategoryId) {
-                              // Atualizar subtarefa da categoria
-                              setSubtaskCategories(prev =>
-                                prev.map(cat =>
-                                  cat.id === editingSubtaskCategoryId
-                                    ? {
+                          if (showSubtaskTimePicker && editingSubtaskId) {
+                            const selectedTime = pickerSubtaskTimeValueRef.current;
+                            if (selectedTime) {
+                              // Se é nova subtarefa simples
+                              if (editingSubtaskId === 'new-subtask') {
+                                setNewSubtaskTime(selectedTime);
+                              }
+                              // Se é nova subtarefa de categoria
+                              else if (editingSubtaskId === 'new-category-subtask') {
+                                setNewCategorySubtaskTime(selectedTime);
+                              }
+                              // Se tem categoryId, atualizar subtarefa da categoria existente
+                              else if (editingSubtaskCategoryId) {
+                                // Atualizar subtarefa da categoria
+                                setSubtaskCategories(prev =>
+                                  prev.map(cat =>
+                                    cat.id === editingSubtaskCategoryId
+                                      ? {
                                         ...cat,
                                         subtasks: cat.subtasks.map(st => {
                                           if (st.id !== editingSubtaskId) return st;
@@ -6960,172 +7153,172 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
                                           return { ...st, dueTime: merged };
                                         })
                                       }
-                                    : cat
-                                )
-                              );
-                            } else {
-                              // Atualizar subtarefa simples existente
-                              setSubtasksDraft(prev => {
-                                const next = prev.map(st => {
-                                  if (st.id !== editingSubtaskId) return st;
-                                  const base = st.dueDate || stableNowRef.current;
-                                  const merged = new Date(base);
-                                  merged.setHours(selectedTime.getHours(), selectedTime.getMinutes(), 0, 0);
-                                  return { ...st, dueTime: merged };
+                                      : cat
+                                  )
+                                );
+                              } else {
+                                // Atualizar subtarefa simples existente
+                                setSubtasksDraft(prev => {
+                                  const next = prev.map(st => {
+                                    if (st.id !== editingSubtaskId) return st;
+                                    const base = st.dueDate || stableNowRef.current;
+                                    const merged = new Date(base);
+                                    merged.setHours(selectedTime.getHours(), selectedTime.getMinutes(), 0, 0);
+                                    return { ...st, dueTime: merged };
+                                  });
+                                  return next;
                                 });
-                                return next;
-                              });
+                              }
                             }
                           }
-                        }
-                        closeAllPickers();
-                      }}
-                    >
-                      <Text style={styles.saveButtonText}>OK</Text>
-                    </Pressable>
+                          closeAllPickers();
+                        }}
+                      >
+                        <Text style={styles.saveButtonText}>OK</Text>
+                      </Pressable>
+                    </View>
                   </View>
-                </View>
-              )}
+                )}
 
+              </View>
             </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+          </KeyboardAvoidingView>
+        </Modal>
 
-      {/* Modal para criar nova categoria */}
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={categoryModalVisible && isTopModal('category')}
-        onRequestClose={() => { setCategoryModalVisible(false); closeManagedModal('category'); }}
-      >
-        <KeyboardAvoidingView 
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.keyboardAvoidingView}
+        {/* Modal para criar nova categoria */}
+        <Modal
+          animationType="slide"
+          transparent={true}
+          visible={categoryModalVisible && isTopModal('category')}
+          onRequestClose={() => { setCategoryModalVisible(false); closeManagedModal('category'); }}
         >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Nova Categoria</Text>
-                <Pressable onPress={() => { setCategoryModalVisible(false); closeManagedModal('category'); }}>
-                  <Ionicons name="close" size={24} color="#666" />
-                </Pressable>
-              </View>
-
-              <ScrollView 
-                style={styles.modalScrollView}
-                contentContainerStyle={styles.modalScrollContent}
-                showsVerticalScrollIndicator={false}
-              >
-              <TextInput
-                style={[styles.input, { color: colors.textPrimary }]}
-                placeholder="Nome da categoria"
-                placeholderTextColor={activeTheme === 'dark' ? '#888' : '#999'}
-                value={newCategoryName}
-                onChangeText={setNewCategoryName}
-                maxLength={20}
-              />
-
-              <Text style={styles.categoryLabel}>Ícone:</Text>
-              <ScrollView 
-                horizontal 
-                showsHorizontalScrollIndicator={Platform.OS === 'web'}
-                style={[
-                  styles.horizontalScrollContainer,
-                  Platform.OS === 'web' && ({ overflow: 'scroll' } as any)
-                ]}
-                contentContainerStyle={styles.iconSelectorContainer}
-              >
-                {AVAILABLE_ICONS.map((icon) => (
-                  <Pressable
-                    key={icon}
-                    style={[
-                      styles.iconSelector,
-                      selectedIcon === icon && styles.iconSelectorActive
-                    ]}
-                    onPress={() => setSelectedIcon(icon)}
-                  >
-                    <Ionicons 
-                      name={icon as any} 
-                      size={22} 
-                      color={selectedIcon === icon ? APP_COLORS.primary.main : '#666'} 
-                    />
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={styles.keyboardAvoidingView}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={styles.modalContent}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>Nova Categoria</Text>
+                  <Pressable onPress={() => { setCategoryModalVisible(false); closeManagedModal('category'); }}>
+                    <Ionicons name="close" size={24} color="#666" />
                   </Pressable>
-                ))}
-              </ScrollView>
+                </View>
 
-              <Text style={styles.categoryLabel}>Cor:</Text>
-              <ScrollView 
-                horizontal 
-                showsHorizontalScrollIndicator={Platform.OS === 'web'}
-                style={[
-                  styles.horizontalScrollContainer,
-                  Platform.OS === 'web' && ({ overflow: 'scroll' } as any)
-                ]}
-                contentContainerStyle={styles.colorSelectorContainer}
-              >
-                {AVAILABLE_COLORS.map((colorConfig, index) => (
-                  <Pressable
-                    key={index}
-                    style={[
-                      styles.colorSelector,
-                      { backgroundColor: colorConfig.color },
-                      selectedColorIndex === index && styles.colorSelectorActive
-                    ]}
-                    onPress={() => setSelectedColorIndex(index)}
-                  >
-                    {selectedColorIndex === index && (
-                      <Ionicons name="checkmark" size={16} color="#fff" />
-                    )}
-                  </Pressable>
-                ))}
-              </ScrollView>
-
-              <View style={styles.categoryPreview}>
-                <Text style={styles.previewLabel}>Pré-visualização:</Text>
-                <View style={[
-                  styles.categoryPreviewItem,
-                  { 
-                    backgroundColor: AVAILABLE_COLORS[selectedColorIndex].bgColor,
-                    borderColor: AVAILABLE_COLORS[selectedColorIndex].color
-                  }
-                ]}>
-                  <Ionicons 
-                    name={selectedIcon as any} 
-                    size={16} 
-                    color={AVAILABLE_COLORS[selectedColorIndex].color} 
+                <ScrollView
+                  style={styles.modalScrollView}
+                  contentContainerStyle={styles.modalScrollContent}
+                  showsVerticalScrollIndicator={false}
+                >
+                  <TextInput
+                    style={[styles.input, { color: colors.textPrimary }]}
+                    placeholder="Nome da categoria"
+                    placeholderTextColor={activeTheme === 'dark' ? '#888' : '#999'}
+                    value={newCategoryName}
+                    onChangeText={setNewCategoryName}
+                    maxLength={20}
                   />
-                  <Text style={[
-                    styles.categoryPreviewText,
-                    { color: AVAILABLE_COLORS[selectedColorIndex].color }
-                  ]}>
-                    {newCategoryName || 'Nova Categoria'}
-                  </Text>
+
+                  <Text style={styles.categoryLabel}>Ícone:</Text>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={Platform.OS === 'web'}
+                    style={[
+                      styles.horizontalScrollContainer,
+                      Platform.OS === 'web' && ({ overflow: 'scroll' } as any)
+                    ]}
+                    contentContainerStyle={styles.iconSelectorContainer}
+                  >
+                    {AVAILABLE_ICONS.map((icon) => (
+                      <Pressable
+                        key={icon}
+                        style={[
+                          styles.iconSelector,
+                          selectedIcon === icon && styles.iconSelectorActive
+                        ]}
+                        onPress={() => setSelectedIcon(icon)}
+                      >
+                        <Ionicons
+                          name={icon as any}
+                          size={22}
+                          color={selectedIcon === icon ? APP_COLORS.primary.main : '#666'}
+                        />
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+
+                  <Text style={styles.categoryLabel}>Cor:</Text>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={Platform.OS === 'web'}
+                    style={[
+                      styles.horizontalScrollContainer,
+                      Platform.OS === 'web' && ({ overflow: 'scroll' } as any)
+                    ]}
+                    contentContainerStyle={styles.colorSelectorContainer}
+                  >
+                    {AVAILABLE_COLORS.map((colorConfig, index) => (
+                      <Pressable
+                        key={index}
+                        style={[
+                          styles.colorSelector,
+                          { backgroundColor: colorConfig.color },
+                          selectedColorIndex === index && styles.colorSelectorActive
+                        ]}
+                        onPress={() => setSelectedColorIndex(index)}
+                      >
+                        {selectedColorIndex === index && (
+                          <Ionicons name="checkmark" size={16} color="#fff" />
+                        )}
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+
+                  <View style={styles.categoryPreview}>
+                    <Text style={styles.previewLabel}>Pré-visualização:</Text>
+                    <View style={[
+                      styles.categoryPreviewItem,
+                      {
+                        backgroundColor: AVAILABLE_COLORS[selectedColorIndex].bgColor,
+                        borderColor: AVAILABLE_COLORS[selectedColorIndex].color
+                      }
+                    ]}>
+                      <Ionicons
+                        name={selectedIcon as any}
+                        size={16}
+                        color={AVAILABLE_COLORS[selectedColorIndex].color}
+                      />
+                      <Text style={[
+                        styles.categoryPreviewText,
+                        { color: AVAILABLE_COLORS[selectedColorIndex].color }
+                      ]}>
+                        {newCategoryName || 'Nova Categoria'}
+                      </Text>
+                    </View>
+                  </View>
+                </ScrollView>
+
+                <View style={styles.modalButtons}>
+                  <Pressable
+                    style={[styles.button, styles.cancelButton]}
+                    onPress={() => { setCategoryModalVisible(false); closeManagedModal('category'); }}
+                  >
+                    <Text style={styles.cancelButtonText}>Cancelar</Text>
+                  </Pressable>
+
+                  <Pressable
+                    style={[styles.button, styles.addButton]}
+                    onPress={addCategory}
+                  >
+                    <Text style={styles.addButtonText}>Criar</Text>
+                  </Pressable>
                 </View>
               </View>
-            </ScrollView>
-
-            <View style={styles.modalButtons}>
-              <Pressable 
-                style={[styles.button, styles.cancelButton]}
-                onPress={() => { setCategoryModalVisible(false); closeManagedModal('category'); }}
-              >
-                <Text style={styles.cancelButtonText}>Cancelar</Text>
-              </Pressable>
-              
-              <Pressable 
-                style={[styles.button, styles.addButton]}
-                onPress={addCategory}
-              >
-                <Text style={styles.addButtonText}>Criar</Text>
-              </Pressable>
             </View>
-          </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+          </KeyboardAvoidingView>
+        </Modal>
 
-        
+
 
         {/* Mini modal para configurar Semanal/Intervalo - usado quando NÃO está com modal de tarefa aberto no iOS, e sempre no Android/Web */}
         <RepeatConfigModal
@@ -7159,775 +7352,825 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
           activeTheme={activeTheme}
         />
 
-      {/* DateTimePickers nativos para iOS e Android */}
-      {Platform.OS !== 'web' && (
-        <>
-          {/* iOS: Pickers em Modal com botão Concluído (somente quando não há modal de tarefa aberto) */}
-          {Platform.OS === 'ios' && !modalVisible && (showDatePicker || showTimePicker || showSubtaskDatePicker || showSubtaskTimePicker) && (
-            <Modal
-              key="ios-datetime-picker"
-              transparent={true}
-              animationType="slide"
-              visible={true}
-              presentationStyle="overFullScreen"
-              statusBarTranslucent={true}
-              onShow={() => logger.debug('PICKERS', 'Modal iOS DateTimePicker foi aberto!')}
-              onRequestClose={() => {
-                logger.debug('PICKERS', 'Modal iOS DateTimePicker - onRequestClose chamado');
-                closeAllPickers();
-              }}
-            >
-              <Pressable 
-                style={styles.iosPickerOverlay}
-                onPress={() => {
-                  logger.debug('PICKERS', 'Clicou no overlay - fechando pickers');
+        {/* DateTimePickers nativos para iOS e Android */}
+        {Platform.OS !== 'web' && (
+          <>
+            {/* iOS: Pickers em Modal com botão Concluído (somente quando não há modal de tarefa aberto) */}
+            {Platform.OS === 'ios' && !modalVisible && (showDatePicker || showTimePicker || showSubtaskDatePicker || showSubtaskTimePicker) && (
+              <Modal
+                key="ios-datetime-picker"
+                transparent={true}
+                animationType="slide"
+                visible={true}
+                presentationStyle="overFullScreen"
+                statusBarTranslucent={true}
+                onShow={() => logger.debug('PICKERS', 'Modal iOS DateTimePicker foi aberto!')}
+                onRequestClose={() => {
+                  logger.debug('PICKERS', 'Modal iOS DateTimePicker - onRequestClose chamado');
                   closeAllPickers();
                 }}
               >
-                <Pressable 
-                  style={styles.iosPickerContainer} 
-                  onPress={(e) => {
-                    logger.debug('PICKERS', 'Clicou no container do picker');
-                    e.stopPropagation();
+                <Pressable
+                  style={styles.iosPickerOverlay}
+                  onPress={() => {
+                    logger.debug('PICKERS', 'Clicou no overlay - fechando pickers');
+                    closeAllPickers();
                   }}
                 >
-                  <View style={styles.iosPickerHeader}>
-                    <Pressable 
-                      onPress={() => {
-                        // SALVAR os valores das refs no estado antes de fechar (iOS)
-                        if (showDatePicker) {
-                          setTempDueDate(pickerDateValueRef.current);
-                        }
-                        if (showTimePicker) {
-                          setTempDueTime(pickerTimeValueRef.current);
-                        }
-                        if (showSubtaskDatePicker && editingSubtaskId) {
-                          const selectedDate = pickerSubtaskDateValueRef.current;
-                          if (selectedDate) {
-                            setSubtasksDraft(prev => {
-                              const next = prev.map(st => {
-                                if (st.id !== editingSubtaskId) return st;
-                                return { ...st, dueDate: selectedDate };
-                              });
-                              return next;
-                            });
+                  <Pressable
+                    style={styles.iosPickerContainer}
+                    onPress={(e) => {
+                      logger.debug('PICKERS', 'Clicou no container do picker');
+                      e.stopPropagation();
+                    }}
+                  >
+                    <View style={styles.iosPickerHeader}>
+                      <Pressable
+                        onPress={() => {
+                          // SALVAR os valores das refs no estado antes de fechar (iOS)
+                          if (showDatePicker) {
+                            setTempDueDate(pickerDateValueRef.current);
                           }
-                        }
-                        if (showSubtaskTimePicker && editingSubtaskId) {
-                          const selectedTime = pickerSubtaskTimeValueRef.current;
-                          if (selectedTime) {
-                            setSubtasksDraft(prev => {
-                              const next = prev.map(st => {
-                                if (st.id !== editingSubtaskId) return st;
-                                const base = st.dueDate || stableNowRef.current;
-                                const merged = new Date(base);
-                                merged.setHours(selectedTime.getHours(), selectedTime.getMinutes(), 0, 0);
-                                return { ...st, dueTime: merged };
-                              });
-                              return next;
-                            });
+                          if (showTimePicker) {
+                            setTempDueTime(pickerTimeValueRef.current);
                           }
-                        }
-                        
-                        // Fechar pickers de forma segura
-                        closeAllPickers();
-                      }}
-                      style={styles.iosPickerDoneButton}
-                    >
-                      <Text style={styles.iosPickerDoneButtonText}>Concluído</Text>
-                    </Pressable>
-                  </View>
-                  
-                  {showDatePicker && (
-                    <DateTimePicker
-                      value={stableDatePickerValue}
-                      mode="date"
-                      display="spinner"
-                      onChange={onDateChange}
-                      style={styles.iosDateTimePicker}
-                    />
-                  )}
-                  
-                  {showTimePicker && (
-                    <DateTimePicker
-                      value={stableTimePickerValue}
-                      mode="time"
-                      display="spinner"
-                      onChange={onTimeChange}
-                      is24Hour={true}
-                      style={styles.iosDateTimePicker}
-                    />
-                  )}
-                  
-                  {showSubtaskDatePicker && editingSubtask && (
-                    <DateTimePicker
-                      value={stableSubtaskDatePickerValue}
-                      mode="date"
-                      display="spinner"
-                      onChange={onSubtaskDateChange}
-                      style={styles.iosDateTimePicker}
-                    />
-                  )}
-                  
-                  {showSubtaskTimePicker && editingSubtask && (
-                    <DateTimePicker
-                      value={stableSubtaskTimePickerValue}
-                      mode="time"
-                      display="spinner"
-                      onChange={onSubtaskTimeChange}
-                      is24Hour={true}
-                      style={styles.iosDateTimePicker}
-                    />
-                  )}
+                          if (showSubtaskDatePicker && editingSubtaskId) {
+                            const selectedDate = pickerSubtaskDateValueRef.current;
+                            if (selectedDate) {
+                              setSubtasksDraft(prev => {
+                                const next = prev.map(st => {
+                                  if (st.id !== editingSubtaskId) return st;
+                                  return { ...st, dueDate: selectedDate };
+                                });
+                                return next;
+                              });
+                            }
+                          }
+                          if (showSubtaskTimePicker && editingSubtaskId) {
+                            const selectedTime = pickerSubtaskTimeValueRef.current;
+                            if (selectedTime) {
+                              setSubtasksDraft(prev => {
+                                const next = prev.map(st => {
+                                  if (st.id !== editingSubtaskId) return st;
+                                  const base = st.dueDate || stableNowRef.current;
+                                  const merged = new Date(base);
+                                  merged.setHours(selectedTime.getHours(), selectedTime.getMinutes(), 0, 0);
+                                  return { ...st, dueTime: merged };
+                                });
+                                return next;
+                              });
+                            }
+                          }
+
+                          // Fechar pickers de forma segura
+                          closeAllPickers();
+                        }}
+                        style={styles.iosPickerDoneButton}
+                      >
+                        <Text style={styles.iosPickerDoneButtonText}>Concluído</Text>
+                      </Pressable>
+                    </View>
+
+                    {showDatePicker && (
+                      <DateTimePicker
+                        value={stableDatePickerValue}
+                        mode="date"
+                        display="spinner"
+                        onChange={onDateChange}
+                        style={styles.iosDateTimePicker}
+                      />
+                    )}
+
+                    {showTimePicker && (
+                      <DateTimePicker
+                        value={stableTimePickerValue}
+                        mode="time"
+                        display="spinner"
+                        onChange={onTimeChange}
+                        is24Hour={true}
+                        style={styles.iosDateTimePicker}
+                      />
+                    )}
+
+                    {showSubtaskDatePicker && editingSubtask && (
+                      <DateTimePicker
+                        value={stableSubtaskDatePickerValue}
+                        mode="date"
+                        display="spinner"
+                        onChange={onSubtaskDateChange}
+                        style={styles.iosDateTimePicker}
+                      />
+                    )}
+
+                    {showSubtaskTimePicker && editingSubtask && (
+                      <DateTimePicker
+                        value={stableSubtaskTimePickerValue}
+                        mode="time"
+                        display="spinner"
+                        onChange={onSubtaskTimeChange}
+                        is24Hour={true}
+                        style={styles.iosDateTimePicker}
+                      />
+                    )}
+                  </Pressable>
                 </Pressable>
-              </Pressable>
-            </Modal>
-          )}
-          
-          {/* Android: Pickers de Diálogo (sem Modal adicional) */}
-          {Platform.OS === 'android' && (
-            <>
-              {showDatePicker && (
-                <DateTimePicker
-                  value={stableDatePickerValue}
-                  mode="date"
-                  display="default"
-                  onChange={onDateChange}
-                />
-              )}
-              
-              {showTimePicker && (
-                <DateTimePicker
-                  value={stableTimePickerValue}
-                  mode="time"
-                  display="default"
-                  onChange={onTimeChange}
-                  is24Hour={true}
-                />
-              )}
-              
-              {showSubtaskDatePicker && editingSubtask && (
-                <DateTimePicker
-                  value={stableSubtaskDatePickerValue}
-                  mode="date"
-                  display="default"
-                  onChange={onSubtaskDateChange}
-                />
-              )}
-              
-              {showSubtaskTimePicker && editingSubtask && (
-                <DateTimePicker
-                  value={stableSubtaskTimePickerValue}
-                  mode="time"
-                  display="default"
-                  onChange={onSubtaskTimeChange}
-                  is24Hour={true}
-                />
-              )}
-            </>
-          )}
-        </>
-      )}
+              </Modal>
+            )}
 
-      {/* Modal de Manual e Informações */}
-      <Modal
-        animationType="fade"
-        transparent={true}
-        visible={settingsModalVisible && isTopModal('settings')}
-        onRequestClose={() => { setSettingsModalVisible(false); closeManagedModal('settings'); }}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, styles.manualModalContent]}>
-            <Text style={styles.modalTitle}>Manual de Uso</Text>
-
-            <ScrollView
-              style={styles.manualScroll}
-              contentContainerStyle={styles.manualContent}
-              showsVerticalScrollIndicator={true}
-            >
-              <Text style={styles.manualParagraph}>
-                Bem-vindo ao Agenda Familiar! Aqui você pode organizar as tarefas da família, aprovar pedidos dos dependentes e acompanhar o histórico de ações.
-              </Text>
-
-              <Text style={styles.manualSubtitle}>📱 Header do App</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="person-circle" size={16} color={APP_COLORS.primary.main} /> <Text style={{fontWeight: '600'}}>Ícone do Perfil:</Text> Toque no ícone para escolher um emoji como foto de perfil. Selecione entre diversos emojis disponíveis.</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="pencil" size={16} color={APP_COLORS.primary.main} /> <Text style={{fontWeight: '600'}}>Nome:</Text> Toque no nome para editá-lo. Digite seu nome e confirme para salvar.</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="notifications" size={16} color={APP_COLORS.primary.main} /> <Text style={{fontWeight: '600'}}>Notificações:</Text> Campainha mostra o número de aprovações pendentes. Toque para ver solicitações de conclusão de tarefas.</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="calendar" size={16} color={APP_COLORS.primary.main} /> <Text style={{fontWeight: '600'}}>Calendário:</Text> Visualize feriados brasileiros (amarelo) e tarefas agendadas (verde). Tarefas vencidas aparecem em vermelho. Toque em um dia para criar tarefa rápida.</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="arrow-undo" size={16} color={APP_COLORS.primary.main} /> <Text style={{fontWeight: '600'}}>Desfazer:</Text> Reverte a última ação (concluir, excluir ou editar tarefa). Aparece temporariamente após cada ação.</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="settings" size={16} color={APP_COLORS.primary.main} /> <Text style={{fontWeight: '600'}}>Menu (Configurações):</Text> Acesso às configurações, histórico, manual, atualizar dados e logout.</Text>
-
-              <Text style={styles.manualSubtitle}>� Navegação e Filtros</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="today" size={16} color={APP_COLORS.primary.main} /> <Text style={{fontWeight: '600'}}>Abas Hoje/Próximas:</Text> Alterne entre tarefas do dia atual e tarefas futuras tocando nas abas.</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="filter" size={16} color="#6c757d" /> <Text style={{fontWeight: '600'}}>Filtros:</Text> Ao lado do texto "Próximas", o botão de filtro permite filtrar tarefas por categoria específica.</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="add" size={16} color={APP_COLORS.primary.main} /> <Text style={{fontWeight: '600'}}>Criar Tarefa:</Text> Botão fixo no canto inferior direito abre o modal para criar uma nova tarefa com todos os detalhes.</Text>
-
-              <Text style={styles.manualSubtitle}>📋 Funcionamento das Tarefas</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="chevron-down" size={16} color={APP_COLORS.primary.main} /> <Text style={{fontWeight: '600'}}>Expandir/Colapsar:</Text> Tarefas vêm colapsadas por padrão. Toque no cabeçalho colorido para expandir e ver detalhes completos.</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="create" size={16} color={APP_COLORS.primary.main} /> <Text style={{fontWeight: '600'}}>Criando Tarefas:</Text> Use o botão + para criar. Escolha categoria, defina data/hora, configure recorrência e marque como privada se desejar.</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="checkmark-circle" size={16} color="#4CAF50" /> <Text style={{fontWeight: '600'}}>Concluindo Tarefas:</Text> Toque no círculo da tarefa para marcar como concluída. Dependentes precisam de aprovação do admin.</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="pencil" size={16} color="#FF9500" /> <Text style={{fontWeight: '600'}}>Editando Tarefas:</Text> Toque na tarefa para abrir detalhes e editar. Só o criador pode editar suas tarefas.</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="list" size={16} color="#9C27B0" /> <Text style={{fontWeight: '600'}}>Subtarefas:</Text> Adicione subtarefas com datas/horários individuais. Marque como concluídas independentemente.</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="repeat" size={16} color="#9C27B0" /> <Text style={{fontWeight: '600'}}>Tarefas Recorrentes:</Text> Configure para repetir diariamente, fins de semana ou dias específicos da semana com duração definida.</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="lock-closed" size={16} color="#666" /> <Text style={{fontWeight: '600'}}>Tarefas Privadas:</Text> Visíveis apenas para o criador. Outros membros da família não as verão.</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="color-palette" size={16} color="#FF6B6B" /> <Text style={{fontWeight: '600'}}>Cores das Bordas:</Text> Cada tarefa tem borda colorida igual à sua categoria. Tarefas vencidas ficam com borda vermelha.</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="notifications" size={16} color="#e74c3c" /> <Text style={{fontWeight: '600'}}>Aprovações:</Text> Admins recebem notificações na campainha para aprovar conclusões de dependentes.</Text>
-
-              <Text style={styles.manualSubtitle}>📅 Calendário</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="ellipse" size={16} color="#FFD700" /> <Text style={{fontWeight: '600'}}>Feriados (Amarelo):</Text> Todos os feriados nacionais brasileiros do ano são marcados automaticamente.</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="ellipse" size={16} color="#4CAF50" /> <Text style={{fontWeight: '600'}}>Tarefas (Verde):</Text> Dias com tarefas pendentes são marcados com ponto verde.</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="ellipse" size={16} color={APP_COLORS.status.error} /> <Text style={{fontWeight: '600'}}>Vencidas (Vermelho):</Text> Tarefas com data passada aparecem em vermelho no calendário e na lista.</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="add-circle" size={16} color={APP_COLORS.primary.main} /> <Text style={{fontWeight: '600'}}>Criar do Calendário:</Text> Toque em qualquer dia para criar tarefa já com aquela data preenchida.</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="list" size={16} color={APP_COLORS.primary.main} /> <Text style={{fontWeight: '600'}}>Lista do Mês:</Text> Abaixo do calendário aparecem feriados e tarefas do mês selecionado com scroll automático.</Text>
-
-              <Text style={styles.manualSubtitle}>👨‍👩‍👧‍👦 Gerenciar Família</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="pencil" size={16} color={APP_COLORS.secondary.main} /> <Text style={{fontWeight: '600'}}>Alterar Nome:</Text> Apenas admins podem editar o nome da família através do menu de configurações.</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="people" size={16} color={APP_COLORS.secondary.main} /> <Text style={{fontWeight: '600'}}>Ver Membros:</Text> Lista todos os membros com foto, nome, função e data de entrada.</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="swap-horizontal" size={16} color={APP_COLORS.secondary.dark} /> <Text style={{fontWeight: '600'}}>Alterar Funções:</Text> Admins podem promover dependentes a administradores ou reverter.</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="key" size={16} color={APP_COLORS.primary.dark} /> <Text style={{fontWeight: '600'}}>Código de Convite:</Text> Código único para convidar novos membros. Copie e compartilhe com quem quiser adicionar.</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="trash" size={16} color="#e74c3c" /> <Text style={{fontWeight: '600'}}>Remover Membros:</Text> Admins podem remover membros da família (exceto si mesmos).</Text>
-
-              <Text style={styles.manualSubtitle}>🚪 Entrar em Outra Família</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="enter" size={16} color="#FF9500" /> <Text style={{fontWeight: '600'}}>Como Entrar:</Text> Use o código de convite fornecido pelo administrador da família que você deseja entrar.</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="person" size={16} color="#34C759" /> <Text style={{fontWeight: '600'}}>Função Inicial:</Text> Novos membros entram como dependentes. Apenas admins podem alterar funções posteriormente.</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="checkmark" size={16} color="#4CAF50" /> <Text style={{fontWeight: '600'}}>Confirmação:</Text> Após inserir o código válido, você será adicionado à família e poderá ver suas tarefas.</Text>
-
-              <Text style={styles.manualSubtitle}>📜 Histórico</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="time" size={16} color={APP_COLORS.primary.light} /> <Text style={{fontWeight: '600'}}>Acesso:</Text> Acesse através do menu de configurações, opção Histórico.</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="list" size={16} color="#007AFF" /> <Text style={{fontWeight: '600'}}>Conteúdo:</Text> Mostra todas as ações realizadas nas tarefas nos últimos 7 dias.</Text>
-              <Text style={styles.manualListItem}>• <Ionicons name="information-circle" size={16} color="#007AFF" /> <Text style={{fontWeight: '600'}}>Detalhes:</Text> Inclui quem criou/editou/concluiu tarefas, com data e hora de cada ação.</Text>
-
-              <Text style={styles.manualSubtitle}>💡 Dicas Rápidas</Text>
-              <Text style={styles.manualListItem}>• Navegação: Use as abas "Hoje" e "Próximas" para alternar entre tarefas do dia e futuras.</Text>
-              <Text style={styles.manualListItem}>• Categorias: Filtre tarefas por categoria usando o botão de filtro ao lado da aba "Próximas".</Text>
-              <Text style={styles.manualListItem}>• Emojis: Personalize seu perfil escolhendo um emoji como foto de perfil.</Text>
-              <Text style={styles.manualListItem}>• Calendário: Use o calendário para visualizar feriados e criar tarefas rapidamente em datas específicas.</Text>
-              <Text style={styles.manualListItem}>• Notificações: Permita notificações no dispositivo para receber lembretes de tarefas.</Text>
-              <Text style={styles.manualListItem}>• Privacidade: Tarefas privadas são visíveis apenas para seu criador.</Text>
-              <Text style={styles.manualListItem}>• Cores: Bordas coloridas indicam a categoria. Borda vermelha indica tarefa vencida.</Text>
-            </ScrollView>
-
-            <Pressable
-              style={[styles.closeButton, styles.closeButtonFixed]}
-              onPress={() => { setSettingsModalVisible(false); closeManagedModal('settings'); }}
-            >
-              <Text style={styles.closeButtonText}>Fechar</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Modal do Histórico */}
-      <Modal
-        visible={historyModalVisible}
-        animationType="fade"
-        transparent={true}
-        onRequestClose={() => setHistoryModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.historyModalWrapper}>
-            <SafeAreaView style={styles.historyModalSafeArea} edges={['top', 'left', 'right']}>
-              <Text style={styles.modalTitle}>Informações</Text>
-
-              <Text style={styles.historySubtitle}>
-                Últimas ações realizadas (7 dias)
-              </Text>
-
-              <View style={styles.historyListContainer}>
-                {history.length === 0 ? (
-                  <View style={styles.emptyHistoryContainer}>
-                    <Ionicons name="time-outline" size={64} color="#ccc" />
-                    <Text style={styles.emptyHistoryText}>Nenhuma ação registrada</Text>
-                    <Text style={styles.emptyHistorySubtext}>
-                      As ações realizadas nas tarefas aparecerão aqui
-                    </Text>
-                  </View>
-                ) : (
-                  <FlatList
-                    data={history}
-                    keyExtractor={(item) => item.id}
-                    showsVerticalScrollIndicator={true}
-                    renderItem={renderHistoryItem}
-                    style={styles.historyList}
-                    contentContainerStyle={styles.historyListContent}
-                    removeClippedSubviews={true}
-                    maxToRenderPerBatch={15}
-                    updateCellsBatchingPeriod={50}
-                    initialNumToRender={20}
-                    scrollEventThrottle={16}
+            {/* Android: Pickers de Diálogo (sem Modal adicional) */}
+            {Platform.OS === 'android' && (
+              <>
+                {showDatePicker && (
+                  <DateTimePicker
+                    value={stableDatePickerValue}
+                    mode="date"
+                    display="default"
+                    onChange={onDateChange}
                   />
                 )}
-              </View>
-              
-              {/* Botão de fechar fixo no rodapé do modal */}
-              <Pressable 
+
+                {showTimePicker && (
+                  <DateTimePicker
+                    value={stableTimePickerValue}
+                    mode="time"
+                    display="default"
+                    onChange={onTimeChange}
+                    is24Hour={true}
+                  />
+                )}
+
+                {showSubtaskDatePicker && editingSubtask && (
+                  <DateTimePicker
+                    value={stableSubtaskDatePickerValue}
+                    mode="date"
+                    display="default"
+                    onChange={onSubtaskDateChange}
+                  />
+                )}
+
+                {showSubtaskTimePicker && editingSubtask && (
+                  <DateTimePicker
+                    value={stableSubtaskTimePickerValue}
+                    mode="time"
+                    display="default"
+                    onChange={onSubtaskTimeChange}
+                    is24Hour={true}
+                  />
+                )}
+              </>
+            )}
+          </>
+        )}
+
+        {/* Modal de Manual e Informações */}
+        <Modal
+          animationType="fade"
+          transparent={true}
+          visible={settingsModalVisible && isTopModal('settings')}
+          onRequestClose={() => { setSettingsModalVisible(false); closeManagedModal('settings'); }}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, styles.manualModalContent]}>
+              <Text style={styles.modalTitle}>Manual de Uso</Text>
+
+              <ScrollView
+                style={styles.manualScroll}
+                contentContainerStyle={styles.manualContent}
+                showsVerticalScrollIndicator={true}
+              >
+                <Text style={styles.manualParagraph}>
+                  Bem-vindo ao Agenda Familiar! Aqui você pode organizar as tarefas da família, aprovar pedidos dos dependentes e acompanhar o histórico de ações.
+                </Text>
+
+                <Text style={styles.manualSubtitle}>📱 Header do App</Text>
+                <Text style={styles.manualListItem}>• <Ionicons name="person-circle" size={16} color={APP_COLORS.primary.main} /> <Text style={{ fontWeight: '600' }}>Ícone do Perfil:</Text> Toque no ícone para escolher um emoji como foto de perfil. Selecione entre diversos emojis disponíveis.</Text>
+                <Text style={styles.manualListItem}>• <Ionicons name="pencil" size={16} color={APP_COLORS.primary.main} /> <Text style={{ fontWeight: '600' }}>Nome:</Text> Toque no nome para editá-lo. Digite seu nome e confirme para salvar.</Text>
+                <Text style={styles.manualListItem}>• <Ionicons name="notifications" size={16} color={APP_COLORS.primary.main} /> <Text style={{ fontWeight: '600' }}>Notificações:</Text> Campainha mostra o número de aprovações pendentes. Toque para ver solicitações de conclusão de tarefas.</Text>
+                <Text style={styles.manualListItem}>• <Ionicons name="calendar" size={16} color={APP_COLORS.primary.main} /> <Text style={{ fontWeight: '600' }}>Calendário:</Text> Visualize feriados brasileiros (amarelo) e tarefas agendadas (verde). Tarefas vencidas aparecem em vermelho. Toque em um dia para criar tarefa rápida.</Text>
+                <Text style={styles.manualListItem}>• <Ionicons name="arrow-undo" size={16} color={APP_COLORS.primary.main} /> <Text style={{ fontWeight: '600' }}>Desfazer:</Text> Reverte a última ação (concluir, excluir ou editar tarefa). Aparece temporariamente após cada ação.</Text>
+                <Text style={styles.manualListItem}>• <Ionicons name="settings" size={16} color={APP_COLORS.primary.main} /> <Text style={{ fontWeight: '600' }}>Menu (Configurações):</Text> Acesso às configurações, histórico, manual, atualizar dados e logout.</Text>
+
+                <Text style={styles.manualSubtitle}>� Navegação e Filtros</Text>
+                <Text style={styles.manualListItem}>• <Ionicons name="today" size={16} color={APP_COLORS.primary.main} /> <Text style={{ fontWeight: '600' }}>Abas Hoje/Próximas:</Text> Alterne entre tarefas do dia atual e tarefas futuras tocando nas abas.</Text>
+                <Text style={styles.manualListItem}>• <Ionicons name="filter" size={16} color="#6c757d" /> <Text style={{ fontWeight: '600' }}>Filtros:</Text> Ao lado do texto "Próximas", o botão de filtro permite filtrar tarefas por categoria específica.</Text>
+                <Text style={styles.manualListItem}>• <Ionicons name="add" size={16} color={APP_COLORS.primary.main} /> <Text style={{ fontWeight: '600' }}>Criar Tarefa:</Text> Botão fixo no canto inferior direito abre o modal para criar uma nova tarefa com todos os detalhes.</Text>
+
+                <Text style={styles.manualSubtitle}>📋 Funcionamento das Tarefas</Text>
+                <Text style={styles.manualListItem}>• <Ionicons name="chevron-down" size={16} color={APP_COLORS.primary.main} /> <Text style={{ fontWeight: '600' }}>Expandir/Colapsar:</Text> Tarefas vêm colapsadas por padrão. Toque no cabeçalho colorido para expandir e ver detalhes completos.</Text>
+                <Text style={styles.manualListItem}>• <Ionicons name="create" size={16} color={APP_COLORS.primary.main} /> <Text style={{ fontWeight: '600' }}>Criando Tarefas:</Text> Use o botão + para criar. Escolha categoria, defina data/hora, configure recorrência e marque como privada se desejar.</Text>
+                <Text style={styles.manualListItem}>• <Ionicons name="checkmark-circle" size={16} color="#4CAF50" /> <Text style={{ fontWeight: '600' }}>Concluindo Tarefas:</Text> Toque no círculo da tarefa para marcar como concluída. Dependentes precisam de aprovação do admin.</Text>
+                <Text style={styles.manualListItem}>• <Ionicons name="pencil" size={16} color="#FF9500" /> <Text style={{ fontWeight: '600' }}>Editando Tarefas:</Text> Toque na tarefa para abrir detalhes e editar. Só o criador pode editar suas tarefas.</Text>
+                <Text style={styles.manualListItem}>• <Ionicons name="list" size={16} color="#9C27B0" /> <Text style={{ fontWeight: '600' }}>Subtarefas:</Text> Adicione subtarefas com datas/horários individuais. Marque como concluídas independentemente.</Text>
+                <Text style={styles.manualListItem}>• <Ionicons name="repeat" size={16} color="#9C27B0" /> <Text style={{ fontWeight: '600' }}>Tarefas Recorrentes:</Text> Configure para repetir diariamente, fins de semana ou dias específicos da semana com duração definida.</Text>
+                <Text style={styles.manualListItem}>• <Ionicons name="lock-closed" size={16} color="#666" /> <Text style={{ fontWeight: '600' }}>Tarefas Privadas:</Text> Visíveis apenas para o criador. Outros membros da família não as verão.</Text>
+                <Text style={styles.manualListItem}>• <Ionicons name="color-palette" size={16} color="#FF6B6B" /> <Text style={{ fontWeight: '600' }}>Cores das Bordas:</Text> Cada tarefa tem borda colorida igual à sua categoria. Tarefas vencidas ficam com borda vermelha.</Text>
+                <Text style={styles.manualListItem}>• <Ionicons name="notifications" size={16} color="#e74c3c" /> <Text style={{ fontWeight: '600' }}>Aprovações:</Text> Admins recebem notificações na campainha para aprovar conclusões de dependentes.</Text>
+
+                <Text style={styles.manualSubtitle}>📅 Calendário</Text>
+                <Text style={styles.manualListItem}>• <Ionicons name="ellipse" size={16} color="#FFD700" /> <Text style={{ fontWeight: '600' }}>Feriados (Amarelo):</Text> Todos os feriados nacionais brasileiros do ano são marcados automaticamente.</Text>
+                <Text style={styles.manualListItem}>• <Ionicons name="ellipse" size={16} color="#4CAF50" /> <Text style={{ fontWeight: '600' }}>Tarefas (Verde):</Text> Dias com tarefas pendentes são marcados com ponto verde.</Text>
+                <Text style={styles.manualListItem}>• <Ionicons name="ellipse" size={16} color={APP_COLORS.status.error} /> <Text style={{ fontWeight: '600' }}>Vencidas (Vermelho):</Text> Tarefas com data passada aparecem em vermelho no calendário e na lista.</Text>
+                <Text style={styles.manualListItem}>• <Ionicons name="add-circle" size={16} color={APP_COLORS.primary.main} /> <Text style={{ fontWeight: '600' }}>Criar do Calendário:</Text> Toque em qualquer dia para criar tarefa já com aquela data preenchida.</Text>
+                <Text style={styles.manualListItem}>• <Ionicons name="list" size={16} color={APP_COLORS.primary.main} /> <Text style={{ fontWeight: '600' }}>Lista do Mês:</Text> Abaixo do calendário aparecem feriados e tarefas do mês selecionado com scroll automático.</Text>
+
+                <Text style={styles.manualSubtitle}>👨‍👩‍👧‍👦 Gerenciar Família</Text>
+                <Text style={styles.manualListItem}>• <Ionicons name="pencil" size={16} color={APP_COLORS.secondary.main} /> <Text style={{ fontWeight: '600' }}>Alterar Nome:</Text> Apenas admins podem editar o nome da família através do menu de configurações.</Text>
+                <Text style={styles.manualListItem}>• <Ionicons name="people" size={16} color={APP_COLORS.secondary.main} /> <Text style={{ fontWeight: '600' }}>Ver Membros:</Text> Lista todos os membros com foto, nome, função e data de entrada.</Text>
+                <Text style={styles.manualListItem}>• <Ionicons name="swap-horizontal" size={16} color={APP_COLORS.secondary.dark} /> <Text style={{ fontWeight: '600' }}>Alterar Funções:</Text> Admins podem promover dependentes a administradores ou reverter.</Text>
+                <Text style={styles.manualListItem}>• <Ionicons name="key" size={16} color={APP_COLORS.primary.dark} /> <Text style={{ fontWeight: '600' }}>Código de Convite:</Text> Código único para convidar novos membros. Copie e compartilhe com quem quiser adicionar.</Text>
+                <Text style={styles.manualListItem}>• <Ionicons name="trash" size={16} color="#e74c3c" /> <Text style={{ fontWeight: '600' }}>Remover Membros:</Text> Admins podem remover membros da família (exceto si mesmos).</Text>
+
+                <Text style={styles.manualSubtitle}>🚪 Entrar em Outra Família</Text>
+                <Text style={styles.manualListItem}>• <Ionicons name="enter" size={16} color="#FF9500" /> <Text style={{ fontWeight: '600' }}>Como Entrar:</Text> Use o código de convite fornecido pelo administrador da família que você deseja entrar.</Text>
+                <Text style={styles.manualListItem}>• <Ionicons name="person" size={16} color="#34C759" /> <Text style={{ fontWeight: '600' }}>Função Inicial:</Text> Novos membros entram como dependentes. Apenas admins podem alterar funções posteriormente.</Text>
+                <Text style={styles.manualListItem}>• <Ionicons name="checkmark" size={16} color="#4CAF50" /> <Text style={{ fontWeight: '600' }}>Confirmação:</Text> Após inserir o código válido, você será adicionado à família e poderá ver suas tarefas.</Text>
+
+                <Text style={styles.manualSubtitle}>📜 Histórico</Text>
+                <Text style={styles.manualListItem}>• <Ionicons name="time" size={16} color={APP_COLORS.primary.light} /> <Text style={{ fontWeight: '600' }}>Acesso:</Text> Acesse através do menu de configurações, opção Histórico.</Text>
+                <Text style={styles.manualListItem}>• <Ionicons name="list" size={16} color="#007AFF" /> <Text style={{ fontWeight: '600' }}>Conteúdo:</Text> Mostra todas as ações realizadas nas tarefas nos últimos 7 dias.</Text>
+                <Text style={styles.manualListItem}>• <Ionicons name="information-circle" size={16} color="#007AFF" /> <Text style={{ fontWeight: '600' }}>Detalhes:</Text> Inclui quem criou/editou/concluiu tarefas, com data e hora de cada ação.</Text>
+
+                <Text style={styles.manualSubtitle}>💡 Dicas Rápidas</Text>
+                <Text style={styles.manualListItem}>• Navegação: Use as abas "Hoje" e "Próximas" para alternar entre tarefas do dia e futuras.</Text>
+                <Text style={styles.manualListItem}>• Categorias: Filtre tarefas por categoria usando o botão de filtro ao lado da aba "Próximas".</Text>
+                <Text style={styles.manualListItem}>• Emojis: Personalize seu perfil escolhendo um emoji como foto de perfil.</Text>
+                <Text style={styles.manualListItem}>• Calendário: Use o calendário para visualizar feriados e criar tarefas rapidamente em datas específicas.</Text>
+                <Text style={styles.manualListItem}>• Notificações: Permita notificações no dispositivo para receber lembretes de tarefas.</Text>
+                <Text style={styles.manualListItem}>• Privacidade: Tarefas privadas são visíveis apenas para seu criador.</Text>
+                <Text style={styles.manualListItem}>• Cores: Bordas coloridas indicam a categoria. Borda vermelha indica tarefa vencida.</Text>
+              </ScrollView>
+
+              <Pressable
                 style={[styles.closeButton, styles.closeButtonFixed]}
-                onPress={() => setHistoryModalVisible(false)}
+                onPress={() => { setSettingsModalVisible(false); closeManagedModal('settings'); }}
               >
                 <Text style={styles.closeButtonText}>Fechar</Text>
               </Pressable>
-            </SafeAreaView>
+            </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
 
-      {/* Modal de Detalhes do Histórico */}
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={historyDetailModalVisible}
-        onRequestClose={() => setHistoryDetailModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { maxHeight: '80%' }]}>
-            <Text style={styles.modalTitle}>Detalhes da Alteração</Text>
-            
-            {selectedHistoryItem && (
-              <ScrollView 
-                style={{ flex: 1, width: '100%' }}
-                contentContainerStyle={{ paddingBottom: 20 }}
-              >
-                {/* Informações Gerais */}
-                <View style={{ marginBottom: 20 }}>
-                  <Text style={[styles.categoryLabel, { marginBottom: 8 }]}>Ação Realizada</Text>
-                  <View style={{ 
-                    flexDirection: 'row', 
-                    alignItems: 'center', 
-                    gap: 10,
-                    padding: 12,
-                    backgroundColor: colors.inputBackground,
-                    borderRadius: 8,
-                    borderWidth: 1,
-                    borderColor: colors.border
-                  }}>
-                    <Ionicons 
-                      name={getActionIcon(selectedHistoryItem.action)}
-                      size={24}
-                      color={getActionColor(selectedHistoryItem.action)}
+        {/* Modal do Histórico */}
+        <Modal
+          visible={historyModalVisible}
+          animationType="fade"
+          transparent={true}
+          onRequestClose={() => setHistoryModalVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.historyModalWrapper}>
+              <SafeAreaView style={styles.historyModalSafeArea} edges={['top', 'left', 'right']}>
+                <Text style={styles.modalTitle}>Informações</Text>
+
+                <Text style={styles.historySubtitle}>
+                  Últimas ações realizadas (7 dias)
+                </Text>
+
+                <View style={styles.historyListContainer}>
+                  {history.length === 0 ? (
+                    <View style={styles.emptyHistoryContainer}>
+                      <Ionicons name="time-outline" size={64} color="#ccc" />
+                      <Text style={styles.emptyHistoryText}>Nenhuma ação registrada</Text>
+                      <Text style={styles.emptyHistorySubtext}>
+                        As ações realizadas nas tarefas aparecerão aqui
+                      </Text>
+                    </View>
+                  ) : (
+                    <FlatList
+                      data={history}
+                      keyExtractor={(item) => item.id}
+                      showsVerticalScrollIndicator={true}
+                      renderItem={renderHistoryItem}
+                      style={styles.historyList}
+                      contentContainerStyle={styles.historyListContent}
+                      removeClippedSubviews={true}
+                      maxToRenderPerBatch={15}
+                      updateCellsBatchingPeriod={50}
+                      initialNumToRender={20}
+                      scrollEventThrottle={16}
                     />
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ 
-                        fontSize: 16, 
-                        fontWeight: '600', 
-                        color: colors.textPrimary 
-                      }}>
-                        {getActionText(selectedHistoryItem.action)}
-                      </Text>
-                      <Text style={{ fontSize: 14, color: colors.textSecondary }}>
-                        Tarefa: "{selectedHistoryItem.taskTitle}"
-                      </Text>
-                    </View>
-                  </View>
+                  )}
                 </View>
 
-                {/* Autor e Data */}
-                <View style={{ marginBottom: 20 }}>
-                  <Text style={[styles.categoryLabel, { marginBottom: 8 }]}>Informações</Text>
-                  <View style={{ 
-                    padding: 12,
-                    backgroundColor: colors.inputBackground,
-                    borderRadius: 8,
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                    gap: 8
-                  }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      <Ionicons name="person-outline" size={18} color={colors.textSecondary} />
-                      <Text style={{ fontSize: 14, color: colors.textPrimary }}>
-                        <Text style={{ fontWeight: '600' }}>Autor:</Text> {selectedHistoryItem.userName}
-                      </Text>
-                    </View>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      <Ionicons name="shield-outline" size={18} color={colors.textSecondary} />
-                      <Text style={{ fontSize: 14, color: colors.textPrimary }}>
-                        <Text style={{ fontWeight: '600' }}>Perfil:</Text> {selectedHistoryItem.userRole === 'admin' ? 'Administrador' : 'Dependente'}
-                      </Text>
-                    </View>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      <Ionicons name="time-outline" size={18} color={colors.textSecondary} />
-                      <Text style={{ fontSize: 14, color: colors.textPrimary }}>
-                        <Text style={{ fontWeight: '600' }}>Data:</Text> {selectedHistoryItem.timestamp ? new Date(selectedHistoryItem.timestamp).toLocaleDateString('pt-BR', {
-                          day: '2-digit',
-                          month: '2-digit',
-                          year: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        }) : 'Data não disponível'}
-                      </Text>
-                    </View>
-                  </View>
-                </View>
+                {/* Botão de fechar fixo no rodapé do modal */}
+                <Pressable
+                  style={[styles.closeButton, styles.closeButtonFixed]}
+                  onPress={() => setHistoryModalVisible(false)}
+                >
+                  <Text style={styles.closeButtonText}>Fechar</Text>
+                </Pressable>
+              </SafeAreaView>
+            </View>
+          </View>
+        </Modal>
 
-                {/* Detalhes das Mudanças */}
-                {selectedHistoryItem.details && (
+        {/* Modal de Detalhes do Histórico */}
+        <Modal
+          animationType="slide"
+          transparent={true}
+          visible={historyDetailModalVisible}
+          onRequestClose={() => setHistoryDetailModalVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { maxHeight: '80%' }]}>
+              <Text style={styles.modalTitle}>Detalhes da Alteração</Text>
+
+              {selectedHistoryItem && (
+                <ScrollView
+                  style={{ flex: 1, width: '100%' }}
+                  contentContainerStyle={{ paddingBottom: 20 }}
+                >
+                  {/* Informações Gerais */}
                   <View style={{ marginBottom: 20 }}>
-                    <Text style={[styles.categoryLabel, { marginBottom: 8 }]}>Alterações Realizadas</Text>
-                    <View style={{ 
+                    <Text style={[styles.categoryLabel, { marginBottom: 8 }]}>Ação Realizada</Text>
+                    <View style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 10,
                       padding: 12,
                       backgroundColor: colors.inputBackground,
                       borderRadius: 8,
                       borderWidth: 1,
                       borderColor: colors.border
                     }}>
-                      {selectedHistoryItem.details.split('\n').map((line, index) => {
-                        // Detectar se é uma linha de mudança (contém →)
-                        if (line.includes('→')) {
-                          const parts = line.split('→');
-                          return (
-                            <View key={index} style={{ marginBottom: 8 }}>
-                              <Text style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 4 }}>
-                                {parts[0].split(':')[0]}:
-                              </Text>
-                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                                <View style={{ 
-                                  flex: 1, 
-                                  padding: 8, 
-                                  backgroundColor: activeTheme === 'dark' ? '#2a2a2a' : '#ffebee',
-                                  borderRadius: 6,
-                                  borderLeftWidth: 3,
-                                  borderLeftColor: '#ef5350'
-                                }}>
-                                  <Text style={{ fontSize: 12, color: activeTheme === 'dark' ? '#ff8a80' : '#c62828' }}>
-                                    {parts[0].split(':')[1]?.trim() || '(vazio)'}
-                                  </Text>
-                                </View>
-                                <Ionicons name="arrow-forward" size={16} color={colors.textSecondary} />
-                                <View style={{ 
-                                  flex: 1, 
-                                  padding: 8, 
-                                  backgroundColor: activeTheme === 'dark' ? '#2a2a2a' : '#e8f5e9',
-                                  borderRadius: 6,
-                                  borderLeftWidth: 3,
-                                  borderLeftColor: '#66bb6a'
-                                }}>
-                                  <Text style={{ fontSize: 12, color: activeTheme === 'dark' ? '#69f0ae' : '#2e7d32' }}>
-                                    {parts[1]?.trim() || '(vazio)'}
-                                  </Text>
-                                </View>
-                              </View>
-                            </View>
-                          );
-                        } else {
-                          // Linha simples
-                          return (
-                            <Text key={index} style={{ 
-                              fontSize: 13, 
-                              color: colors.textPrimary,
-                              marginBottom: 6 
-                            }}>
-                              • {line}
-                            </Text>
-                          );
-                        }
-                      })}
+                      <Ionicons
+                        name={getActionIcon(selectedHistoryItem.action)}
+                        size={24}
+                        color={getActionColor(selectedHistoryItem.action)}
+                      />
+                      <View style={{ flex: 1 }}>
+                        <Text style={{
+                          fontSize: 16,
+                          fontWeight: '600',
+                          color: colors.textPrimary
+                        }}>
+                          {getActionText(selectedHistoryItem.action)}
+                        </Text>
+                        <Text style={{ fontSize: 14, color: colors.textSecondary }}>
+                          Tarefa: "{selectedHistoryItem.taskTitle}"
+                        </Text>
+                      </View>
                     </View>
                   </View>
-                )}
 
-                {/* Mensagem quando não há detalhes */}
-                {!selectedHistoryItem.details && (
-                  <View style={{ 
-                    padding: 20,
-                    alignItems: 'center',
-                    backgroundColor: colors.inputBackground,
-                    borderRadius: 8,
-                    borderWidth: 1,
-                    borderColor: colors.border
-                  }}>
-                    <Ionicons name="information-circle-outline" size={48} color={colors.textSecondary} />
-                    <Text style={{ 
-                      fontSize: 14, 
-                      color: colors.textSecondary,
-                      marginTop: 12,
-                      textAlign: 'center'
+                  {/* Autor e Data */}
+                  <View style={{ marginBottom: 20 }}>
+                    <Text style={[styles.categoryLabel, { marginBottom: 8 }]}>Informações</Text>
+                    <View style={{
+                      padding: 12,
+                      backgroundColor: colors.inputBackground,
+                      borderRadius: 8,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      gap: 8
                     }}>
-                      Não há detalhes adicionais para esta ação
-                    </Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <Ionicons name="person-outline" size={18} color={colors.textSecondary} />
+                        <Text style={{ fontSize: 14, color: colors.textPrimary }}>
+                          <Text style={{ fontWeight: '600' }}>Autor:</Text> {selectedHistoryItem.userName}
+                        </Text>
+                      </View>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <Ionicons name="shield-outline" size={18} color={colors.textSecondary} />
+                        <Text style={{ fontSize: 14, color: colors.textPrimary }}>
+                          <Text style={{ fontWeight: '600' }}>Perfil:</Text> {selectedHistoryItem.userRole === 'admin' ? 'Administrador' : 'Dependente'}
+                        </Text>
+                      </View>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <Ionicons name="time-outline" size={18} color={colors.textSecondary} />
+                        <Text style={{ fontSize: 14, color: colors.textPrimary }}>
+                          <Text style={{ fontWeight: '600' }}>Data:</Text> {selectedHistoryItem.timestamp ? new Date(selectedHistoryItem.timestamp).toLocaleDateString('pt-BR', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          }) : 'Data não disponível'}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* Detalhes das Mudanças */}
+                  {selectedHistoryItem.details && (
+                    <View style={{ marginBottom: 20 }}>
+                      <Text style={[styles.categoryLabel, { marginBottom: 8 }]}>Alterações Realizadas</Text>
+                      <View style={{
+                        padding: 12,
+                        backgroundColor: colors.inputBackground,
+                        borderRadius: 8,
+                        borderWidth: 1,
+                        borderColor: colors.border
+                      }}>
+                        {selectedHistoryItem.details.split('\n').map((line, index) => {
+                          // Detectar se é uma linha de mudança (contém →)
+                          if (line.includes('→')) {
+                            const parts = line.split('→');
+                            return (
+                              <View key={index} style={{ marginBottom: 8 }}>
+                                <Text style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 4 }}>
+                                  {parts[0].split(':')[0]}:
+                                </Text>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                  <View style={{
+                                    flex: 1,
+                                    padding: 8,
+                                    backgroundColor: activeTheme === 'dark' ? '#2a2a2a' : '#ffebee',
+                                    borderRadius: 6,
+                                    borderLeftWidth: 3,
+                                    borderLeftColor: '#ef5350'
+                                  }}>
+                                    <Text style={{ fontSize: 12, color: activeTheme === 'dark' ? '#ff8a80' : '#c62828' }}>
+                                      {parts[0].split(':')[1]?.trim() || '(vazio)'}
+                                    </Text>
+                                  </View>
+                                  <Ionicons name="arrow-forward" size={16} color={colors.textSecondary} />
+                                  <View style={{
+                                    flex: 1,
+                                    padding: 8,
+                                    backgroundColor: activeTheme === 'dark' ? '#2a2a2a' : '#e8f5e9',
+                                    borderRadius: 6,
+                                    borderLeftWidth: 3,
+                                    borderLeftColor: '#66bb6a'
+                                  }}>
+                                    <Text style={{ fontSize: 12, color: activeTheme === 'dark' ? '#69f0ae' : '#2e7d32' }}>
+                                      {parts[1]?.trim() || '(vazio)'}
+                                    </Text>
+                                  </View>
+                                </View>
+                              </View>
+                            );
+                          } else {
+                            // Linha simples
+                            return (
+                              <Text key={index} style={{
+                                fontSize: 13,
+                                color: colors.textPrimary,
+                                marginBottom: 6
+                              }}>
+                                • {line}
+                              </Text>
+                            );
+                          }
+                        })}
+                      </View>
+                    </View>
+                  )}
+
+                  {/* Mensagem quando não há detalhes */}
+                  {!selectedHistoryItem.details && (
+                    <View style={{
+                      padding: 20,
+                      alignItems: 'center',
+                      backgroundColor: colors.inputBackground,
+                      borderRadius: 8,
+                      borderWidth: 1,
+                      borderColor: colors.border
+                    }}>
+                      <Ionicons name="information-circle-outline" size={48} color={colors.textSecondary} />
+                      <Text style={{
+                        fontSize: 14,
+                        color: colors.textSecondary,
+                        marginTop: 12,
+                        textAlign: 'center'
+                      }}>
+                        Não há detalhes adicionais para esta ação
+                      </Text>
+                    </View>
+                  )}
+                </ScrollView>
+              )}
+
+              <Pressable
+                style={[styles.closeButton, { marginTop: 16 }]}
+                onPress={() => setHistoryDetailModalVisible(false)}
+              >
+                <Text style={styles.closeButtonText}>Fechar</Text>
+              </Pressable>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Modal de Aprovação para Admins */}
+        <ApprovalModal
+          visible={approvalModalVisible}
+          onClose={() => setApprovalModalVisible(false)}
+          userRole={user.role}
+          adminRoleRequests={adminRoleRequests}
+          notifications={notifications}
+          approvals={approvals}
+          tasks={tasks}
+          resolvingAdminRequestId={resolvingAdminRequestId}
+          onResolveAdminRequest={resolveAdminRoleRequest}
+          onRejectTask={rejectTask}
+          onApproveTask={approveTask}
+          onMarkNotificationRead={(notificationId) => {
+            setNotifications(notifications.map(n =>
+              n.id === notificationId ? { ...n, read: true } : n
+            ));
+          }}
+          colors={colors}
+        />
+
+        {/* Modal de Gerenciamento de Família */}
+        <Modal
+          animationType="fade"
+          transparent={true}
+          visible={familyModalVisible && isTopModal('family')}
+          onRequestClose={() => {
+            if (isCreatingFamily || isSavingFamilyName) return; // bloquear enquanto salvando/criando
+            setFamilyModalVisible(false);
+            setIsCreatingFamilyMode(false);
+            setNewFamilyNameInput('');
+            closeManagedModal('family');
+          }}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, styles.familyModalContent]}>
+              <View style={styles.familyModalHeader}>
+                <Text style={[styles.modalTitle, { color: APP_COLORS.primary.main }]}>
+                  {isCreatingFamilyMode ? 'Criar Família' : 'Gerenciar Família'}
+                </Text>
+                {familySyncBanner && (
+                  <View style={styles.familySyncBanner} accessibilityLabel="Indicador de sincronização da família">
+                    <ActivityIndicator size="small" color={APP_COLORS.secondary.main} style={{ marginRight: 8 }} />
+                    <Text style={[styles.familySyncBannerText, { color: APP_COLORS.secondary.main }]}>{familySyncBanner}</Text>
                   </View>
                 )}
-              </ScrollView>
-            )}
+              </View>
 
-            <Pressable 
-              style={[styles.closeButton, { marginTop: 16 }]}
-              onPress={() => setHistoryDetailModalVisible(false)}
-            >
-              <Text style={styles.closeButtonText}>Fechar</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
+              {isCreatingFamilyMode ? (
+                /* Interface de Criação de Família */
+                <ScrollView
+                  style={styles.familyContent}
+                  contentContainerStyle={[styles.familyContentContainer, Platform.OS === 'web' && styles.familyContentContainerWeb]}
+                >
+                  <View style={[styles.familyCard, isWeb ? styles.familyCardWeb : styles.familyCardMobile]}>
+                    <Ionicons name="people" size={60} color={APP_COLORS.primary.main} style={styles.createFamilyIcon} />
+                    <Text style={styles.createFamilyTitle}>Criar Nova Família</Text>
+                    <Text style={styles.createFamilySubtitle}>
+                      Você precisa estar em uma família para gerenciar tarefas em grupo.
+                    </Text>
 
-      {/* Modal de Aprovação para Admins */}
-      <ApprovalModal
-        visible={approvalModalVisible}
-        onClose={() => setApprovalModalVisible(false)}
-        userRole={user.role}
-        adminRoleRequests={adminRoleRequests}
-        notifications={notifications}
-        approvals={approvals}
-        tasks={tasks}
-        resolvingAdminRequestId={resolvingAdminRequestId}
-        onResolveAdminRequest={resolveAdminRoleRequest}
-        onRejectTask={rejectTask}
-        onApproveTask={approveTask}
-        onMarkNotificationRead={(notificationId) => {
-          setNotifications(notifications.map(n => 
-            n.id === notificationId ? { ...n, read: true } : n
-          ));
-        }}
-        colors={colors}
-      />
+                    <View style={styles.createFamilyInputContainer}>
+                      <Text style={styles.familySectionTitle}>Nome da Família</Text>
+                      <TextInput
+                        style={styles.createFamilyInput}
+                        value={newFamilyNameInput}
+                        onChangeText={setNewFamilyNameInput}
+                        placeholder="Ex: Família Silva"
+                        placeholderTextColor={activeTheme === 'dark' ? '#888' : '#999'}
+                        maxLength={50}
+                        editable={!isCreatingFamily}
+                        autoFocus
+                      />
+                    </View>
 
-      {/* Modal de Gerenciamento de Família */}
-      <Modal
-        animationType="fade"
-        transparent={true}
-        visible={familyModalVisible && isTopModal('family')}
-        onRequestClose={() => {
-          if (isCreatingFamily || isSavingFamilyName) return; // bloquear enquanto salvando/criando
-          setFamilyModalVisible(false);
-          setIsCreatingFamilyMode(false);
-          setNewFamilyNameInput('');
-          closeManagedModal('family');
-        }}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, styles.familyModalContent]}>
-            <View style={styles.familyModalHeader}>
-              <Text style={[styles.modalTitle, { color: APP_COLORS.primary.main }]}>
-                {isCreatingFamilyMode ? 'Criar Família' : 'Gerenciar Família'}
-              </Text>
-              {familySyncBanner && (
-                <View style={styles.familySyncBanner} accessibilityLabel="Indicador de sincronização da família">
-                  <ActivityIndicator size="small" color={APP_COLORS.secondary.main} style={{ marginRight: 8 }} />
-                  <Text style={[styles.familySyncBannerText, { color: APP_COLORS.secondary.main }]}>{familySyncBanner}</Text>
-                </View>
-              )}
-            </View>
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.createFamilyButton,
+                        (!newFamilyNameInput.trim() || isCreatingFamily) && styles.createFamilyButtonDisabled,
+                        pressed && newFamilyNameInput.trim() && !isCreatingFamily && { opacity: 0.8, transform: [{ scale: 0.98 }] }
+                      ]}
+                      onPress={handleCreateFamilyFromModal}
+                      disabled={!newFamilyNameInput.trim() || isCreatingFamily}
+                      android_ripple={{ color: 'rgba(255, 255, 255, 0.3)' }}
+                    >
+                      {isCreatingFamily ? (
+                        <Text style={styles.createFamilyButtonText}>Criando...</Text>
+                      ) : (
+                        <>
+                          <Ionicons name="add-circle" size={20} color="#fff" />
+                          <Text style={styles.createFamilyButtonText}>Criar Família</Text>
+                        </>
+                      )}
+                    </Pressable>
 
-            {isCreatingFamilyMode ? (
-              /* Interface de Criação de Família */
-              <ScrollView
-                style={styles.familyContent}
-                contentContainerStyle={[styles.familyContentContainer, Platform.OS === 'web' && styles.familyContentContainerWeb]}
-              >
-                <View style={[styles.familyCard, isWeb ? styles.familyCardWeb : styles.familyCardMobile]}>
-                  <Ionicons name="people" size={60} color={APP_COLORS.primary.main} style={styles.createFamilyIcon} />
-                  <Text style={styles.createFamilyTitle}>Criar Nova Família</Text>
-                  <Text style={styles.createFamilySubtitle}>
-                    Você precisa estar em uma família para gerenciar tarefas em grupo.
-                  </Text>
-                  
-                  <View style={styles.createFamilyInputContainer}>
-                    <Text style={styles.familySectionTitle}>Nome da Família</Text>
-                    <TextInput
-                      style={styles.createFamilyInput}
-                      value={newFamilyNameInput}
-                      onChangeText={setNewFamilyNameInput}
-                      placeholder="Ex: Família Silva"
-                      placeholderTextColor={activeTheme === 'dark' ? '#888' : '#999'}
-                      maxLength={50}
-                      editable={!isCreatingFamily}
-                      autoFocus
-                    />
+                    <View style={[styles.createFamilyNote, Platform.OS === 'web' && styles.createFamilyNoteWeb]}>
+                      <Ionicons name="information-circle" size={20} color={APP_COLORS.text.secondary} />
+                      <Text style={styles.createFamilyNoteText}>
+                        Após criar a família, você receberá um código para compartilhar com outros membros.
+                      </Text>
+                    </View>
                   </View>
+                </ScrollView>
+              ) : (
+                /* Interface de Gerenciamento de Família */
+                <ScrollView
+                  style={styles.familyContent}
+                  contentContainerStyle={[styles.familyContentContainer, Platform.OS === 'web' && styles.familyContentContainerWeb]}
+                >
+                  {/* Seção do Nome da Família */}
+                  <View style={[styles.familyCard, isWeb ? styles.familyCardWeb : styles.familyCardMobile]}>
+                    {isWeb ? (
+                      <>
+                        <Text style={styles.familySectionTitle}>Nome da Família</Text>
 
-                  <Pressable
-                    style={({ pressed }) => [
-                      styles.createFamilyButton,
-                      (!newFamilyNameInput.trim() || isCreatingFamily) && styles.createFamilyButtonDisabled,
-                      pressed && newFamilyNameInput.trim() && !isCreatingFamily && { opacity: 0.8, transform: [{ scale: 0.98 }] }
-                    ]}
-                    onPress={handleCreateFamilyFromModal}
-                    disabled={!newFamilyNameInput.trim() || isCreatingFamily}
-                    android_ripple={{ color: 'rgba(255, 255, 255, 0.3)' }}
-                  >
-                    {isCreatingFamily ? (
-                      <Text style={styles.createFamilyButtonText}>Criando...</Text>
+                        {editingFamilyName ? (
+                          <View style={styles.editFamilyNameContainer}>
+                            <TextInput
+                              style={styles.editFamilyNameInput}
+                              value={newFamilyName}
+                              onChangeText={setNewFamilyName}
+                              placeholder="Digite o nome da família"
+                              placeholderTextColor={activeTheme === 'dark' ? '#888' : '#999'}
+                              maxLength={50}
+                              autoFocus
+                            />
+                            <View style={styles.editFamilyNameActions}>
+                              <Pressable
+                                style={[
+                                  styles.editFamilyNameButton,
+                                  styles.cancelButton,
+                                  (isSavingFamilyName) && styles.buttonDisabled
+                                ]}
+                                onPress={cancelEditingFamilyName}
+                                disabled={isSavingFamilyName}
+                              >
+                                <Text style={styles.cancelButtonText}>Cancelar</Text>
+                              </Pressable>
+                              <Pressable
+                                style={[
+                                  styles.editFamilyNameButton,
+                                  styles.saveButton,
+                                  (isSavingFamilyName) && styles.buttonDisabled
+                                ]}
+                                onPress={saveFamilyName}
+                                disabled={isSavingFamilyName}
+                              >
+                                {isSavingFamilyName ? (
+                                  <ActivityIndicator size="small" color="#fff" />
+                                ) : (
+                                  <Text style={styles.saveButtonText}>Salvar</Text>
+                                )}
+                              </Pressable>
+                            </View>
+                          </View>
+                        ) : (
+                          <View style={styles.familyNameContainer}>
+                            <Text style={styles.currentFamilyName}>
+                              {currentFamily?.name || 'Nome não definido'}
+                            </Text>
+                            {user.role === 'admin' && (
+                              <Pressable
+                                style={styles.editFamilyNameIconButton}
+                                onPress={startEditingFamilyName}
+                              >
+                                <Ionicons name="pencil" size={16} color={APP_COLORS.primary.main} />
+                              </Pressable>
+                            )}
+                          </View>
+                        )}
+                      </>
                     ) : (
                       <>
-                        <Ionicons name="add-circle" size={20} color="#fff" />
-                        <Text style={styles.createFamilyButtonText}>Criar Família</Text>
-                      </>
-                    )}
-                  </Pressable>
-
-                  <View style={[styles.createFamilyNote, Platform.OS === 'web' && styles.createFamilyNoteWeb]}>
-                    <Ionicons name="information-circle" size={20} color={APP_COLORS.text.secondary} />
-                    <Text style={styles.createFamilyNoteText}>
-                      Após criar a família, você receberá um código para compartilhar com outros membros.
-                    </Text>
-                  </View>
-                </View>
-              </ScrollView>
-            ) : (
-              /* Interface de Gerenciamento de Família */
-              <ScrollView
-                style={styles.familyContent}
-                contentContainerStyle={[styles.familyContentContainer, Platform.OS === 'web' && styles.familyContentContainerWeb]}
-              >
-                {/* Seção do Nome da Família */}
-                <View style={[styles.familyCard, isWeb ? styles.familyCardWeb : styles.familyCardMobile]}>
-                  {isWeb ? (
-                    <>
-                      <Text style={styles.familySectionTitle}>Nome da Família</Text>
-
-                      {editingFamilyName ? (
-                        <View style={styles.editFamilyNameContainer}>
-                          <TextInput
-                            style={styles.editFamilyNameInput}
-                            value={newFamilyName}
-                            onChangeText={setNewFamilyName}
-                            placeholder="Digite o nome da família"
-                            placeholderTextColor={activeTheme === 'dark' ? '#888' : '#999'}
-                            maxLength={50}
-                            autoFocus
-                          />
-                          <View style={styles.editFamilyNameActions}>
+                        <View style={styles.familyCardRow}>
+                          <Text style={styles.familySectionTitle}>Nome da Família</Text>
+                          {user.role === 'admin' && !editingFamilyName && (
                             <Pressable
-                              style={[
-                                styles.editFamilyNameButton,
-                                styles.cancelButton,
-                                (isSavingFamilyName) && styles.buttonDisabled
-                              ]}
-                              onPress={cancelEditingFamilyName}
-                              disabled={isSavingFamilyName}
-                            >
-                              <Text style={styles.cancelButtonText}>Cancelar</Text>
-                            </Pressable>
-                            <Pressable
-                              style={[
-                                styles.editFamilyNameButton,
-                                styles.saveButton,
-                                (isSavingFamilyName) && styles.buttonDisabled
-                              ]}
-                              onPress={saveFamilyName}
-                              disabled={isSavingFamilyName}
-                            >
-                              {isSavingFamilyName ? (
-                                <ActivityIndicator size="small" color="#fff" />
-                              ) : (
-                                <Text style={styles.saveButtonText}>Salvar</Text>
-                              )}
-                            </Pressable>
-                          </View>
-                        </View>
-                      ) : (
-                        <View style={styles.familyNameContainer}>
-                          <Text style={styles.currentFamilyName}>
-                            {currentFamily?.name || 'Nome não definido'}
-                          </Text>
-                          {user.role === 'admin' && (
-                            <Pressable
-                              style={styles.editFamilyNameIconButton}
+                              style={styles.familyCardActionButton}
                               onPress={startEditingFamilyName}
                             >
-                              <Ionicons name="pencil" size={16} color={APP_COLORS.primary.main} />
+                              <Ionicons name="pencil" size={18} color={APP_COLORS.primary.main} />
+                              <Text style={styles.familyCardActionText}>Editar</Text>
                             </Pressable>
                           )}
                         </View>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      <View style={styles.familyCardRow}>
-                        <Text style={styles.familySectionTitle}>Nome da Família</Text>
-                        {user.role === 'admin' && !editingFamilyName && (
-                          <Pressable
-                            style={styles.familyCardActionButton}
-                            onPress={startEditingFamilyName}
-                          >
-                            <Ionicons name="pencil" size={18} color={APP_COLORS.primary.main} />
-                            <Text style={styles.familyCardActionText}>Editar</Text>
-                          </Pressable>
-                        )}
-                      </View>
 
-                      {editingFamilyName ? (
-                        <View style={styles.editFamilyNameContainer}>
-                          <TextInput
-                            style={styles.editFamilyNameInput}
-                            value={newFamilyName}
-                            onChangeText={setNewFamilyName}
-                            placeholder="Digite o nome da família"
-                            placeholderTextColor={activeTheme === 'dark' ? '#888' : '#999'}
-                            maxLength={50}
-                            autoFocus
-                          />
-                          <View style={styles.editFamilyNameActions}>
-                            <Pressable
-                              style={[
-                                styles.editFamilyNameButton,
-                                styles.cancelButton,
-                                (isSavingFamilyName) && styles.buttonDisabled
-                              ]}
-                              onPress={cancelEditingFamilyName}
-                              disabled={isSavingFamilyName}
-                            >
-                              <Text style={styles.cancelButtonText}>Cancelar</Text>
-                            </Pressable>
-                            <Pressable
-                              style={[
-                                styles.editFamilyNameButton,
-                                styles.saveButton,
-                                (isSavingFamilyName) && styles.buttonDisabled
-                              ]}
-                              onPress={saveFamilyName}
-                              disabled={isSavingFamilyName}
-                            >
-                              {isSavingFamilyName ? (
-                                <ActivityIndicator size="small" color="#fff" />
-                              ) : (
-                                <Text style={styles.saveButtonText}>Salvar</Text>
+                        {editingFamilyName ? (
+                          <View style={styles.editFamilyNameContainer}>
+                            <TextInput
+                              style={styles.editFamilyNameInput}
+                              value={newFamilyName}
+                              onChangeText={setNewFamilyName}
+                              placeholder="Digite o nome da família"
+                              placeholderTextColor={activeTheme === 'dark' ? '#888' : '#999'}
+                              maxLength={50}
+                              autoFocus
+                            />
+                            <View style={styles.editFamilyNameActions}>
+                              <Pressable
+                                style={[
+                                  styles.editFamilyNameButton,
+                                  styles.cancelButton,
+                                  (isSavingFamilyName) && styles.buttonDisabled
+                                ]}
+                                onPress={cancelEditingFamilyName}
+                                disabled={isSavingFamilyName}
+                              >
+                                <Text style={styles.cancelButtonText}>Cancelar</Text>
+                              </Pressable>
+                              <Pressable
+                                style={[
+                                  styles.editFamilyNameButton,
+                                  styles.saveButton,
+                                  (isSavingFamilyName) && styles.buttonDisabled
+                                ]}
+                                onPress={saveFamilyName}
+                                disabled={isSavingFamilyName}
+                              >
+                                {isSavingFamilyName ? (
+                                  <ActivityIndicator size="small" color="#fff" />
+                                ) : (
+                                  <Text style={styles.saveButtonText}>Salvar</Text>
+                                )}
+                              </Pressable>
+                            </View>
+                          </View>
+                        ) : (
+                          <View style={styles.familyCardValueRow}>
+                            <Text style={styles.currentFamilyName}>
+                              {currentFamily?.name || 'Nome não definido'}
+                            </Text>
+                          </View>
+                        )}
+                      </>
+                    )}
+                  </View>
+
+                  {/* Seção do Código da Família */}
+                  <View style={[styles.familyCard, isWeb ? styles.familyCardWeb : styles.familyCardMobile]}>
+                    {isWeb ? (
+                      <>
+                        <Text style={styles.familySectionTitle}>Código da Família</Text>
+                        <Text style={styles.familySectionSubtitle}>
+                          Use este código para convidar novos membros
+                        </Text>
+
+                        <View style={styles.inviteCodeContainer}>
+                          <Text style={styles.inviteCodeLabel}>Código:</Text>
+                          <View style={[styles.inviteCodeBox, styles.inviteCodeBoxWeb]}>
+                            <Text style={styles.inviteCodeText}>
+                              {currentFamily?.inviteCode || 'Código não disponível'}
+                            </Text>
+                            {isWeb && (
+                              <Pressable
+                                onPress={copyFamilyCode}
+                                style={styles.copyButton}
+                              >
+                                <Ionicons name="copy" size={18} color="#fff" />
+                              </Pressable>
+                            )}
+                          </View>
+                          {/* Indicador de validade e ação de regerar */}
+                          {currentFamily?.inviteCodeExpiry && (
+                            <View style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                              <Text style={styles.inviteCodeExpiry}>
+                                Validade: {new Date(currentFamily.inviteCodeExpiry as any).toLocaleString('pt-BR')} {codeCountdown ? `• ${codeCountdown}` : ''}
+                              </Text>
+                              {user.role === 'admin' && (
+                                <Pressable
+                                  style={styles.regenCodeButton}
+                                  onPress={async () => {
+                                    if (!currentFamily?.id) return;
+                                    try {
+                                      const updated = await familyService.regenerateInviteCode(currentFamily.id);
+                                      setCurrentFamily(updated);
+                                      Alert.alert('Novo código gerado', `Código: ${updated.inviteCode}`);
+                                    } catch (e) {
+                                      Alert.alert('Erro', 'Não foi possível regerar o código.');
+                                    }
+                                  }}
+                                >
+                                  <Ionicons name="refresh" size={16} color="#fff" />
+                                  <Text style={styles.regenCodeButtonText}>Regerar código</Text>
+                                </Pressable>
                               )}
-                            </Pressable>
+                            </View>
+                          )}
+                        </View>
+                      </>
+                    ) : (
+                      <>
+                        <View style={styles.familyCardRow}>
+                          <View style={styles.familyCardHeaderText}>
+                            <Text style={styles.familySectionTitle}>Código da Família</Text>
+                            <Text style={styles.familySectionSubtitle}>
+                              Use este código para convidar novos membros
+                            </Text>
                           </View>
                         </View>
-                      ) : (
-                        <View style={styles.familyCardValueRow}>
-                          <Text style={styles.currentFamilyName}>
-                            {currentFamily?.name || 'Nome não definido'}
-                          </Text>
-                        </View>
-                      )}
-                    </>
-                  )}
-                </View>
 
-                {/* Seção do Código da Família */}
-                <View style={[styles.familyCard, isWeb ? styles.familyCardWeb : styles.familyCardMobile]}>
-                  {isWeb ? (
-                    <>
-                      <Text style={styles.familySectionTitle}>Código da Família</Text>
-                      <Text style={styles.familySectionSubtitle}>
-                        Use este código para convidar novos membros
-                      </Text>
-
-                      <View style={styles.inviteCodeContainer}>
-                        <Text style={styles.inviteCodeLabel}>Código:</Text>
-                        <View style={[styles.inviteCodeBox, styles.inviteCodeBoxWeb]}>
+                        <View style={[styles.inviteCodeBox, styles.inviteCodeBoxMobile]}>
                           <Text style={styles.inviteCodeText}>
                             {currentFamily?.inviteCode || 'Código não disponível'}
                           </Text>
-                          {isWeb && (
-                            <Pressable
-                              onPress={copyFamilyCode}
-                              style={styles.copyButton}
-                            >
-                              <Ionicons name="copy" size={18} color="#fff" />
-                            </Pressable>
-                          )}
+                          <Pressable
+                            onPress={copyFamilyCode}
+                            style={[styles.copyButton, styles.copyButtonMobile]}
+                          >
+                            <Ionicons name="copy" size={18} color="#fff" />
+                          </Pressable>
                         </View>
-                        {/* Indicador de validade e ação de regerar */}
+
                         {currentFamily?.inviteCodeExpiry && (
-                          <View style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <Text style={styles.inviteCodeExpiry}>
+                          <View style={[styles.inviteCodeMetaRow, styles.inviteCodeMetaMobile]}>
+                            <Text style={[styles.inviteCodeExpiry, styles.inviteCodeExpiryMobile]}>
                               Validade: {new Date(currentFamily.inviteCodeExpiry as any).toLocaleString('pt-BR')} {codeCountdown ? `• ${codeCountdown}` : ''}
                             </Text>
                             {user.role === 'admin' && (
                               <Pressable
-                                style={styles.regenCodeButton}
+                                style={[styles.regenCodeButton, styles.regenCodeButtonMobile]}
                                 onPress={async () => {
                                   if (!currentFamily?.id) return;
                                   try {
@@ -7945,462 +8188,415 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
                             )}
                           </View>
                         )}
-                      </View>
-                    </>
-                  ) : (
-                    <>
+                      </>
+                    )}
+                  </View>
+
+                  {/* Seção de Membros */}
+                  <View style={[styles.familyCard, isWeb ? styles.familyCardWeb : styles.familyCardMobile]}>
+                    {isWeb ? (
+                      <Text style={styles.familySectionTitle}>Membros da Família</Text>
+                    ) : (
                       <View style={styles.familyCardRow}>
-                        <View style={styles.familyCardHeaderText}>
-                          <Text style={styles.familySectionTitle}>Código da Família</Text>
-                          <Text style={styles.familySectionSubtitle}>
-                            Use este código para convidar novos membros
-                          </Text>
-                        </View>
-                      </View>
-
-                        <View style={[styles.inviteCodeBox, styles.inviteCodeBoxMobile]}>
-                        <Text style={styles.inviteCodeText}>
-                          {currentFamily?.inviteCode || 'Código não disponível'}
+                        <Text style={styles.familySectionTitle}>Membros da Família</Text>
+                        <Text style={styles.familyCardBadge}>
+                          {familyMembers.length} {familyMembers.length === 1 ? 'membro' : 'membros'}
                         </Text>
-                          <Pressable
-                            onPress={copyFamilyCode}
-                            style={[styles.copyButton, styles.copyButtonMobile]}
-                          >
-                            <Ionicons name="copy" size={18} color="#fff" />
-                          </Pressable>
                       </View>
+                    )}
 
-                      {currentFamily?.inviteCodeExpiry && (
-                          <View style={[styles.inviteCodeMetaRow, styles.inviteCodeMetaMobile]}>
-                            <Text style={[styles.inviteCodeExpiry, styles.inviteCodeExpiryMobile]}>
-                            Validade: {new Date(currentFamily.inviteCodeExpiry as any).toLocaleString('pt-BR')} {codeCountdown ? `• ${codeCountdown}` : ''}
-                          </Text>
-                          {user.role === 'admin' && (
+                    {sortedFamilyMembers.map(member => (
+                      <View
+                        key={member.id}
+                        style={[
+                          styles.familyMemberCard,
+                          isWeb ? styles.familyMemberCardWeb : styles.familyMemberCardMobile
+                        ]}
+                      >
+                        <View style={styles.memberCardContent}>
+                          <View style={styles.memberAvatarAndInfo}>
+                            <View style={styles.memberAvatar}>
+                              {member.profileIcon ? (
+                                <Text style={styles.memberAvatarEmoji}>{getEmojiForIcon(member.profileIcon)}</Text>
+                              ) : (
+                                <Text style={styles.memberAvatarEmoji}>😊</Text>
+                              )}
+                            </View>
+
+                            <View style={styles.memberInfo}>
+                              <Text style={styles.memberName}>{member.name}</Text>
+                              <View style={styles.memberRoleBadge}>
+                                <Ionicons
+                                  name={member.role === 'admin' ? 'shield-checkmark' : 'person'}
+                                  size={14}
+                                  color={member.role === 'admin' ? APP_COLORS.primary.main : APP_COLORS.text.secondary}
+                                />
+                                <Text style={[
+                                  styles.memberRoleText,
+                                  member.role === 'admin' && styles.memberRoleAdmin
+                                ]}>
+                                  {member.role === 'admin' ? 'Administrador' : 'Dependente'}
+                                </Text>
+                              </View>
+                              <Text style={styles.memberJoinDate}>
+                                Entrou em: {member.joinedAt ? new Date(member.joinedAt).toLocaleDateString('pt-BR') : 'Data não disponível'}
+                              </Text>
+                            </View>
+                          </View>
+
+                          {member.id !== user.id && user.role === 'admin' && (
                             <Pressable
-                                style={[styles.regenCodeButton, styles.regenCodeButtonMobile]}
-                              onPress={async () => {
-                                if (!currentFamily?.id) return;
-                                try {
-                                  const updated = await familyService.regenerateInviteCode(currentFamily.id);
-                                  setCurrentFamily(updated);
-                                  Alert.alert('Novo código gerado', `Código: ${updated.inviteCode}`);
-                                } catch (e) {
-                                  Alert.alert('Erro', 'Não foi possível regerar o código.');
-                                }
+                              style={({ pressed }) => [
+                                styles.editMemberButton,
+                                pressed && { opacity: 0.7 }
+                              ]}
+                              onPress={() => {
+                                setSelectedMemberForEdit(member);
+                                setEditMemberModalVisible(true);
+                                openManagedModal('editMember');
                               }}
                             >
-                              <Ionicons name="refresh" size={16} color="#fff" />
-                              <Text style={styles.regenCodeButtonText}>Regerar código</Text>
+                              <Ionicons name="create-outline" size={20} color={APP_COLORS.primary.main} />
+                              <Text style={styles.editMemberButtonText}>Editar</Text>
                             </Pressable>
                           )}
                         </View>
-                      )}
-                    </>
-                  )}
-                </View>
+                      </View>
+                    ))}
+                  </View>
+                </ScrollView>
+              )}
 
-                {/* Seção de Membros */}
-                <View style={[styles.familyCard, isWeb ? styles.familyCardWeb : styles.familyCardMobile]}>
-                  {isWeb ? (
-                    <Text style={styles.familySectionTitle}>Membros da Família</Text>
-                  ) : (
-                    <View style={styles.familyCardRow}>
-                      <Text style={styles.familySectionTitle}>Membros da Família</Text>
-                      <Text style={styles.familyCardBadge}>
-                        {familyMembers.length} {familyMembers.length === 1 ? 'membro' : 'membros'}
+              <Pressable
+                style={[styles.closeButton, styles.closeButtonFixed]}
+                onPress={() => {
+                  if (isCreatingFamily || isSavingFamilyName) return;
+                  setFamilyModalVisible(false);
+                  setIsCreatingFamilyMode(false);
+                  setNewFamilyNameInput('');
+                  closeManagedModal('family');
+                }}
+              >
+                <Text style={styles.closeButtonText}>Fechar</Text>
+              </Pressable>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Modal de Edição de Membro */}
+        <Modal
+          animationType="slide"
+          transparent={true}
+          visible={editMemberModalVisible && isTopModal('editMember')}
+          presentationStyle="overFullScreen"
+          onRequestClose={() => {
+            setEditMemberModalVisible(false);
+            setSelectedMemberForEdit(null);
+            closeManagedModal('editMember');
+          }}
+        >
+          <View style={[styles.modalOverlay, { zIndex: 9999 }]}>
+            <View style={[styles.modalContent, styles.editMemberModalContent]}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Editar Membro</Text>
+                <Pressable
+                  onPress={() => {
+                    setEditMemberModalVisible(false);
+                    setSelectedMemberForEdit(null);
+                    closeManagedModal('editMember');
+                  }}
+                  style={styles.closeIconButton}
+                >
+                  <Ionicons name="close" size={24} color="#666" />
+                </Pressable>
+              </View>
+
+              {selectedMemberForEdit && (
+                <ScrollView style={styles.editMemberScroll}>
+                  {/* Informações do Membro */}
+                  <View style={styles.editMemberInfo}>
+                    <View style={styles.editMemberAvatar}>
+                      {selectedMemberForEdit.profileIcon ? (
+                        <Text style={styles.editMemberAvatarEmoji}>{getEmojiForIcon(selectedMemberForEdit.profileIcon)}</Text>
+                      ) : (
+                        <Text style={styles.editMemberAvatarEmoji}>😊</Text>
+                      )}
+                    </View>
+                    <Text style={styles.editMemberName}>{selectedMemberForEdit.name}</Text>
+                    <Text style={styles.editMemberJoinDate}>
+                      Membro desde {selectedMemberForEdit.joinedAt ? new Date(selectedMemberForEdit.joinedAt).toLocaleDateString('pt-BR') : 'Data não disponível'}
+                    </Text>
+                  </View>
+
+                  {/* Permissões (somente para dependente) */}
+                  {selectedMemberForEdit.role === 'dependente' && (
+                    <View style={styles.editSection}>
+                      <Text style={styles.editSectionTitle}>Permissões</Text>
+                      <Text style={styles.editSectionDescription}>
+                        Defina quais ações este membro pode realizar com as tarefas da família
+                      </Text>
+                      <View style={styles.permissionsEditContainer}>
+                        {['create', 'edit', 'delete'].map(key => {
+                          const labelMap: any = {
+                            create: { label: 'Criar Tarefas', icon: 'add-circle-outline' },
+                            edit: { label: 'Editar Tarefas', icon: 'create-outline' },
+                            delete: { label: 'Excluir Tarefas', icon: 'trash-outline' }
+                          };
+                          const has = !!(selectedMemberForEdit as any).permissions?.[key];
+                          return (
+                            <Pressable
+                              key={key}
+                              style={[styles.permissionEditItem, has && styles.permissionEditItemActive]}
+                              onPress={async () => {
+                                try {
+                                  const newValue = !has;
+                                  const updatedPerms = { ...(selectedMemberForEdit as any).permissions };
+                                  if (newValue) {
+                                    updatedPerms[key] = true;
+                                  } else {
+                                    delete updatedPerms[key];
+                                  }
+                                  await familyService.updateMemberPermissions(currentFamily!.id, selectedMemberForEdit.id, updatedPerms);
+                                  setFamilyMembers(prev => prev.map(m => m.id === selectedMemberForEdit.id ? { ...m, permissions: { ...updatedPerms } } : m));
+                                  setSelectedMemberForEdit({ ...selectedMemberForEdit, permissions: { ...updatedPerms } } as any);
+
+                                  if (selectedMemberForEdit.id === user.id && currentFamily) {
+                                    try {
+                                      const refreshed = await familyService.getFamilyTasks(currentFamily.id, user.id);
+                                      setTasks(prev => {
+                                        const privateTasks = prev.filter(t => (t as any).private === true || !(t as any).familyId) as any as Task[];
+                                        const merged = [...privateTasks, ...(refreshed as any as Task[])];
+                                        return merged as Task[];
+                                      });
+                                    } catch (err) {
+                                      logger.warn('FAMILY', 'Falha ao refazer fetch das tasks após permissão', err);
+                                    }
+                                  }
+                                } catch (e) {
+                                  Alert.alert('Erro', 'Não foi possível atualizar permissões.');
+                                }
+                              }}
+                            >
+                              <View style={styles.permissionEditLeft}>
+                                <Ionicons
+                                  name={labelMap[key].icon}
+                                  size={24}
+                                  color={has ? APP_COLORS.primary.main : APP_COLORS.text.secondary}
+                                />
+                                <Text style={[styles.permissionEditLabel, has && styles.permissionEditLabelActive]}>
+                                  {labelMap[key].label}
+                                </Text>
+                              </View>
+                              <View style={[styles.permissionCheckbox, has && styles.permissionCheckboxActive]}>
+                                {has && <Ionicons name="checkmark" size={16} color="#fff" />}
+                              </View>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                      <Text style={styles.permissionsNote}>
+                        Sem permissões selecionadas, o membro não terá acesso às tarefas públicas da família.
                       </Text>
                     </View>
                   )}
 
-                  {sortedFamilyMembers.map(member => (
-                    <View
-                      key={member.id}
-                      style={[
-                        styles.familyMemberCard,
-                        isWeb ? styles.familyMemberCardWeb : styles.familyMemberCardMobile
+                  {/* Alterar Função */}
+                  <View style={styles.editSection}>
+                    <Text style={styles.editSectionTitle}>Função na Família</Text>
+                    <Text style={styles.editSectionDescription}>
+                      {selectedMemberForEdit.role === 'admin'
+                        ? 'Este membro é um administrador e tem controle total sobre a família.'
+                        : 'Este membro é um dependente e pode ter permissões limitadas.'}
+                    </Text>
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.changeRoleButton,
+                        pressed && { opacity: 0.7 }
                       ]}
+                      onPress={() => {
+                        setEditMemberModalVisible(false);
+                        closeManagedModal('editMember');
+                        changeMemberRole(selectedMemberForEdit.id);
+                      }}
                     >
-                      <View style={styles.memberCardContent}>
-                        <View style={styles.memberAvatarAndInfo}>
-                          <View style={styles.memberAvatar}>
-                            {member.profileIcon ? (
-                              <Text style={styles.memberAvatarEmoji}>{getEmojiForIcon(member.profileIcon)}</Text>
-                            ) : (
-                              <Text style={styles.memberAvatarEmoji}>😊</Text>
-                            )}
-                          </View>
-                          
-                          <View style={styles.memberInfo}>
-                            <Text style={styles.memberName}>{member.name}</Text>
-                            <View style={styles.memberRoleBadge}>
-                              <Ionicons 
-                                name={member.role === 'admin' ? 'shield-checkmark' : 'person'} 
-                                size={14} 
-                                color={member.role === 'admin' ? APP_COLORS.primary.main : APP_COLORS.text.secondary} 
-                              />
-                              <Text style={[
-                                styles.memberRoleText,
-                                member.role === 'admin' && styles.memberRoleAdmin
-                              ]}>
-                                {member.role === 'admin' ? 'Administrador' : 'Dependente'}
-                              </Text>
-                            </View>
-                            <Text style={styles.memberJoinDate}>
-                              Entrou em: {member.joinedAt ? new Date(member.joinedAt).toLocaleDateString('pt-BR') : 'Data não disponível'}
-                            </Text>
-                          </View>
-                        </View>
+                      <Ionicons name="swap-horizontal" size={20} color={APP_COLORS.primary.main} />
+                      <Text style={styles.changeRoleButtonText}>
+                        {selectedMemberForEdit.role === 'admin' ? 'Tornar Dependente' : 'Tornar Administrador'}
+                      </Text>
+                    </Pressable>
+                  </View>
 
-                        {member.id !== user.id && user.role === 'admin' && (
-                          <Pressable
-                            style={({ pressed }) => [
-                              styles.editMemberButton,
-                              pressed && { opacity: 0.7 }
-                            ]}
-                            onPress={() => {
-                              setSelectedMemberForEdit(member);
-                              setEditMemberModalVisible(true);
-                              openManagedModal('editMember');
-                            }}
-                          >
-                            <Ionicons name="create-outline" size={20} color={APP_COLORS.primary.main} />
-                            <Text style={styles.editMemberButtonText}>Editar</Text>
-                          </Pressable>
-                        )}
-                      </View>
-                    </View>
-                  ))}
-                </View>
-              </ScrollView>
-            )}
-            
-            <Pressable
-              style={[styles.closeButton, styles.closeButtonFixed]}
-              onPress={() => {
-                if (isCreatingFamily || isSavingFamilyName) return;
-                setFamilyModalVisible(false);
-                setIsCreatingFamilyMode(false);
-                setNewFamilyNameInput('');
-                closeManagedModal('family');
-              }}
-            >
-              <Text style={styles.closeButtonText}>Fechar</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
+                  {/* Remover Membro */}
+                  <View style={styles.editSection}>
+                    <Text style={styles.editSectionTitle}>Zona de Perigo</Text>
+                    <Text style={styles.editSectionDescription}>
+                      Remover este membro da família. Esta ação não pode ser desfeita.
+                    </Text>
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.removeMemberButtonEdit,
+                        pressed && { opacity: 0.7 }
+                      ]}
+                      onPress={() => {
+                        setEditMemberModalVisible(false);
+                        closeManagedModal('editMember');
+                        removeFamilyMember(selectedMemberForEdit.id);
+                      }}
+                    >
+                      <Ionicons name="trash-outline" size={20} color="#fff" />
+                      <Text style={styles.removeMemberButtonTextEdit}>Remover da Família</Text>
+                    </Pressable>
+                  </View>
+                </ScrollView>
+              )}
 
-      {/* Modal de Edição de Membro */}
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={editMemberModalVisible && isTopModal('editMember')}
-        presentationStyle="overFullScreen"
-        onRequestClose={() => {
-          setEditMemberModalVisible(false);
-          setSelectedMemberForEdit(null);
-          closeManagedModal('editMember');
-        }}
-      >
-        <View style={[styles.modalOverlay, { zIndex: 9999 }]}>
-          <View style={[styles.modalContent, styles.editMemberModalContent]}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Editar Membro</Text>
               <Pressable
+                style={({ pressed }) => [
+                  styles.closeModalButton,
+                  Platform.OS === 'web' && styles.closeModalButtonWeb,
+                  pressed && { opacity: 0.8 }
+                ]}
                 onPress={() => {
                   setEditMemberModalVisible(false);
                   setSelectedMemberForEdit(null);
                   closeManagedModal('editMember');
                 }}
-                style={styles.closeIconButton}
               >
-                <Ionicons name="close" size={24} color="#666" />
+                <Text style={styles.closeModalButtonText}>Fechar</Text>
               </Pressable>
-            </View>
-
-            {selectedMemberForEdit && (
-              <ScrollView style={styles.editMemberScroll}>
-                {/* Informações do Membro */}
-                <View style={styles.editMemberInfo}>
-                  <View style={styles.editMemberAvatar}>
-                    {selectedMemberForEdit.profileIcon ? (
-                      <Text style={styles.editMemberAvatarEmoji}>{getEmojiForIcon(selectedMemberForEdit.profileIcon)}</Text>
-                    ) : (
-                      <Text style={styles.editMemberAvatarEmoji}>😊</Text>
-                    )}
-                  </View>
-                  <Text style={styles.editMemberName}>{selectedMemberForEdit.name}</Text>
-                  <Text style={styles.editMemberJoinDate}>
-                    Membro desde {selectedMemberForEdit.joinedAt ? new Date(selectedMemberForEdit.joinedAt).toLocaleDateString('pt-BR') : 'Data não disponível'}
-                  </Text>
-                </View>
-
-                {/* Permissões (somente para dependente) */}
-                {selectedMemberForEdit.role === 'dependente' && (
-                <View style={styles.editSection}>
-                  <Text style={styles.editSectionTitle}>Permissões</Text>
-                  <Text style={styles.editSectionDescription}>
-                    Defina quais ações este membro pode realizar com as tarefas da família
-                  </Text>
-                  <View style={styles.permissionsEditContainer}>
-                    {['create','edit','delete'].map(key => {
-                      const labelMap: any = { 
-                        create: { label: 'Criar Tarefas', icon: 'add-circle-outline' },
-                        edit: { label: 'Editar Tarefas', icon: 'create-outline' },
-                        delete: { label: 'Excluir Tarefas', icon: 'trash-outline' }
-                      };
-                      const has = !!(selectedMemberForEdit as any).permissions?.[key];
-                      return (
-                        <Pressable
-                          key={key}
-                          style={[styles.permissionEditItem, has && styles.permissionEditItemActive]}
-                          onPress={async () => {
-                            try {
-                              const newValue = !has;
-                              const updatedPerms = { ...(selectedMemberForEdit as any).permissions };
-                              if (newValue) {
-                                updatedPerms[key] = true;
-                              } else {
-                                delete updatedPerms[key];
-                              }
-                              await familyService.updateMemberPermissions(currentFamily!.id, selectedMemberForEdit.id, updatedPerms);
-                              setFamilyMembers(prev => prev.map(m => m.id === selectedMemberForEdit.id ? { ...m, permissions: { ...updatedPerms } } : m));
-                              setSelectedMemberForEdit({ ...selectedMemberForEdit, permissions: { ...updatedPerms } } as any);
-                              
-                              if (selectedMemberForEdit.id === user.id && currentFamily) {
-                                try {
-                                  const refreshed = await familyService.getFamilyTasks(currentFamily.id, user.id);
-                                  setTasks(prev => {
-                                    const privateTasks = prev.filter(t => (t as any).private === true || !(t as any).familyId) as any as Task[];
-                                    const merged = [...privateTasks, ...(refreshed as any as Task[])];
-                                    return merged as Task[];
-                                  });
-                                } catch (err) {
-                                  logger.warn('FAMILY', 'Falha ao refazer fetch das tasks após permissão', err);
-                                }
-                              }
-                            } catch (e) {
-                              Alert.alert('Erro', 'Não foi possível atualizar permissões.');
-                            }
-                          }}
-                        >
-                          <View style={styles.permissionEditLeft}>
-                            <Ionicons 
-                              name={labelMap[key].icon} 
-                              size={24} 
-                              color={has ? APP_COLORS.primary.main : APP_COLORS.text.secondary} 
-                            />
-                            <Text style={[styles.permissionEditLabel, has && styles.permissionEditLabelActive]}>
-                              {labelMap[key].label}
-                            </Text>
-                          </View>
-                          <View style={[styles.permissionCheckbox, has && styles.permissionCheckboxActive]}>
-                            {has && <Ionicons name="checkmark" size={16} color="#fff" />}
-                          </View>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                  <Text style={styles.permissionsNote}>
-                    Sem permissões selecionadas, o membro não terá acesso às tarefas públicas da família.
-                  </Text>
-                </View>
-                )}
-
-                {/* Alterar Função */}
-                <View style={styles.editSection}>
-                  <Text style={styles.editSectionTitle}>Função na Família</Text>
-                  <Text style={styles.editSectionDescription}>
-                    {selectedMemberForEdit.role === 'admin' 
-                      ? 'Este membro é um administrador e tem controle total sobre a família.' 
-                      : 'Este membro é um dependente e pode ter permissões limitadas.'}
-                  </Text>
-                  <Pressable
-                    style={({ pressed }) => [
-                      styles.changeRoleButton,
-                      pressed && { opacity: 0.7 }
-                    ]}
-                    onPress={() => {
-                      setEditMemberModalVisible(false);
-                      closeManagedModal('editMember');
-                      changeMemberRole(selectedMemberForEdit.id);
-                    }}
-                  >
-                    <Ionicons name="swap-horizontal" size={20} color={APP_COLORS.primary.main} />
-                    <Text style={styles.changeRoleButtonText}>
-                      {selectedMemberForEdit.role === 'admin' ? 'Tornar Dependente' : 'Tornar Administrador'}
-                    </Text>
-                  </Pressable>
-                </View>
-
-                {/* Remover Membro */}
-                <View style={styles.editSection}>
-                  <Text style={styles.editSectionTitle}>Zona de Perigo</Text>
-                  <Text style={styles.editSectionDescription}>
-                    Remover este membro da família. Esta ação não pode ser desfeita.
-                  </Text>
-                  <Pressable
-                    style={({ pressed }) => [
-                      styles.removeMemberButtonEdit,
-                      pressed && { opacity: 0.7 }
-                    ]}
-                    onPress={() => {
-                      setEditMemberModalVisible(false);
-                      closeManagedModal('editMember');
-                      removeFamilyMember(selectedMemberForEdit.id);
-                    }}
-                  >
-                    <Ionicons name="trash-outline" size={20} color="#fff" />
-                    <Text style={styles.removeMemberButtonTextEdit}>Remover da Família</Text>
-                  </Pressable>
-                </View>
-              </ScrollView>
-            )}
-
-            <Pressable
-              style={({ pressed }) => [
-                styles.closeModalButton,
-                Platform.OS === 'web' && styles.closeModalButtonWeb,
-                pressed && { opacity: 0.8 }
-              ]}
-              onPress={() => {
-                setEditMemberModalVisible(false);
-                setSelectedMemberForEdit(null);
-                closeManagedModal('editMember');
-              }}
-            >
-              <Text style={styles.closeModalButtonText}>Fechar</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
-      
-      {/* Overlay de carregamento removido - o banner "Sincronizando..." do header fornece feedback suficiente */}
-
-      {/* Modal de Loading de Sincronização */}
-      {isSyncing && (
-        <Modal
-          visible={isSyncing}
-          transparent
-          animationType="fade"
-        >
-          <View style={styles.syncLoadingOverlay}>
-            <View style={styles.syncLoadingContainer}>
-              <ActivityIndicator size="large" color={APP_COLORS.primary.main} />
-              <Text style={styles.syncLoadingText}>{syncMessage}</Text>
             </View>
           </View>
         </Modal>
-      )}
 
-      {/* Modal de Adiamento */}
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={postponeModalVisible}
-        onRequestClose={() => setPostponeModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.postponeModalContent}>
-            <Text style={styles.modalTitle}>Adiar Tarefa</Text>
-            <Text style={styles.modalSubtitle}>
-              {selectedTaskForPostpone?.title}
-            </Text>
+        {/* Overlay de carregamento removido - o banner "Sincronizando..." do header fornece feedback suficiente */}
 
-            {/* Agendamento - igual subtarefas: dois botões lado a lado */}
-            <Text style={[styles.pickerLabel, { marginTop: 8 }]}>Agendamento</Text>
-            <View style={[
-              styles.dateTimeContainer,
-              Platform.OS === 'web' && styles.dateTimeContainerWeb
-            ]}>
-              {/* Botão de Data */}
-              <Pressable 
-                style={[
-                  styles.dateTimeButton,
-                  Platform.OS === 'web' && styles.dateTimeButtonWeb
-                ]}
-                onPress={() => {
-                  if (Platform.OS === 'android') Vibration.vibrate(10);
-                  const initialValue = postponeDate || new Date();
-                  pickerPostponeDateValueRef.current = initialValue;
-                  setShowPostponeDatePicker(true);
-                }}
-              >
-                <Ionicons name="calendar-outline" size={16} color="#666" />
-                <Text style={styles.dateTimeButtonText}>
-                  {postponeDate ? formatDate(postponeDate) : 'Selecionar data'}
-                </Text>
-              </Pressable>
-
-              {/* Botão de Hora */}
-              <Pressable 
-                style={[
-                  styles.dateTimeButton,
-                  Platform.OS === 'web' && styles.dateTimeButtonWeb
-                ]}
-                onPress={() => {
-                  if (Platform.OS === 'android') Vibration.vibrate(10);
-                  const base = postponeDate || new Date();
-                  const initialValue = postponeTime || base;
-                  pickerPostponeTimeValueRef.current = initialValue;
-                  setShowPostponeTimePicker(true);
-                }}
-              >
-                <Ionicons name="time-outline" size={16} color="#666" />
-                <Text style={styles.dateTimeButtonText}>
-                  {postponeTime ? formatTime(postponeTime) : 'Selecionar horário'}
-                </Text>
-              </Pressable>
+        {/* Modal de Loading de Sincronização */}
+        {isSyncing && (
+          <Modal
+            visible={isSyncing}
+            transparent
+            animationType="fade"
+          >
+            <View style={styles.syncLoadingOverlay}>
+              <View style={styles.syncLoadingContainer}>
+                <ActivityIndicator size="large" color={APP_COLORS.primary.main} />
+                <Text style={styles.syncLoadingText}>{syncMessage}</Text>
+              </View>
             </View>
+          </Modal>
+        )}
 
-            {/* DateTimePicker para Data */}
-            {showPostponeDatePicker && (
-              <DateTimePicker
-                value={stablePostponeDatePickerValue}
-                mode="date"
-                display="default"
-                onChange={onPostponeDateChange}
-              />
-            )}
-
-            {/* DateTimePicker para Horário */}
-            {showPostponeTimePicker && (
-              <DateTimePicker
-                value={stablePostponeTimePickerValue}
-                mode="time"
-                is24Hour={true}
-                display="default"
-                onChange={onPostponeTimeChange}
-              />
-            )}
-
-            {/* Aviso sutil se data/hora estiver no passado */}
-            {postponeIsPast && (
-              <Text style={styles.postponeWarningText}>
-                A nova data/horário está no passado.
+        {/* Modal de Adiamento */}
+        <Modal
+          animationType="slide"
+          transparent={true}
+          visible={postponeModalVisible}
+          onRequestClose={() => setPostponeModalVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.postponeModalContent}>
+              <Text style={styles.modalTitle}>Adiar Tarefa</Text>
+              <Text style={styles.modalSubtitle}>
+                {selectedTaskForPostpone?.title}
               </Text>
-            )}
 
-            {/* Botões de Ação - mesmo estilo dos outros modais */}
-            <View style={styles.modalButtons}>
-              <Pressable
-                style={[styles.button, styles.cancelButton]}
-                onPress={() => setPostponeModalVisible(false)}
-              >
-                <Text style={styles.cancelButtonText}>Cancelar</Text>
-              </Pressable>
+              {/* Agendamento - igual subtarefas: dois botões lado a lado */}
+              <Text style={[styles.pickerLabel, { marginTop: 8 }]}>Agendamento</Text>
+              <View style={[
+                styles.dateTimeContainer,
+                Platform.OS === 'web' && styles.dateTimeContainerWeb
+              ]}>
+                {/* Botão de Data */}
+                <Pressable
+                  style={[
+                    styles.dateTimeButton,
+                    Platform.OS === 'web' && styles.dateTimeButtonWeb
+                  ]}
+                  onPress={() => {
+                    if (Platform.OS === 'android') Vibration.vibrate(10);
+                    const initialValue = postponeDate || new Date();
+                    pickerPostponeDateValueRef.current = initialValue;
+                    setShowPostponeDatePicker(true);
+                  }}
+                >
+                  <Ionicons name="calendar-outline" size={16} color="#666" />
+                  <Text style={styles.dateTimeButtonText}>
+                    {postponeDate ? formatDate(postponeDate) : 'Selecionar data'}
+                  </Text>
+                </Pressable>
 
-              <Pressable
-                style={[styles.button, styles.addButton, !hasPostponeChanged && styles.buttonDisabled]}
-                disabled={!hasPostponeChanged}
-                onPress={postponeTask}
-              >
-                <Text style={styles.addButtonText}>Confirmar</Text>
-              </Pressable>
+                {/* Botão de Hora */}
+                <Pressable
+                  style={[
+                    styles.dateTimeButton,
+                    Platform.OS === 'web' && styles.dateTimeButtonWeb
+                  ]}
+                  onPress={() => {
+                    if (Platform.OS === 'android') Vibration.vibrate(10);
+                    const base = postponeDate || new Date();
+                    const initialValue = postponeTime || base;
+                    pickerPostponeTimeValueRef.current = initialValue;
+                    setShowPostponeTimePicker(true);
+                  }}
+                >
+                  <Ionicons name="time-outline" size={16} color="#666" />
+                  <Text style={styles.dateTimeButtonText}>
+                    {postponeTime ? formatTime(postponeTime) : 'Selecionar horário'}
+                  </Text>
+                </Pressable>
+              </View>
+
+              {/* DateTimePicker para Data */}
+              {showPostponeDatePicker && (
+                <DateTimePicker
+                  value={stablePostponeDatePickerValue}
+                  mode="date"
+                  display="default"
+                  onChange={onPostponeDateChange}
+                />
+              )}
+
+              {/* DateTimePicker para Horário */}
+              {showPostponeTimePicker && (
+                <DateTimePicker
+                  value={stablePostponeTimePickerValue}
+                  mode="time"
+                  is24Hour={true}
+                  display="default"
+                  onChange={onPostponeTimeChange}
+                />
+              )}
+
+              {/* Aviso sutil se data/hora estiver no passado */}
+              {postponeIsPast && (
+                <Text style={styles.postponeWarningText}>
+                  A nova data/horário está no passado.
+                </Text>
+              )}
+
+              {/* Botões de Ação - mesmo estilo dos outros modais */}
+              <View style={styles.modalButtons}>
+                <Pressable
+                  style={[styles.button, styles.cancelButton]}
+                  onPress={() => setPostponeModalVisible(false)}
+                >
+                  <Text style={styles.cancelButtonText}>Cancelar</Text>
+                </Pressable>
+
+                <Pressable
+                  style={[styles.button, styles.addButton, !hasPostponeChanged && styles.buttonDisabled]}
+                  disabled={!hasPostponeChanged}
+                  onPress={postponeTask}
+                >
+                  <Text style={styles.addButtonText}>Confirmar</Text>
+                </Pressable>
+              </View>
             </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+
+
+
 
       </SafeAreaView>
     </GestureHandlerRootView>

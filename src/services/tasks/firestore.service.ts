@@ -103,31 +103,27 @@ function deepSanitize<T = any>(value: T): T {
 
 export const FirestoreService = {
   async checkIsFamilyAdmin(familyId: string | null | undefined, userId?: string): Promise<boolean> {
-    console.log('[checkIsFamilyAdmin] Verificando admin:', { familyId, userId });
-    
+
+
     if (!userId || !familyId) {
-      console.log('[checkIsFamilyAdmin] Parâmetros inválidos');
+
       return false;
     }
 
     try {
       const familyRef = doc(firebaseFirestore() as any, 'families', familyId);
       const familySnap = await getDoc(familyRef);
-      
+
       if (!familySnap.exists()) {
-        console.log('[checkIsFamilyAdmin] Família não encontrada:', familyId);
+
         return false;
       }
 
       const familyData = familySnap.data() as any;
-      console.log('[checkIsFamilyAdmin] Dados da família:', {
-        adminId: familyData.adminId,
-        userId: userId,
-        isLegacyAdmin: familyData.adminId === userId
-      });
-      
+
+
       if (familyData.adminId === userId) {
-        console.log('[checkIsFamilyAdmin] Usuário é admin legacy');
+
         return true;
       }
 
@@ -135,26 +131,23 @@ export const FirestoreService = {
       try {
         const memberRef = doc(firebaseFirestore() as any, 'families', familyId, 'members', userId);
         const memberSnap = await getDoc(memberRef);
-        
+
         if (memberSnap.exists()) {
           const memberData = memberSnap.data() as any;
-          console.log('[checkIsFamilyAdmin] Dados do membro:', {
-            role: memberData?.role,
-            isRoleAdmin: memberData?.role === 'admin'
-          });
-          
+
+
           if (memberData && memberData.role === 'admin') {
-            console.log('[checkIsFamilyAdmin] Usuário é admin via role');
+
             return true;
           }
         } else {
-          console.log('[checkIsFamilyAdmin] Documento do membro não encontrado');
+
         }
       } catch (e) {
         console.warn('[checkIsFamilyAdmin] Erro ao verificar role do membro:', e);
       }
 
-      console.log('[checkIsFamilyAdmin] Usuário não é admin');
+
       return false;
     } catch (error) {
       console.warn('[FirestoreService] checkIsFamilyAdmin falhou:', error);
@@ -182,6 +175,16 @@ export const FirestoreService = {
       throw new Error('Tarefas privadas devem ter familyId = null');
     }
 
+    // Validação explícita de campos obrigatórios para evitar erro de permissão silencioso
+    if (!taskToSaveBase.userId) {
+      console.error('❌ [saveTask] ERRO CRÍTICO: userId ausente no payload:', taskToSaveBase);
+      throw new Error('userId é obrigatório');
+    }
+    if (!taskToSaveBase.title) {
+      console.error('❌ [saveTask] ERRO CRÍTICO: title ausente no payload:', taskToSaveBase);
+      throw new Error('title é obrigatório');
+    }
+
     // Sanitiza valores undefined (inclui repeatIntervalDays, repeatDurationMonths, campos opcionais de subtarefas, etc.)
     const taskToSave = deepSanitize(taskToSaveBase);
 
@@ -204,13 +207,7 @@ export const FirestoreService = {
     const currentUserId = auth.currentUser?.uid || auth.currentUser?.id;
 
     // Log detalhado da autenticação
-    console.log('[deleteTask] Auth Status:', {
-      hasAuth: !!auth,
-      hasCurrentUser: !!auth?.currentUser,
-      uid: auth?.currentUser?.uid,
-      id: auth?.currentUser?.id,
-      finalUserId: currentUserId
-    });
+
 
     if (!currentUserId) {
       console.error('[deleteTask] ERRO: Usuário não autenticado');
@@ -220,7 +217,7 @@ export const FirestoreService = {
     const ref = doc(firebaseFirestore() as any, 'tasks', taskId);
     const snap = await getDoc(ref);
     if (!snap.exists()) {
-      console.log('[deleteTask] Task não encontrada:', taskId);
+
       return;
     }
 
@@ -228,81 +225,58 @@ export const FirestoreService = {
     const isPrivate = (data.private === true) || (data.familyId === null || data.familyId === undefined);
 
     // Debug detalhado para diagnósticos em produção
-    console.log('[deleteTask] Task Details:', {
-      user: currentUserId,
-      taskId: taskId,
-      familyId: data.familyId,
-      private: data.private,
-      userId: data.userId,
-      createdBy: data.createdBy,
-      isPrivate: isPrivate
-    });
+
 
     if (!isPrivate) {
-      console.log('[deleteTask] Verificando permissões para família:', data.familyId);
+
       const canAdmin = await this.checkIsFamilyAdmin(data.familyId, currentUserId);
       const hasDeletePerm = await this.checkHasFamilyPermission(data.familyId, currentUserId, 'delete');
-      
-      console.log('[deleteTask] Permissões:', {
-        canAdmin: canAdmin,
-        hasDeletePerm: hasDeletePerm,
-        familyId: data.familyId,
-        userId: currentUserId
-      });
-      
+
+
+
       // Admin sempre tem permissão, mesmo sem permissão explícita de delete
       if (!canAdmin && !hasDeletePerm) {
         console.error('[deleteTask] ERRO: Sem permissões para deletar task da família');
         throw new Error('permission-denied');
       }
     } else {
-      console.log('[deleteTask] Task privada - verificando propriedade');
+
       const isOwner = data.userId === currentUserId || data.createdBy === currentUserId;
-      console.log('[deleteTask] Propriedade:', {
-        isOwner: isOwner,
-        taskUserId: data.userId,
-        taskCreatedBy: data.createdBy,
-        currentUserId: currentUserId
-      });
-      
+
+
       if (!isOwner) {
         console.error('[deleteTask] ERRO: Usuário não é dono da task privada');
         throw new Error('permission-denied');
       }
     }
 
-    console.log('[deleteTask] Executando deleteDoc...');
+
     await deleteDoc(ref);
-    console.log('[deleteTask] Task deletada com sucesso');
+
   },
 
   async checkHasFamilyPermission(familyId: string | null | undefined, userId?: string, permKey: 'create' | 'edit' | 'delete' = 'delete'): Promise<boolean> {
-    console.log('[checkHasFamilyPermission] Verificando permissão:', { familyId, userId, permKey });
-    
+
+
     if (!familyId || !userId) {
-      console.log('[checkHasFamilyPermission] Parâmetros inválidos');
+
       return false;
     }
-    
+
     try {
       const memberRef = doc(firebaseFirestore() as any, 'families', familyId, 'members', userId);
       const memberSnap = await getDoc(memberRef);
-      
+
       if (!memberSnap.exists()) {
-        console.log('[checkHasFamilyPermission] Membro não encontrado');
+
         return false;
       }
-      
+
       const memberData = memberSnap.data() as any;
       const perms = (memberData && memberData.permissions) || {};
-      
-      console.log('[checkHasFamilyPermission] Dados do membro:', {
-        permissions: perms,
-        hasPermKey: perms.hasOwnProperty(permKey),
-        permValue: perms[permKey],
-        result: perms[permKey] === true
-      });
-      
+
+
+
       return perms[permKey] === true;
     } catch (e) {
       console.warn('[FirestoreService] checkHasFamilyPermission falhou:', e);
@@ -360,7 +334,7 @@ export const FirestoreService = {
       });
 
       const tasks = sortTasksByUpdatedAt(Array.from(dedupMap.values()));
-      console.log(`✅ FirestoreService.getTasksByUser: ${tasks.length} tarefas encontradas (antigas concluídas filtradas)`);
+
       return tasks;
     } catch (error: any) {
       console.error('❌ FirestoreService.getTasksByUser: Erro ao buscar tarefas:', error);
@@ -392,7 +366,7 @@ export const FirestoreService = {
         where('private', '==', false)
       );
 
-  const snapshots = [await getDocs(publicQuery)];
+      const snapshots = [await getDocs(publicQuery)];
 
       const userId = currentUser.uid || currentUser.id;
       if (userId) {
@@ -431,7 +405,7 @@ export const FirestoreService = {
       });
 
       const tasks = sortTasksByUpdatedAt(Array.from(dedupMap.values()));
-      console.log(`✅ FirestoreService.getTasksByFamily: ${tasks.length} tarefas encontradas (antigas concluídas filtradas)`);
+
       return tasks;
     } catch (error: any) {
       console.error('❌ FirestoreService.getTasksByFamily: Erro ao buscar tarefas:', error);
@@ -601,7 +575,7 @@ export const FirestoreService = {
       return unsub;
     } catch (e) {
       console.warn('[FirestoreService] subscribeToFamilyApprovals falhou:', e);
-      return () => {};
+      return () => { };
     }
   }
 };

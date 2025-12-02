@@ -73,7 +73,8 @@
         }
       ],
       "expo-task-manager",
-      "expo-background-fetch"
+      "expo-background-fetch",
+      "expo-secure-store"
     ]
   }
 }

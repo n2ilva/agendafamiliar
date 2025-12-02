@@ -223,7 +223,12 @@ service cloud.firestore {
             isFamilyAdmin(resource.data.familyId) || hasFamilyPermission(resource.data.familyId, 'edit')
           ))
         )
-        && (request.resource.data.private != true || request.resource.data.familyId == null);
+        && (
+          // Permitir se for admin da família (para corrigir estados inconsistentes)
+          (request.resource.data.familyId != null && isFamilyAdmin(request.resource.data.familyId))
+          // OU se a regra de consistência for respeitada (não pode ser privada E de família ao mesmo tempo)
+          || (request.resource.data.private != true || request.resource.data.familyId == null)
+        );
 
       // Exclusão: somente admin em tarefas da família; em tarefas privadas, o autor pode excluir
       allow delete: if isAuthenticated() && authId() != null && (

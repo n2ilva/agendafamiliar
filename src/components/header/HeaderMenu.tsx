@@ -7,12 +7,12 @@ import { UserRole } from '../../types/family.types';
 import { APP_COLORS } from '../../constants/colors';
 
 const THEME = {
-    primary: APP_COLORS.primary.main,
-    danger: APP_COLORS.status.error,
-    success: APP_COLORS.status.success,
-    warning: APP_COLORS.status.warning,
-    textPrimary: APP_COLORS.text.primary,
-    textSecondary: APP_COLORS.text.secondary,
+  primary: APP_COLORS.primary.main,
+  danger: APP_COLORS.status.error,
+  success: APP_COLORS.status.success,
+  warning: APP_COLORS.status.warning,
+  textPrimary: APP_COLORS.text.primary,
+  textSecondary: APP_COLORS.text.secondary,
 };
 
 interface HeaderMenuProps {
@@ -25,6 +25,7 @@ interface HeaderMenuProps {
   onHistory: () => void;
   onInfo: () => void;
   onRefresh?: () => void;
+  onCleanupTasks?: () => void;
   onLogout: () => void;
 }
 
@@ -38,6 +39,7 @@ export const HeaderMenu: React.FC<HeaderMenuProps> = ({
   onHistory,
   onInfo,
   onRefresh,
+  onCleanupTasks,
   onLogout,
 }) => {
   const { colors, themeMode, setThemeMode } = useTheme();
@@ -55,7 +57,7 @@ export const HeaderMenu: React.FC<HeaderMenuProps> = ({
         <Pressable style={styles.fullscreenOverlay} onPress={onClose} />
 
         {/* Dropdown alinhado ao canto superior direito */}
-        <View 
+        <View
           style={[
             styles.dropdownMenuModal,
             menuButtonLayout && {
@@ -64,7 +66,7 @@ export const HeaderMenu: React.FC<HeaderMenuProps> = ({
             }
           ]}
         >
-          <ScrollView 
+          <ScrollView
             style={styles.menuScrollView}
             showsVerticalScrollIndicator={false}
             bounces={false}
@@ -89,6 +91,12 @@ export const HeaderMenu: React.FC<HeaderMenuProps> = ({
               <Ionicons name="information-circle-outline" size={18} color={APP_COLORS.status.success} />
               <Text style={styles.menuText}>Manual e Informações</Text>
             </Pressable>
+            {onCleanupTasks && (
+              <Pressable onPress={() => { onClose(); onCleanupTasks(); }} style={styles.menuItem}>
+                <Ionicons name="trash-bin-outline" size={18} color={APP_COLORS.status.warning} />
+                <Text style={styles.menuText}>Limpar Tarefas Antigas</Text>
+              </Pressable>
+            )}
             {/* Atualizar dados */}
             {onRefresh && (
               <Pressable onPress={() => { onClose(); onRefresh(); }} style={styles.menuItem}>
@@ -96,7 +104,7 @@ export const HeaderMenu: React.FC<HeaderMenuProps> = ({
                 <Text style={styles.menuText}>Atualizar Dados</Text>
               </Pressable>
             )}
-            
+
             {/* Tema - chave seletora de 3 posições */}
             <View style={styles.menuItem}>
               <View style={styles.segmentedControl}>
@@ -132,7 +140,7 @@ export const HeaderMenu: React.FC<HeaderMenuProps> = ({
                 </Pressable>
               </View>
             </View>
-            
+
             {/* Logout no final do menu */}
             <Pressable onPress={() => { onClose(); onLogout(); }} style={styles.menuItem}>
               <Ionicons name="log-out-outline" size={18} color={APP_COLORS.status.error} />

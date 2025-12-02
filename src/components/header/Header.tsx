@@ -36,6 +36,7 @@ interface HeaderProps {
   onManageFamily?: () => void;
   onJoinFamilyByCode?: (code: string) => Promise<void> | void;
   onRefresh?: () => void;
+  onCleanupTasks?: () => void;
   syncStatus?: {
     hasError?: boolean;
     isOnline?: boolean;
@@ -49,8 +50,8 @@ interface HeaderProps {
   tasks?: Array<{ id: string; title: string; dueDate?: Date | any; completed?: boolean }>;
 }
 
-export const Header: React.FC<HeaderProps> = ({ 
-  userName, 
+export const Header: React.FC<HeaderProps> = ({
+  userName,
   userImage,
   userProfileIcon,
   userRole,
@@ -59,7 +60,7 @@ export const Header: React.FC<HeaderProps> = ({
   onUserNameChange,
   onUserImageChange,
   onUserProfileIconChange,
-  onUserRoleChange, 
+  onUserRoleChange,
   onSettings,
   onHistory,
   onInfo,
@@ -69,6 +70,7 @@ export const Header: React.FC<HeaderProps> = ({
   onManageFamily,
   onJoinFamilyByCode,
   onRefresh,
+  onCleanupTasks,
   syncStatus,
   isSyncingPermissions,
   showUndoButton = false,
@@ -78,7 +80,7 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const { colors } = useTheme();
   const styles = getHeaderStyles(colors);
-  
+
   const {
     avatarActionsVisible, setAvatarActionsVisible,
     iconPickerVisible, setIconPickerVisible,
@@ -115,10 +117,10 @@ export const Header: React.FC<HeaderProps> = ({
       <View style={{ width: '100%' }}>
         <View style={[
           styles.container,
-          syncStatus?.hasError 
-            ? styles.containerError 
-            : syncStatus?.isOnline 
-              ? styles.containerOnline 
+          syncStatus?.hasError
+            ? styles.containerError
+            : syncStatus?.isOnline
+              ? styles.containerOnline
               : styles.containerOffline
         ]}>
           <View style={styles.leftSection}>
@@ -134,8 +136,8 @@ export const Header: React.FC<HeaderProps> = ({
                 </View>
               )}
             </Pressable>
-            
-            <HeaderUserInfo 
+
+            <HeaderUserInfo
               userName={userName}
               familyName={familyName}
               userRole={userRole}
@@ -148,15 +150,15 @@ export const Header: React.FC<HeaderProps> = ({
           <View style={styles.rightSection}>
             {/* Botão de Desfazer */}
             {showUndoButton && onUndo && (
-              <Pressable 
-                onPress={() => { setMenuVisible(false); onUndo(); }} 
-                style={styles.iconButton} 
+              <Pressable
+                onPress={() => { setMenuVisible(false); onUndo(); }}
+                style={styles.iconButton}
                 accessibilityLabel="Desfazer última ação"
               >
                 <Ionicons name="arrow-undo" size={24} color={APP_COLORS.primary.main} />
               </Pressable>
             )}
-            
+
             {/* Botão de Notificações */}
             {onNotifications && (
               <Pressable onPress={() => { setMenuVisible(false); onNotifications(); }} style={styles.iconButton} accessibilityLabel="Notificações">
@@ -185,9 +187,9 @@ export const Header: React.FC<HeaderProps> = ({
             </Pressable>
 
             <View style={styles.menuContainer}>
-              <Pressable 
+              <Pressable
                 ref={menuButtonRef}
-                onPress={handleMenuPress} 
+                onPress={handleMenuPress}
                 style={styles.iconButton}
               >
                 <Ionicons name="settings-outline" size={24} color={APP_COLORS.secondary.main} />
@@ -208,6 +210,7 @@ export const Header: React.FC<HeaderProps> = ({
         onHistory={onHistory}
         onInfo={onInfo}
         onRefresh={onRefresh}
+        onCleanupTasks={onCleanupTasks}
         onLogout={onLogout}
       />
 
@@ -230,7 +233,7 @@ export const Header: React.FC<HeaderProps> = ({
         onClose={() => setJoinModalVisible(false)}
         onJoin={handleJoinFamily}
       />
-      
+
       <ProfileSettingsModal
         visible={profileModalVisible}
         onClose={() => setProfileModalVisible(false)}

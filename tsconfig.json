@@ -1,4 +1,5 @@
 {
+  "extends": "expo/tsconfig.base.json",
   "compilerOptions": {
     "jsx": "react-native",
     "moduleResolution": "bundler",
@@ -29,6 +30,5 @@
   ],
   "exclude": [
     "node_modules"
-  ],
-  "extends": "expo/tsconfig.base.json"
+  ]
 }
