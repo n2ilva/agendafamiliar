@@ -15,7 +15,6 @@ const THEME = {
 
 export type CalendarFilter = 'all' | 'pending' | 'completed' | 'overdue';
 
-// Helper para converter dueDate para Date
 const parseDueDate = (dueDate: any): Date | undefined => {
   if (!dueDate) return undefined;
   
@@ -34,12 +33,10 @@ const parseDueDate = (dueDate: any): Date | undefined => {
   return undefined;
 };
 
-// Helper para formatar data como YYYY-MM-DD
 const formatDateKey = (date: Date): string => {
   return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
 };
 
-// Helper para formatar horário HH:mm
 const formatTime = (date: Date): string => {
   return `${String(date.getHours()).padStart(2,'0')}:${String(date.getMinutes()).padStart(2,'0')}`;
 };
@@ -51,7 +48,6 @@ export const useCalendarLogic = (
   filter: CalendarFilter = 'all',
   selectedDay: string | null = null
 ) => {
-  // Estado para o dia selecionado (para ver detalhes)
   const [selectedDate, setSelectedDate] = useState<string | null>(selectedDay);
   
   const todayDate = useMemo(() => {
@@ -63,15 +59,12 @@ export const useCalendarLogic = (
   // Filtrar tarefas baseado no filtro selecionado
   const filteredTasks = useMemo(() => {
     return tasks.filter((task: any) => {
-      // NÃO filtrar tarefas excluídas - agora elas devem aparecer no calendário
-      
       const dateObj = parseDueDate(task.dueDate);
       if (!dateObj) return false;
       
       const taskDate = new Date(dateObj);
       taskDate.setHours(0, 0, 0, 0);
       
-      // Verificar se está concluída (pelo campo completed OU pelo status)
       const isCompleted = task.completed === true || task.status === 'concluida';
       const isOverdue = taskDate < todayDate && !isCompleted;
       
@@ -104,7 +97,6 @@ export const useCalendarLogic = (
     return counts;
   }, [filteredTasks]);
 
-  // Verificar se há tarefas recorrentes por dia
   const hasRecurringByDay = useMemo(() => {
     const recurring: Record<string, boolean> = {};
     
@@ -122,7 +114,6 @@ export const useCalendarLogic = (
     return recurring;
   }, [filteredTasks]);
 
-  // Verificar prioridade mais alta por dia
   const highestPriorityByDay = useMemo(() => {
     const priorities: Record<string, string> = {};
     const priorityOrder = { high: 3, medium: 2, low: 1 };
@@ -171,8 +162,6 @@ export const useCalendarLogic = (
       };
     });
     
-    // Marcar dias com tarefas com borda circular
-    // Primeiro, agrupar tarefas por dia para determinar a cor correta
     const tasksByDay: Record<string, any[]> = {};
     filteredTasks.forEach((task: any) => {
       const dateObj = parseDueDate(task.dueDate);
@@ -182,9 +171,7 @@ export const useCalendarLogic = (
       tasksByDay[ymd].push(task);
     });
     
-    // Agora processar cada dia
     Object.entries(tasksByDay).forEach(([taskYmd, dayTasks]) => {
-      // Determinar a cor baseado nas tarefas do dia
       // Prioridade: vermelho (vencida ativa) > laranja (concluída atrasada) > categoria > verde
       let taskColor: string = '#4CAF50'; // padrão verde
       let hasActiveOverdue = false;
@@ -198,11 +185,9 @@ export const useCalendarLogic = (
         const taskDate = new Date(dateObj);
         taskDate.setHours(0, 0, 0, 0);
         
-        // Verificar se está concluída (pelo campo completed OU pelo status)
         const isCompleted = task.completed === true || task.status === 'concluida';
         
         if (isCompleted) {
-          // Tarefa concluída - verificar se foi no prazo ou atrasada
           const completedDate = parseDueDate(task.completedAt);
           if (completedDate) {
             const completedDateOnly = new Date(completedDate);
@@ -217,37 +202,29 @@ export const useCalendarLogic = (
             }
           }
         } else {
-          // Tarefa NÃO concluída
           const isOverdue = taskDate < todayDate;
           if (isOverdue) {
             hasActiveOverdue = true;
           } else {
-            // Tarefa ativa futura - usar cor da categoria
             const categoryConfig = CATEGORY_COLORS[task.category as keyof typeof CATEGORY_COLORS];
             activeCategoryColor = categoryConfig?.color || '#4CAF50';
           }
         }
       });
       
-      // Definir cor final baseada na prioridade
       if (hasActiveOverdue) {
-        // Se há tarefa ATIVA vencida, mostrar vermelho
         taskColor = APP_COLORS.status.error;
       } else if (activeCategoryColor) {
-        // Se há tarefa ativa futura, usar cor da categoria
         taskColor = activeCategoryColor;
       } else if (hasCompletedLate) {
-        // Se só tem tarefas concluídas e alguma foi atrasada, laranja
         taskColor = '#FF9800';
       } else {
-        // Todas concluídas no prazo, verde
         taskColor = '#4CAF50';
       }
       
       const existingMarker = map[taskYmd];
       
       if (existingMarker?.isHoliday) {
-        // Dia já tem feriado, manter background azul do feriado e adicionar borda da tarefa
         map[taskYmd] = {
           customStyles: {
             container: {
@@ -267,7 +244,6 @@ export const useCalendarLogic = (
           isHoliday: true,
         };
       } else if (!existingMarker) {
-        // Dia com tarefa mas sem marcação anterior
         map[taskYmd] = {
           customStyles: {
             container: {
@@ -288,11 +264,9 @@ export const useCalendarLogic = (
       }
     });
     
-    // Marcar dia de hoje com background na mesma cor da borda (se tiver evento) ou azul primary
     const todayYmd = formatDateKey(new Date());
     const existingStyle = map[todayYmd]?.customStyles || {};
     
-    // Se já existe uma marcação no dia de hoje
     if (map[todayYmd] && existingStyle.container?.borderColor) {
       const borderColor = existingStyle.container.borderColor;
       map[todayYmd] = {
@@ -310,7 +284,6 @@ export const useCalendarLogic = (
         },
       };
     } else {
-      // Se não tem evento no dia de hoje, marcar com background azul primary
       map[todayYmd] = {
         customStyles: {
           container: {

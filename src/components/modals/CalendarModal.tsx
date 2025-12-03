@@ -18,10 +18,8 @@ LocaleConfig.locales['pt-br'] = {
 };
 LocaleConfig.defaultLocale = 'pt-br';
 
-// Tipo para nomes de ícones do MaterialCommunityIcons
 type IconName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
 
-// Helper para label de recorrência
 const getRepeatLabel = (type: RepeatType): string => {
   switch (type) {
     case RepeatType.DAILY: return 'Diário';
@@ -35,7 +33,6 @@ const getRepeatLabel = (type: RepeatType): string => {
   }
 };
 
-// Helper para ícone de prioridade
 const getPriorityIcon = (priority?: string): { icon: IconName; color: string } | null => {
   switch (priority) {
     case 'high': return { icon: 'arrow-up-bold', color: APP_COLORS.status.error };
@@ -73,7 +70,6 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
     hasRecurringByDay,
   } = useCalendarLogic(calendarMonth, tasks, colors, 'all');
 
-  // Reset month when opening modal
   useEffect(() => {
     if (visible) {
       setCalendarMonth(new Date());
@@ -94,21 +90,17 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
     const deleted: any[] = [];
     
     selectedDayTasks.forEach((task: any) => {
-      // Verificar se a tarefa foi excluída
       if (task.deleted || task.isDeleted) {
         deleted.push(task);
         return;
       }
       
-      // Verificar data da tarefa
       const taskDate = new Date(task.dueDate?.toDate?.() || task.dueDate);
       taskDate.setHours(0, 0, 0, 0);
       
-      // Verificar se está concluída (pelo campo completed OU pelo status)
       const isCompleted = task.completed === true || task.status === 'concluida';
       
       if (isCompleted) {
-        // Tarefa concluída - verificar se foi concluída com atraso
         let wasCompletedLate = false;
         
         if (task.completedAt) {
@@ -116,14 +108,12 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
           completedDate.setHours(0, 0, 0, 0);
           wasCompletedLate = completedDate > taskDate;
         } else {
-          // Se não tem completedAt mas a data de vencimento já passou, considerar como atrasada
           const isOverdueDate = taskDate < today;
           wasCompletedLate = isOverdueDate;
         }
         
         completed.push({ ...task, wasCompletedLate });
       } else {
-        // Tarefa NÃO concluída e NÃO excluída = pendente
         pending.push(task);
       }
     });
@@ -133,7 +123,6 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
   
   const { pending: pendingTasks, completed: completedTasks, deleted: deletedTasks } = getDayTasksByStatus();
 
-  // Renderizar tarefa do dia selecionado
   const renderSelectedDayTask = (task: any) => {
     const priorityInfo = getPriorityIcon(task.priority);
     const repeatLabel = task.isRecurring ? getRepeatLabel(task.repeatType) : null;
@@ -197,7 +186,6 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
     );
   };
 
-  // Formatar data selecionada
   const formatSelectedDate = () => {
     if (!selectedDate) return '';
     const [year, month, day] = selectedDate.split('-');
@@ -214,7 +202,6 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
       onRequestClose={onClose}
     >
       <View style={styles.calendarCenterOverlay}>
-        {/* Overlay para fechar ao clicar fora */}
         <Pressable style={styles.fullscreenOverlay} onPress={onClose} />
 
         <View style={styles.calendarModalCard}>
@@ -226,7 +213,6 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
             }}
             onDayPress={(day:any) => {
               handleDayPress(day);
-              // Se já está selecionado, permite navegar
               if (selectedDate === day.dateString && onDaySelect) {
                 onClose();
                 const parts = day.dateString.split('-');
@@ -257,7 +243,6 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
                   ]}>
                     {date?.day}
                   </Text>
-                  {/* Indicadores abaixo do número */}
                   <View style={localStyles.dayIndicators}>
                     {count > 0 && (
                       <View style={localStyles.countBadge}>
@@ -301,7 +286,6 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
             showsVerticalScrollIndicator={true}
           >
 <View style={styles.holidayListContainer}>
-              {/* Dia selecionado com detalhes organizados por status */}
               {selectedDate && (
                 <View style={localStyles.selectedDaySection}>
                   <Text style={localStyles.selectedDayTitle}>
@@ -310,7 +294,6 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
                   
                   {selectedDayTasks.length > 0 ? (
                     <>
-                      {/* Ativas/Pendentes */}
                       {pendingTasks.length > 0 && (
                         <View style={localStyles.statusSection}>
                           <View style={localStyles.statusHeader}>
@@ -323,7 +306,6 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
                         </View>
                       )}
                       
-                      {/* Concluídas (incluindo as com atraso) */}
                       {completedTasks.length > 0 && (
                         <View style={localStyles.statusSection}>
                           <View style={localStyles.statusHeader}>
@@ -336,7 +318,6 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
                         </View>
                       )}
                       
-                      {/* Excluídas */}
                       {deletedTasks.length > 0 && (
                         <View style={localStyles.statusSection}>
                           <View style={localStyles.statusHeader}>

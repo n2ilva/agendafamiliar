@@ -175,7 +175,6 @@ export const Header: React.FC<HeaderProps> = ({
               </Pressable>
             )}
 
-            {/* Botão de Calendário */}
             <Pressable
               onPress={() => { setMenuVisible(false); setCalendarVisible(true); }}
               style={styles.iconButton}
@@ -197,7 +196,6 @@ export const Header: React.FC<HeaderProps> = ({
         </View>
       </View>
 
-      {/* Modals */}
       <HeaderMenu
         visible={menuVisible}
         onClose={() => setMenuVisible(false)}
