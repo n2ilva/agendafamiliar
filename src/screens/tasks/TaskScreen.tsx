@@ -66,6 +66,8 @@ import logger from '../../utils/helpers/logger';
 import { useAuth } from '../../contexts/auth.context';
 import { useFamily } from '../../hooks/use-family';
 import { useTasks, taskToRemoteTask, remoteTaskToTask } from '../../hooks/use-tasks';
+import { useTaskActions } from '../../hooks/use-task-actions';
+import { useHistory } from '../../hooks/use-history';
 import { getStyles } from './styles';
 import { HISTORY_DAYS_TO_KEEP, LocalTask, HistoryItem, TaskScreenProps } from './types';
 
@@ -140,6 +142,11 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
   const [isSyncing, setIsSyncing] = useState(false);
 
   const [syncMessage, setSyncMessage] = useState('');
+
+  // Estados de aprovação e notificações (necessários para useTaskActions)
+  const [approvals, setApprovals] = useState<TaskApproval[]>([]);
+  const [notifications, setNotifications] = useState<ApprovalNotification[]>([]);
+  const [adminRoleRequests, setAdminRoleRequests] = useState<any[]>([]);
   // Recorrência
   const [intervalDays, setIntervalDays] = useState<number>(0);
   const [durationMonths, setDurationMonths] = useState<number>(0);
@@ -212,39 +219,59 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
     return currentUserEntry ? [currentUserEntry, ...others] : others;
   }, [familyMembers, user?.id]);
 
-  // Helper: garante permissão atualizada do membro autenticado; retorna true/false
-  const ensureFamilyPermission = useCallback(async (perm: 'create' | 'edit' | 'delete'): Promise<boolean> => {
-    if (!currentFamily || user.role !== 'dependente') return true;
-    try {
-      // Sempre buscar do servidor para evitar permissões locais desatualizadas (ex.: revogadas recentemente)
-      const refreshed = await familyService.getFamilyById(currentFamily.id);
-      if (refreshed) {
-        setCurrentFamily(refreshed);
-        setFamilyMembers(refreshed.members);
-        const me = refreshed.members.find(m => m.id === user.id) as any;
-        return !!me?.permissions?.[perm];
-      }
-    } catch (e) {
-      logger.warn('PERMISSIONS', 'Falha ao atualizar permissões da família');
-      // Fallback: usar estado local em caso de erro de rede
-      const selfMember = familyMembers.find(m => m.id === user.id) as any;
-      return !!selfMember?.permissions?.[perm];
-    }
-    return false;
-  }, [currentFamily, familyMembers, user]);
+  // Hooks de Histórico e Ações
+  const {
+    history,
+    setHistory,
+    addToHistory,
+    clearOldHistory
+  } = useHistory(user, currentFamily, isOffline);
+
+  const {
+    saveTask,
+    deleteTask,
+    toggleTask,
+    requestTaskApproval,
+    ensureFamilyPermission,
+    toggleLockTask,
+    postponeTask: hookPostponeTask,
+    handleSkipOccurrence,
+    toggleSubtask,
+    approveTask,
+    rejectTask
+  } = useTaskActions({
+    user,
+    currentFamily,
+    isOffline,
+    tasks,
+    setTasks,
+    pendingSyncIds,
+    setPendingSyncIds,
+    approvals,
+    setApprovals,
+    notifications,
+    setNotifications,
+    addToHistory,
+    setLastAction,
+    setShowUndoButton,
+    undoTimeoutRef,
+    overdueNotificationTrackRef,
+    forceRefresh: async () => { /* Placeholder, will be replaced by actual forceRefresh if needed or circular dependency handled */ },
+    setIsSyncing,
+    setSyncMessage
+  });
 
   // Estados de aprovação
-  const [approvals, setApprovals] = useState<TaskApproval[]>([]);
-  const [adminRoleRequests, setAdminRoleRequests] = useState<any[]>([]);
+  // const [approvals, setApprovals] = useState<TaskApproval[]>([]); // Já declarado acima? Não, approvals estava em TaskScreen.
+  // Wait, approvals state IS in TaskScreen (lines 237-238 in original).
+  // I need to keep the state definitions for approvals, notifications, etc., because useTaskActions USES them, it doesn't create them.
 
-  // Estados de histórico
-  const [history, setHistory] = useState<HistoryItem[]>([]);
+  // Estados de histórico - REMOVIDO (vem do hook)
   const [historyModalVisible, setHistoryModalVisible] = useState(false);
   const [historyDetailModalVisible, setHistoryDetailModalVisible] = useState(false);
   const [selectedHistoryItem, setSelectedHistoryItem] = useState<HistoryItem | null>(null);
 
-  // Estados de notificação
-  const [notifications, setNotifications] = useState<ApprovalNotification[]>([]);
+  // Estados de notificação - MOVIDO PARA CIMA
   const [notificationModalVisible, setNotificationModalVisible] = useState(false);
 
   // Estados de categoria customizada
@@ -746,10 +773,14 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
   useEffect(() => {
     verificarTarefasVencidas();
 
-    // 🆕 Limpar notificações órfãs se houver tarefas carregadas
+    // 🆕 Limpar notificações órfãs se houver tarefas carregadas (com debounce)
     if (tasks.length > 0) {
-      const activeTaskIds = tasks.map(t => t.id);
-      NotificationService.cleanupOrphanedNotifications(activeTaskIds);
+      const timeoutId = setTimeout(() => {
+        const activeTaskIds = tasks.map(t => t.id);
+        NotificationService.cleanupOrphanedNotifications(activeTaskIds);
+      }, 2000); // Aguardar 2 segundos para evitar múltiplas limpezas
+      
+      return () => clearTimeout(timeoutId);
     }
   }, [tasks, lastUpdate]);
 
@@ -1056,200 +1087,8 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
     forceRefresh().catch(e => logger.warn('REFRESH', 'Initial forceRefresh error'));
   }, [currentFamily?.id, isOffline]);
 
-  // useEffect para carregar histórico da família
-  useEffect(() => {
-    let unsubscribeHistory: (() => void) | null = null;
-
-    const loadHistory = async () => {
-      try {
-        // Verificar se há usuário válido antes de tentar carregar histórico
-        if (!user || !user.id) {
-          logger.debug('HISTORY', 'Usuário não definido, pulando carregamento');
-          return;
-        }
-
-        // Primeiro, carregar histórico do cache local
-        logger.debug('HISTORY', 'Carregando histórico do cache local');
-        const localHistory = await LocalStorageService.getHistory(100);
-        setHistory(localHistory.sort((a, b) => new Date(b.timestamp as any).getTime() - new Date(a.timestamp as any).getTime()));
-
-        // Limpar histórico antigo (manter apenas 7 dias)
-        await LocalStorageService.clearOldHistory(HISTORY_DAYS_TO_KEEP);
-
-        if (currentFamily && currentFamily.id && !isOffline) {
-          logger.debug('HISTORY', 'Carregando histórico da família');
-
-          // Configurar listener para atualizações de tarefas em tempo real
-          const unsubscribeTasks = familyService.subscribeToFamilyTasks(
-            currentFamily.id,
-            (updatedTasks) => {
-              const convertedTasks: Task[] = updatedTasks
-                .filter(task => {
-                  // Se a tarefa estiver na lista de espera, não a atualize
-                  if (pendingSyncIds.includes(task.id)) {
-                    logger.debug('REAL_TIME_SYNC', `Tarefa ${task.id} ignorada (pendente)`);
-                    return false; // Não incluir esta atualização
-                  }
-
-                  // Filtrar tarefas privadas de outros usuários
-                  const isPrivate = (task as any).private === true;
-                  if (isPrivate && task.createdBy && task.createdBy !== user.id) {
-                    logger.debug('REAL_TIME_SYNC', `Tarefa privada ${task.id} ignorada`);
-                    return false;
-                  }
-
-                  return true; // Incluir esta atualização
-                });
-
-              // Mesclar com as tarefas que estão pendentes
-              setTasks(prevTasks => {
-                const nonPendingTasks = prevTasks.filter(t => !pendingSyncIds.includes(t.id));
-                const pendingTasks = prevTasks.filter(t => pendingSyncIds.includes(t.id));
-
-                // Criar um mapa de tarefas atualizadas para acesso rápido
-                const updatedTasksMap = new Map(convertedTasks.map(t => [t.id, t]));
-
-                // Atualizar as tarefas não pendentes
-                const mergedNonPending = nonPendingTasks.map(t => updatedTasksMap.get(t.id) || t);
-
-                // Adicionar novas tarefas que não estavam no estado anterior
-                convertedTasks.forEach(t => {
-                  if (!nonPendingTasks.some(nt => nt.id === t.id) && !pendingTasks.some(pt => pt.id === t.id)) {
-                    mergedNonPending.push(t);
-                  }
-                });
-
-                return [...mergedNonPending, ...pendingTasks];
-              });
-            },
-            user.id
-          );
-
-          // Carregar histórico inicial da família
-          const familyHistory = await familyService.getFamilyHistory(currentFamily.id, 50);
-
-          // Verificar se familyHistory é válido
-          if (!familyHistory || !Array.isArray(familyHistory)) {
-            logger.warn('HISTORY_INVALID', 'Histórico da família inválido');
-            return;
-          }
-
-          // Converter histórico da família para formato local (usar createdAt como timestamp)
-          const convertedHistory: HistoryItem[] = familyHistory.map(item => {
-            // Verificar se o item tem propriedades necessárias
-            if (!item || typeof item !== 'object') {
-              logger.warn('HISTORY_ITEM_INVALID', 'Item de histórico inválido');
-              return {
-                id: 'invalid-' + Date.now(),
-                action: 'created',
-                taskTitle: 'Item inválido',
-                taskId: '',
-                timestamp: new Date(),
-                details: '',
-                userId: '',
-                userName: 'Desconhecido',
-                userRole: ''
-              };
-            }
-
-            const ts = safeToDate((item as any).createdAt) || safeToDate((item as any).timestamp) || new Date();
-
-            return {
-              id: (item as any).id || 'unknown-' + Date.now(),
-              action: (item as any).action || 'created',
-              taskTitle: (item as any).taskTitle || 'Tarefa desconhecida',
-              taskId: (item as any).taskId || '',
-              timestamp: ts,
-              details: (item as any).details || '',
-              userId: (item as any).userId || '',
-              userName: (item as any).userName || 'Usuário desconhecido',
-              userRole: (item as any).userRole || ''
-            };
-          });
-
-          // Mesclar histórico da família com histórico local
-          setHistory(prevHistory => {
-            // Filtrar histórico local para evitar duplicatas
-            const localOnlyHistory = prevHistory.filter(localItem => {
-              return !convertedHistory.some(familyItem =>
-                familyItem.taskId === localItem.taskId &&
-                familyItem.action === localItem.action &&
-                Math.abs(familyItem.timestamp.getTime() - localItem.timestamp.getTime()) < 5000
-              );
-            });
-
-            const mergedHistory = [...convertedHistory, ...localOnlyHistory];
-
-            // Ordenar por timestamp (mais recente primeiro)
-            return mergedHistory.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
-          });
-
-          // Configurar listener para atualizações em tempo real
-          unsubscribeHistory = familyService.subscribeToFamilyHistory(
-            currentFamily.id,
-            (updatedHistory) => {
-              const convertedUpdatedHistory: HistoryItem[] = updatedHistory.map(item => ({
-                id: (item as any).id,
-                action: (item as any).action,
-                taskTitle: (item as any).taskTitle,
-                taskId: (item as any).taskId,
-                // Garantir que timestamp esteja preenchido corretamente
-                timestamp: safeToDate((item as any).createdAt) || safeToDate((item as any).timestamp) || new Date(),
-                details: (item as any).details,
-                userId: (item as any).userId,
-                userName: (item as any).userName,
-                userRole: (item as any).userRole
-              }));
-
-              // Mesclar com o histórico atual em vez de substituir, evitando "sumiço"
-              setHistory(prev => {
-                const cutoffDate = new Date();
-                cutoffDate.setDate(cutoffDate.getDate() - HISTORY_DAYS_TO_KEEP);
-
-                // Combinar listas (novos primeiro para priorizar remotos)
-                const combined = [...convertedUpdatedHistory, ...prev];
-
-                const result: HistoryItem[] = [];
-                for (const item of combined) {
-                  const itemDate = item.timestamp instanceof Date ? item.timestamp : safeToDate(item.timestamp);
-                  if (!itemDate || itemDate < cutoffDate) continue; // aplicar retenção
-
-                  // Evitar duplicatas: mesmo taskId + action com timestamps muito próximos
-                  const duplicateIndex = result.findIndex(r =>
-                    r.taskId === item.taskId &&
-                    r.action === item.action &&
-                    Math.abs((r.timestamp as Date).getTime() - itemDate.getTime()) < 5000
-                  );
-                  if (duplicateIndex === -1) {
-                    result.push({ ...item, timestamp: itemDate });
-                  }
-                }
-
-                // Ordenar por timestamp desc e limitar quantidade
-                return result
-                  .sort((a, b) => (b.timestamp as Date).getTime() - (a.timestamp as Date).getTime())
-                  .slice(0, 100);
-              });
-            },
-            50
-          );
-
-          logger.success('HISTORY_LOAD', `${familyHistory.length} itens carregados`);
-        }
-      } catch (error) {
-        logger.error('HISTORY_LOAD', 'Erro ao carregar histórico da família', error);
-      }
-    };
-
-    loadHistory();
-
-    // Cleanup ao desmontar ou trocar de família
-    return () => {
-      if (unsubscribeHistory) {
-        unsubscribeHistory();
-      }
-    };
-  }, [currentFamily?.id, isOffline, user?.id]);
+  // NOTA: O carregamento do histórico agora é gerenciado pelo hook useHistory
+  // que já faz a sincronização com o cache local e Firebase automaticamente
 
   // Assinar atualizações de approvals em tempo real
   useEffect(() => {
@@ -1981,448 +1820,48 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
       Alert.alert('Erro', 'Por favor, insira um título para a tarefa.');
       return;
     }
-    if (isAddingTask) return; // Prevenir cliques múltiplos
-
-    // Enforcement: apenas admin pode criar/editar tarefas privadas
-    if (newTaskPrivate && user.role !== 'admin') {
-      Alert.alert('Sem permissão', 'Apenas administradores podem criar tarefas privadas.');
-      return;
-    }
-
-    // Enforcement: dependente criando/atualizando tarefa de família pública precisa de permissões
-    const isFamilyContext = !!currentFamily && !newTaskPrivate; // tarefa pública de família
-    if (isFamilyContext && user.role === 'dependente') {
-      const needed = isEditing ? 'edit' : 'create';
-      const has = await ensureFamilyPermission(needed as 'create' | 'edit' | 'delete');
-      if (!has) {
-        Alert.alert('Sem permissão', `Você não tem permissão para ${needed === 'create' ? 'criar' : 'editar'} tarefas da família.`);
-        return;
-      }
-    }
+    if (isAddingTask) return;
 
     setIsAddingTask(true);
 
     try {
-      if (isEditing && editingTaskId) {
-        // Atualizar tarefa existente
-        const defaultDueDateForEdit = tempDueDate || (repeatType !== RepeatType.NONE ? getInitialDueDateForRecurrence(repeatType, customDays) : undefined);
+      const taskData: Partial<Task> = {
+        title: newTaskTitle.trim(),
+        description: newTaskDescription.trim(),
+        category: selectedCategory,
+        dueDate: tempDueDate,
+        dueTime: tempDueTime,
+        repeatOption: repeatTypeToOption(repeatType),
+        repeatDays: repeatType === RepeatType.CUSTOM ? customDays : undefined,
+        repeatIntervalDays: repeatType === RepeatType.INTERVAL ? intervalDays || 1 : undefined,
+        repeatDurationMonths: repeatType === RepeatType.INTERVAL ? durationMonths || 0 : undefined,
+        repeatStartDate: repeatType === RepeatType.INTERVAL ? (tempDueDate || new Date()) : undefined,
+      };
 
-        // Calcular horário da task principal baseado nas subtarefas (se não tiver horário manual)
-        const subtaskBasedTime = calculateMainTaskTimeFromSubtasks(subtasksDraftRef.current || subtasksDraft);
-        const finalDueDate = subtaskBasedTime.date || defaultDueDateForEdit;
-        const finalDueTime = tempDueTime || subtaskBasedTime.time;
+      await saveTask(
+        taskData,
+        isEditing,
+        editingTaskId,
+        subtasksDraftRef.current || subtasksDraft,
+        subtaskCategories,
+        newTaskPrivate
+      );
 
-        // Atualizar os estados dos pickers se foram aplicados valores automáticos
-        if (!tempDueDate && subtaskBasedTime.date) {
-          setTempDueDate(subtaskBasedTime.date);
-        }
-        if (!tempDueTime && subtaskBasedTime.time) {
-          setTempDueTime(subtaskBasedTime.time);
-        }
-
-        logger.debug('SAVE_TASK', 'Salvando tarefa com subtarefas');
-
-        // Log dos valores de repetição ao editar tarefa
-        logger.debug('REPEAT', {
-          repeatType,
-          repeatOption: repeatTypeToOption(repeatType),
-          customDays,
-          intervalDays,
-          durationMonths
-        });
-
-        // 🔄 SALVAR ESTADO PARA DESFAZER: Guardar tarefa original antes de editar
-        const originalTask = tasks.find(t => t.id === editingTaskId);
-        const previousTaskState = originalTask ? { ...originalTask } : null;
-
-        const updatedTasks = tasks.map(task =>
-          task.id === editingTaskId
-            ? {
-              ...task,
-              title: newTaskTitle.trim(),
-              description: newTaskDescription.trim(),
-              category: selectedCategory,
-              dueDate: finalDueDate,
-              dueTime: finalDueTime,
-              // Persistir recorrência (formato plano)
-              repeatOption: repeatTypeToOption(repeatType),
-              repeatDays: repeatType === RepeatType.CUSTOM ? customDays : undefined,
-              repeatIntervalDays: repeatType === RepeatType.INTERVAL ? intervalDays || 1 : undefined,
-              repeatDurationMonths: repeatType === RepeatType.INTERVAL ? durationMonths || 0 : undefined,
-              repeatStartDate: repeatType === RepeatType.INTERVAL ? (task.dueDate || tempDueDate || new Date()) : (task as any).repeatStartDate,
-              // Subtarefas do modal
-              subtasks: (subtasksDraftRef.current || subtasksDraft).map(st => ({ ...st })),
-              // Categorias de subtarefas
-              subtaskCategories: subtaskCategories.map(cat => ({ ...cat })),
-              // Campos de edição
-              editedBy: user.id,
-              editedByName: user.name,
-              editedAt: new Date()
-              ,
-              // Preservar/atualizar flag de privacidade baseada no estado do modal
-              private: newTaskPrivate
-            }
-            : task
-        );
-
-        const updatedTask = updatedTasks.find(t => t.id === editingTaskId);
-
-        // Log da tarefa atualizada com valores de repetição
-        logger.success('SAVE_TASK', `Tarefa editada: ${updatedTask?.title}`);
-
-        setTasks(updatedTasks);
-
-        // Adicionar ID à lista de pendentes de sincronização
-        setPendingSyncIds(prev => [...prev, editingTaskId]);
-        logger.debug('SYNC', `Tarefa enfileirada: ${editingTaskId}${currentFamily ? ` (family: ${currentFamily.id})` : ''}`);
-
-        // Salvar no cache local
-        if (updatedTask) {
-          const remoteTask = taskToRemoteTask(updatedTask as any, currentFamily?.id);
-          await LocalStorageService.saveTask(remoteTask as any);
-          // reagendar lembrete
-          try {
-            await NotificationService.rescheduleTaskReminder(updatedTask as any);
-          } catch (e) {
-            logger.warn('NOTIFY', 'rescheduleTaskReminder falhou');
-          }
-
-          // Reagendar lembretes das subtarefas
-          try {
-            // Cancelar todas as notificações antigas de subtarefas
-            await NotificationService.cancelAllSubtaskReminders(updatedTask.id);
-            // Agendar novamente com as subtarefas atualizadas
-            if (Array.isArray((updatedTask as any).subtasks) && (updatedTask as any).subtasks.length > 0) {
-              await NotificationService.scheduleSubtaskReminders(
-                updatedTask.id,
-                updatedTask.title,
-                (updatedTask as any).subtasks
-              );
-            }
-          } catch (e) {
-            logger.warn('NOTIFY', 'Falha ao reagendar subtarefas');
-          }
-
-          // Determinar se é create ou update baseado no ID
-          const isTemporaryId = updatedTask.id.startsWith('temp_') || updatedTask.id === 'temp';
-          const operationType = isTemporaryId ? 'create' : 'update';
-
-          // Adicionar à fila de sincronização (online ou offline)
-          await SyncService.addOfflineOperation(operationType, 'tasks', remoteTask as any);
-
-          // Se o usuário pertence a uma família e a tarefa não for privada, salvar também na família (prefer remote Firestore quando online)
-          if (currentFamily && (remoteTask as any)?.private !== true) {
-            try {
-              if (!isOffline) {
-                // Preferir Firestore como source-of-truth
-                const toSave = { ...remoteTask, familyId: currentFamily.id } as any;
-                const res = await FirestoreService.saveTask(toSave);
-                // Atualizar cache local com familyId
-                await LocalStorageService.saveTask({ ...toSave, id: toSave.id || (res && (res as any).id) } as any);
-                logger.success('FIRESTORE', `Tarefa atualizada: ${toSave.id || (res && (res as any).id)}`);
-              } else {
-                // Offline: enfileirar operação com familyId
-                await SyncService.addOfflineOperation(operationType, 'tasks', {
-                  ...remoteTask,
-                  familyId: currentFamily.id
-                });
-                logger.debug('OFFLINE_SYNC', `Tarefa enfileirada: ${updatedTask?.id}`);
-              }
-            } catch (error) {
-              logger.error('SAVE_FAMILY_TASK', 'Erro ao sincronizar tarefa na família', error);
-              // Delegar fallback para FamilySyncHelper (centraliza remote-first / fallback)
-              try {
-                await FamilySyncHelper.saveTaskToFamily(remoteTask as any, currentFamily.id, operationType);
-              } catch (e) {
-                logger.warn('FAMILY_SYNC_FALLBACK', 'saveTaskToFamily falhou');
-              }
-            }
-          }
-
-          logger.debug('SAVE_TASK', `Tarefa atualizada e adicionada à fila de sincronização: taskId=${updatedTask?.id}` +
-            `${currentFamily ? ` familyId=${currentFamily.id}` : ''}`);
-        }
-
-        // Gerar detalhes das mudanças para o histórico
-        const changes: string[] = [];
-
-        if (originalTask) {
-          // Mudança de título
-          if (originalTask.title !== newTaskTitle.trim()) {
-            changes.push(`Título: "${originalTask.title}" → "${newTaskTitle.trim()}"`);
-          }
-
-          // Mudança de descrição
-          if (originalTask.description !== newTaskDescription.trim()) {
-            if (!originalTask.description && newTaskDescription.trim()) {
-              changes.push(`Descrição: (vazio) → "${newTaskDescription.trim()}"`);
-            } else if (originalTask.description && !newTaskDescription.trim()) {
-              changes.push(`Descrição: "${originalTask.description}" → (vazio)`);
-            } else {
-              changes.push(`Descrição: "${originalTask.description}" → "${newTaskDescription.trim()}"`);
-            }
-          }
-
-          // Mudança de categoria
-          if (originalTask.category !== selectedCategory) {
-            changes.push(`Categoria: ${originalTask.category} → ${selectedCategory}`);
-          }
-
-          // Mudança de data
-          const oldDate = originalTask.dueDate ? formatDate(originalTask.dueDate) : 'Sem data';
-          const newDate = finalDueDate ? formatDate(finalDueDate) : 'Sem data';
-          if (oldDate !== newDate) {
-            changes.push(`Data: ${oldDate} → ${newDate}`);
-          }
-
-          // Mudança de hora
-          const oldTime = originalTask.dueTime ? formatTime(originalTask.dueTime) : 'Sem hora';
-          const newTime = finalDueTime ? formatTime(finalDueTime) : 'Sem hora';
-          if (oldTime !== newTime) {
-            changes.push(`Hora: ${oldTime} → ${newTime}`);
-          }
-
-          // Mudanças em subtarefas
-          const oldSubtasks = (originalTask as any).subtasks || [];
-          const newSubtasks = (subtasksDraftRef.current || subtasksDraft);
-
-          // Subtarefas adicionadas
-          const addedSubtasks = newSubtasks.filter((ns: any) =>
-            !oldSubtasks.find((os: any) => os.id === ns.id)
-          );
-          addedSubtasks.forEach((st: any) => {
-            changes.push(`➕ Subtarefa adicionada: "${st.title}"`);
-          });
-
-          // Subtarefas removidas
-          const removedSubtasks = oldSubtasks.filter((os: any) =>
-            !newSubtasks.find((ns: any) => ns.id === os.id)
-          );
-          removedSubtasks.forEach((st: any) => {
-            changes.push(`➖ Subtarefa removida: "${st.title}"`);
-          });
-
-          // Subtarefas editadas
-          newSubtasks.forEach((ns: any) => {
-            const old = oldSubtasks.find((os: any) => os.id === ns.id);
-            if (old && old.title !== ns.title) {
-              changes.push(`✏️ Subtarefa editada: "${old.title}" → "${ns.title}"`);
-            }
-          });
-        }
-
-        const detailsText = changes.length > 0 ? changes.join('\n') : undefined;
-
-        // Adicionar ao histórico com detalhes
-        await addToHistory('edited', newTaskTitle.trim(), editingTaskId, detailsText);
-
-        // ✅ CONFIGURAR DESFAZER: Salvar ação de edição
-        if (previousTaskState && updatedTask) {
-          setLastAction({
-            type: 'edit',
-            task: updatedTask,
-            previousState: previousTaskState,
-            timestamp: Date.now()
-          });
-
-          setShowUndoButton(true);
-
-          // Timer para esconder botão de desfazer após 10 segundos
-          if (undoTimeoutRef.current) {
-            clearTimeout(undoTimeoutRef.current);
-          }
-          undoTimeoutRef.current = setTimeout(() => {
-            setShowUndoButton(false);
-            setLastAction(null);
-          }, 10000);
-        }
-      } else {
-        // Criar nova tarefa
-        logger.debug('CREATE_TASK', `Criando tarefa: ${newTaskTitle.trim()}`);
-
-        const defaultDueDate = tempDueDate || (repeatType !== RepeatType.NONE ? getInitialDueDateForRecurrence(repeatType, customDays) : undefined);
-
-        // Calcular horário da task principal baseado nas subtarefas (se não tiver horário manual)
-        const subtaskBasedTime = calculateMainTaskTimeFromSubtasks(subtasksDraftRef.current || subtasksDraft);
-        const finalDueDate = subtaskBasedTime.date || defaultDueDate;
-        const finalDueTime = tempDueTime || subtaskBasedTime.time;
-
-        // Atualizar os estados dos pickers se foram aplicados valores automáticos
-        if (!tempDueDate && subtaskBasedTime.date) {
-          setTempDueDate(subtaskBasedTime.date);
-        }
-        if (!tempDueTime && subtaskBasedTime.time) {
-          setTempDueTime(subtaskBasedTime.time);
-        }
-
-        logger.debug('CREATE_TASK', 'Data final calculada');
-
-        logger.debug('CREATE_TASK', 'Salvando tarefa com subtarefas');
-
-        // Log dos valores de repetição
-        logger.debug('REPEAT', `Repetição ao criar: ${repeatType}`);
-
-        const newTask: Task = {
-          id: uuidv4(), // Usar UUID para garantir ID único
-          title: newTaskTitle.trim(),
-          description: newTaskDescription.trim(),
-          completed: false,
-          status: 'pendente' as TaskStatus,
-          category: selectedCategory,
-          dueDate: finalDueDate,
-          dueTime: finalDueTime,
-          repeatOption: repeatTypeToOption(repeatType),
-          repeatDays: repeatType === RepeatType.CUSTOM ? customDays : undefined,
-          repeatIntervalDays: repeatType === RepeatType.INTERVAL ? intervalDays || 1 : undefined,
-          repeatDurationMonths: repeatType === RepeatType.INTERVAL ? durationMonths || 0 : undefined,
-          repeatStartDate: repeatType === RepeatType.INTERVAL ? (finalDueDate || new Date()) : undefined,
-          userId: user.id,
-          createdAt: new Date(),
-          priority: 'media',
-          updatedAt: new Date(),
-          // Campos de autoria
-          createdBy: user.id,
-          createdByName: user.name,
-          // Subtarefas iniciais
-          subtasks: (subtasksDraftRef.current || subtasksDraft).map(st => ({ ...st })),
-          // Categorias de subtarefas
-          subtaskCategories: subtaskCategories.map(cat => ({ ...cat })),
-          // private flag será adicionada durante a conversão remota via taskToRemoteTask
-        };
-
-        // Ajustar visibilidade imediata na lista principal:
-        // - Se estiver em uma família e NÃO for privada: já marcar familyId para passar no filtro
-        // - Se for privada: marcar flag private=true e deixar sem familyId para aparecer como privada do criador
-        if (currentFamily) {
-          if (newTaskPrivate) {
-            (newTask as any).private = true;
-            // garantir que não tenha familyId para ser tratada como privada
-            (newTask as any).familyId = undefined;
-          } else {
-            (newTask as any).familyId = currentFamily.id;
-            (newTask as any).private = false;
-          }
-        }
-
-        logger.success('CREATE_TASK', `Nova tarefa criada: ${newTask.title}`);
-
-        const updatedTasks = [newTask, ...tasks];
-
-        // ✅ PROTEÇÃO CONTRA SOBRESCRITA: Adicionar ao pendingSyncIds para evitar que o listener sobrescreva
-        setPendingSyncIds(prev => [...prev, newTask.id]);
-        logger.debug('SYNC', `Tarefa protegida para sincronização: ${newTask.id}`);
-
-        // ATUALIZAÇÃO IMEDIATA: Atualizar o estado local primeiro para feedback instantâneo
-        setTasks(updatedTasks);
-        logger.debug('UPDATE_STATE', `Tarefa adicionada ao estado local: ${newTask.id}`);
-
-        // Forçar atualização da UI
-        setLastUpdate(new Date());
-
-        // Depois executar operações em background (notificações e sincronização)
-        // agendar lembrete da nova tarefa
-        try {
-          await NotificationService.scheduleTaskReminder(newTask as any);
-        } catch (e) {
-          logger.warn('NOTIFY', 'scheduleTaskReminder falhou');
-        }
-
-        // Agendar lembretes das subtarefas
-        try {
-          if (Array.isArray(subtasksDraftRef.current) && subtasksDraftRef.current.length > 0) {
-            await NotificationService.scheduleSubtaskReminders(newTask.id, newTask.title, subtasksDraftRef.current);
-          }
-        } catch (e) {
-          logger.warn('NOTIFY', 'scheduleSubtaskReminders falhou');
-        }
-
-        // Salvar no cache local
-        // Incluir flag 'private' no objeto que será convertido para envio remoto
-        const remoteTask = taskToRemoteTask({ ...newTask, private: newTaskPrivate } as any, currentFamily?.id);
-        await LocalStorageService.saveTask(remoteTask as any);
-
-        // Adicionar à fila de sincronização (online ou offline)
-        await SyncService.addOfflineOperation('create', 'tasks', remoteTask);
-
-        // Se o usuário pertence a uma família e a tarefa não for privada, salvar também na família (prefer Firestore quando online)
-        if (currentFamily && (remoteTask as any)?.private !== true) {
-          try {
-            if (!isOffline) {
-              const toSave = { ...remoteTask, familyId: currentFamily.id } as any;
-              const res = await FirestoreService.saveTask(toSave);
-              await LocalStorageService.saveTask({ ...toSave, id: toSave.id || (res && (res as any).id) } as any);
-              logger.success('FIRESTORE', `Nova tarefa salva: ${toSave.id || (res && (res as any).id)}`);
-
-              // ✅ REMOVER DO pendingSyncIds: Sincronização concluída com sucesso
-              setPendingSyncIds(prev => prev.filter(id => id !== newTask.id));
-              logger.debug('SYNC', `Tarefa sincronizada e removida do pendingSyncIds: ${newTask.id}`);
-            } else {
-              await SyncService.addOfflineOperation('create', 'tasks', { ...remoteTask, familyId: currentFamily.id });
-              logger.debug('OFFLINE_SYNC', `Nova tarefa enfileirada: ${remoteTask.id}`);
-
-              // ✅ REMOVER DO pendingSyncIds: Tarefa enfileirada para sincronização offline
-              // O listener do SyncService removerá quando sincronizar de fato
-              setTimeout(() => {
-                setPendingSyncIds(prev => prev.filter(id => id !== newTask.id));
-                logger.debug('SYNC', `Tarefa removida do pendingSyncIds após enfileiramento: ${newTask.id}`);
-              }, 1000); // 1 segundo de proteção
-            }
-          } catch (error) {
-            logger.error('SAVE_FAMILY_TASK', 'Erro ao salvar tarefa na família', error);
-            try { await FamilySyncHelper.saveTaskToFamily(remoteTask, currentFamily.id, 'create'); } catch (e) { logger.warn('FAMILY_SYNC_FALLBACK', 'saveFamilyTask falhou'); }
-            await SyncService.addOfflineOperation('create', 'tasks', { ...remoteTask, familyId: currentFamily.id });
-
-            // ✅ REMOVER DO pendingSyncIds: Mesmo com erro, evitar bloquear a tarefa indefinidamente
-            setTimeout(() => {
-              setPendingSyncIds(prev => prev.filter(id => id !== newTask.id));
-              logger.debug('SYNC', `Tarefa removida do pendingSyncIds após erro: ${newTask.id}`);
-            }, 2000); // 2 segundos de proteção
-          }
-        } else {
-          // Tarefa privada ou usuário sem família - remover do pendingSyncIds após salvar localmente
-          setTimeout(() => {
-            setPendingSyncIds(prev => prev.filter(id => id !== newTask.id));
-            logger.debug('SYNC', `Tarefa privada/sem família removida do pendingSyncIds: ${newTask.id}`);
-          }, 1000);
-        }
-
-        logger.debug('CREATE_TASK', `Tarefa criada e enfileirada: ${remoteTask.id}`);
-
-        // Adicionar ao histórico
-        await addToHistory('created', newTask.title, newTask.id);
-      }
-
-      // ✅ GARANTIR ATUALIZAÇÃO DA UI ANTES DE FECHAR O MODAL
-      // Pequeno delay para garantir que o React processou o setTasks
-      await new Promise(resolve => setTimeout(resolve, 50));
-
-      // Reset form
-      resetForm();
       setModalVisible(false);
-
-      logger.debug('UPDATE_STATE', 'Modal fechado, tarefa deve estar visível na lista');
-
-      // Mostrar loading de sincronização e forçar atualização dos dados
-      setIsSyncing(true);
-
-      // Aguardar um momento para o modal de tarefa fechar
-      await new Promise(resolve => setTimeout(resolve, 300));
-
-      // Usar a função forceRefresh para sincronizar os dados
-      await forceRefresh();
-
-      setIsSyncing(false);
-      setSyncMessage('');
-
+      resetForm();
     } catch (error) {
-      logger.error('CREATE_TASK', 'Erro ao salvar tarefa', error);
-      Alert.alert('Erro', 'Não foi possível salvar a tarefa. Tente novamente.');
-      setIsSyncing(false);
-      setSyncMessage('');
+      logger.error('SAVE_TASK', 'Erro ao salvar tarefa', error);
     } finally {
-      setIsAddingTask(false); // Reabilitar o botão
+      setIsAddingTask(false);
     }
-  }, [newTaskTitle, newTaskDescription, selectedCategory, tempDueDate, tempDueTime, repeatType, customDays, isEditing, editingTaskId, tasks, currentFamily, isOffline, newTaskPrivate, subtasksDraft, forceRefresh]);
+  }, [
+    newTaskTitle, newTaskDescription, selectedCategory, tempDueDate, tempDueTime,
+    repeatType, customDays, intervalDays, durationMonths,
+    isEditing, editingTaskId, subtasksDraft, subtaskCategories, newTaskPrivate,
+    saveTask, isAddingTask
+  ]);
+
+
 
   const resetForm = useCallback(() => {
     setNewTaskTitle('');
@@ -2674,194 +2113,6 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
   }, [activeTab, getTodayTasks, getUpcomingTasks]);
 
   // Funções do sistema de histórico
-  const addToHistory = async (
-    action: 'created' | 'completed' | 'uncompleted' | 'edited' | 'deleted' | 'approval_requested' | 'approved' | 'rejected' | 'skipped',
-    taskTitle: string,
-    taskId: string,
-    details?: string,
-    actionUserId?: string,
-    actionUserName?: string
-  ) => {
-    const historyItem: StoredHistoryItem = {
-      id: Date.now().toString(),
-      action,
-      taskTitle,
-      taskId,
-      timestamp: new Date(),
-      details,
-      // Informações de autoria (usar usuário atual se não fornecido)
-      userId: actionUserId || user.id,
-      userName: actionUserName || user.name,
-      userRole: user.role
-    };
-
-    // Adicionar ao histórico local (estado da aplicação)
-    setHistory(prev => {
-      const newHistory = [historyItem, ...prev];
-      const cutoffDate = new Date();
-      cutoffDate.setDate(cutoffDate.getDate() - HISTORY_DAYS_TO_KEEP);
-
-      return newHistory
-        .filter(item => {
-          const itemDate = item.timestamp instanceof Date ? item.timestamp : safeToDate(item.timestamp);
-          return !!itemDate && itemDate >= cutoffDate;
-        })
-        .sort((a, b) => new Date(b.timestamp as any).getTime() - new Date(a.timestamp as any).getTime());
-    });
-
-    // Salvar no cache local (LocalStorage)
-    try {
-      await LocalStorageService.saveHistoryItem(historyItem);
-      logger.debug('HISTORY', 'Item de histórico salvo no cache local');
-    } catch (error) {
-      logger.error('HISTORY', 'Erro ao salvar histórico no cache', error);
-    }
-
-    // Se o usuário pertence a uma família, adicionar também ao histórico da família
-    if (currentFamily && !isOffline) {
-      try {
-        await familyService.addFamilyHistoryItem(currentFamily.id, {
-          action,
-          taskTitle,
-          taskId,
-          userId: historyItem.userId,
-          userName: historyItem.userName,
-          userRole: historyItem.userRole,
-          details
-        });
-        logger.debug('HISTORY', 'Item adicionado ao histórico da família');
-      } catch (error) {
-        logger.error('HISTORY', 'Erro ao adicionar ao histórico da família', error);
-
-        // Se falhou salvar no Firebase, adicionar à fila de sincronização
-        try {
-          const toQueue = { ...historyItem, familyId: currentFamily.id } as any;
-          // remover undefined defensivamente
-          Object.keys(toQueue).forEach(k => (toQueue as any)[k] === undefined && delete (toQueue as any)[k]);
-          await SyncService.addOfflineOperation('create', 'history', toQueue);
-          logger.debug('HISTORY', 'Item de histórico adicionado à fila de sincronização');
-        } catch (syncError) {
-          logger.error('HISTORY', 'Erro ao adicionar histórico à fila de sincronização', syncError);
-        }
-      }
-    } else if (!currentFamily) {
-      // Se usuário não tem família, adicionar à fila para sincronização futura
-      try {
-        const toQueue = { ...historyItem, familyId: null } as any;
-        Object.keys(toQueue).forEach(k => (toQueue as any)[k] === undefined && delete (toQueue as any)[k]);
-        await SyncService.addOfflineOperation('create', 'history', toQueue);
-        logger.debug('HISTORY', 'Item de histórico adicionado à fila de sincronização (sem família)');
-      } catch (syncError) {
-        logger.error('HISTORY', 'Erro ao adicionar histórico à fila', syncError);
-      }
-    }
-  };
-
-  const clearOldHistory = () => {
-    const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - HISTORY_DAYS_TO_KEEP);
-
-    setHistory(prev => prev
-      .filter(item => {
-        const itemDate = item.timestamp instanceof Date ? item.timestamp : safeToDate(item.timestamp);
-        return !!itemDate && itemDate >= cutoffDate;
-      })
-      .sort((a, b) => new Date(b.timestamp as any).getTime() - new Date(a.timestamp as any).getTime())
-    );
-  };
-
-  // Executar limpeza do histórico a cada renderização (otimização)
-  React.useEffect(() => {
-    clearOldHistory();
-  }, []);
-
-  const cleanupInactiveTasks = useCallback(() => {
-    Alert.alert(
-      'Limpar Tarefas Antigas',
-      'Deseja marcar como concluídas todas as tarefas que não aparecem nas listas "Hoje" e "Próximas"?\n\nIsso afetará tarefas antigas ou irrelevantes.',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Limpar',
-          style: 'destructive',
-          onPress: async () => {
-            const activeIds = new Set<string>();
-
-            // Identificar tarefas visíveis em "Hoje"
-            tasks.forEach(t => {
-              if (t.completed) return;
-              const isOverdue = isTaskOverdue(t.dueDate, t.dueTime, t.completed);
-              // Mesma lógica do getTodayTasks atualizado
-              const isTodayTask = !t.dueDate || isToday(t.dueDate) || isOverdue;
-
-              // Filtrar por categoria e família (simplificado: se é visível para o usuário, conta)
-              // Assumindo que a limpeza é global para o usuário atual
-              if (isTodayTask) activeIds.add(t.id);
-            });
-
-            // Identificar tarefas visíveis em "Próximas"
-            tasks.forEach(t => {
-              const repeatConfig = getRepeat(t);
-              const isUpcomingTask = t.dueDate && (
-                (!t.completed && isUpcoming(t.dueDate)) ||
-                (t.completed && repeatConfig.type !== RepeatType.NONE && isUpcoming(t.dueDate))
-              );
-              if (isUpcomingTask) activeIds.add(t.id);
-            });
-
-            // Tarefas a limpar: Não concluídas E Não ativas
-            const tasksToCleanup = tasks.filter(t => !t.completed && !activeIds.has(t.id));
-
-            if (tasksToCleanup.length === 0) {
-              Alert.alert('Limpeza', 'Nenhuma tarefa inativa encontrada.');
-              return;
-            }
-
-            const updatedTasks = tasks.map(t => {
-              if (tasksToCleanup.find(cleanup => cleanup.id === t.id)) {
-                return { ...t, completed: true, status: 'concluida' as TaskStatus, completedAt: new Date() };
-              }
-              return t;
-            });
-
-            setTasks(updatedTasks);
-
-            // Salvar alterações
-            try {
-              await LocalStorageService.saveBatchTasks(updatedTasks as any[]);
-
-              if (currentFamily && !isOffline) {
-                // Salvar no Firestore
-                const promises = tasksToCleanup.map(t => {
-                  const toSave = {
-                    ...t,
-                    completed: true,
-                    status: 'concluida',
-                    completedAt: new Date(),
-                    familyId: currentFamily.id,
-                    // Garantir campos obrigatórios para passar na validação das regras
-                    userId: t.userId || user.id,
-                    title: t.title || 'Tarefa sem título',
-                    // Garantir consistência: se tem família, não pode ser privada
-                    private: false
-                  };
-                  return FirestoreService.saveTask(toSave as any);
-                });
-                await Promise.all(promises);
-              }
-
-              logger.success('CLEANUP', `${tasksToCleanup.length} tarefas limpas.`);
-            } catch (e) {
-              logger.error('CLEANUP', 'Erro ao salvar limpeza', e);
-            }
-
-            Alert.alert('Sucesso', `${tasksToCleanup.length} tarefas foram marcadas como concluídas.`);
-          }
-        }
-      ]
-    );
-  }, [tasks, currentFamily, isOffline, getRepeat]);
-
 
   const getActionText = (action: string): string => {
     switch (action) {
@@ -3284,63 +2535,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
     }
   }, [editingSubtaskId, editingSubtask, showSubtaskTimePicker]);
 
-  const toggleLockTask = useCallback(async (taskId: string) => {
-    // Apenas admin pode bloquear/desbloquear
-    if (user.role !== 'admin') {
-      Alert.alert('Permissão negada', 'Apenas administradores podem bloquear/desbloquear tarefas.');
-      return;
-    }
-
-    const task = tasks.find(t => t.id === taskId);
-    if (!task) return;
-
-    const isCurrentlyUnlocked = (task as any).unlocked === true;
-    const newUnlockedState = !isCurrentlyUnlocked;
-
-    const updatedTask: Task = {
-      ...task,
-      unlocked: newUnlockedState,
-      unlockedBy: newUnlockedState ? user.id : undefined,
-      unlockedAt: newUnlockedState ? new Date() : undefined,
-      updatedAt: new Date(),
-    } as Task;
-
-    // Atualizar localmente primeiro para feedback imediato
-    setTasks(prev => prev.map(t => t.id === taskId ? updatedTask : t));
-
-    // Sincronizar com Firebase
-    try {
-      const isFamilyTask = (task as any).familyId && !(task as any).private;
-
-      if (isFamilyTask && !isOffline) {
-        // Tarefa da família online - atualizar no Firestore
-        const toSave = {
-          ...updatedTask,
-          familyId: (task as any).familyId
-        } as any;
-        await FirestoreService.saveTask(toSave);
-        await LocalStorageService.saveTask(toSave);
-        logger.debug('SAVE_TASK', `Status de bloqueio atualizado no Firestore: ${newUnlockedState ? 'DESBLOQUEADO' : 'BLOQUEADO'}`);
-      } else {
-        // Tarefa privada ou offline - salvar localmente
-        await LocalStorageService.saveTask(updatedTask as any);
-
-        // Se for tarefa da família mas estiver offline, enfileirar
-        if (isFamilyTask) {
-          await SyncService.addOfflineOperation('update', 'tasks', {
-            ...updatedTask,
-            familyId: (task as any).familyId
-          });
-          logger.debug('OFFLINE_SYNC', `Status de bloqueio enfileirado (offline): ${newUnlockedState ? 'DESBLOQUEADO' : 'BLOQUEADO'}`);
-        }
-      }
-    } catch (error) {
-      logger.error('SAVE_TASK', 'Erro ao atualizar status de bloqueio', error);
-      // Reverter em caso de erro
-      setTasks(prev => prev.map(t => t.id === taskId ? task : t));
-      Alert.alert('Erro', 'Não foi possível atualizar o status de bloqueio da tarefa.');
-    }
-  }, [user, tasks, isOffline]);
+  // toggleLockTask vem do hook useTaskActions
 
   const openPostponeModal = useCallback((task: Task) => {
     setSelectedTaskForPostpone(task);
@@ -3362,75 +2557,11 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
   const postponeTask = useCallback(async () => {
     if (!selectedTaskForPostpone) return;
 
-    // Apenas admin pode adiar tarefas da família
-    if (user.role !== 'admin' && (selectedTaskForPostpone as any).familyId) {
-      Alert.alert('Permissão negada', 'Apenas administradores podem adiar tarefas da família.');
-      return;
-    }
+    await hookPostponeTask(selectedTaskForPostpone, postponeDate, postponeTime);
 
-    const task = selectedTaskForPostpone;
-
-    // Normalizar fuso: alinhar dueDate ao início do dia local e dueTime ao horário na mesma data
-    const normalizedDate = new Date(postponeDate);
-    normalizedDate.setHours(0, 0, 0, 0);
-    const normalizedTime = new Date(normalizedDate);
-    const pt = new Date(postponeTime);
-    normalizedTime.setHours(pt.getHours(), pt.getMinutes(), 0, 0);
-
-    const updatedTask: Task = {
-      ...task,
-      dueDate: normalizedDate,
-      dueTime: normalizedTime,
-      updatedAt: new Date(),
-      editedBy: user.id,
-      editedByName: user.name || 'Usuário',
-      editedAt: new Date(),
-    } as Task;
-
-    // Atualizar localmente
-    setTasks(prev => prev.map(t => t.id === task.id ? updatedTask : t));
     setPostponeModalVisible(false);
     setSelectedTaskForPostpone(null);
-
-    // Sincronizar com Firebase
-    try {
-      const isFamilyTask = (task as any).familyId && !(task as any).private;
-
-      if (isFamilyTask && !isOffline) {
-        const toSave = {
-          ...updatedTask,
-          familyId: (task as any).familyId
-        } as any;
-        await FirestoreService.saveTask(toSave);
-        await LocalStorageService.saveTask(toSave);
-        logger.debug('SAVE_TASK', 'Data e horário da tarefa atualizados no Firestore');
-      } else {
-        await LocalStorageService.saveTask(updatedTask as any);
-
-        if (isFamilyTask) {
-          await SyncService.addOfflineOperation('update', 'tasks', {
-            ...updatedTask,
-            familyId: (task as any).familyId
-          });
-          logger.debug('OFFLINE_SYNC', 'Atualização de data/horário enfileirada (offline)');
-        }
-      }
-
-      // ✅ Reagendar notificações para a nova data/hora
-      try {
-        await NotificationService.rescheduleTaskReminder(updatedTask as any);
-        logger.debug('NOTIFY', 'Notificações reagendadas para nova data/hora');
-      } catch (e) {
-        logger.warn('NOTIFY', 'Falha ao reagendar notificações', e);
-      }
-
-      Alert.alert('Sucesso', 'Data e horário da tarefa atualizados.');
-    } catch (error) {
-      logger.error('SAVE_TASK', 'Erro ao atualizar data/horário da tarefa', error);
-      setTasks(prev => prev.map(t => t.id === task.id ? task : t));
-      Alert.alert('Erro', 'Não foi possível atualizar a tarefa.');
-    }
-  }, [selectedTaskForPostpone, user, isOffline, postponeDate, postponeTime]);
+  }, [selectedTaskForPostpone, postponeDate, postponeTime, hookPostponeTask]);
 
   // Handler para mudança de data no modal de adiamento - USA APENAS REFS
   const onPostponeDateChange = useCallback((event: any, date?: Date) => {
@@ -3500,467 +2631,12 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
   }, [postponeDate, postponeTime]);
 
   const postponeIsPast = useMemo(() => {
-    return combinedPostponeDateTime.getTime() < new Date().getTime();
+    return combinedPostponeDateTime < new Date();
   }, [combinedPostponeDateTime]);
 
-  const toggleTask = useCallback(async (taskId: string) => {
-    const task = tasks.find(t => t.id === taskId);
-    if (!task) return;
-    // Dependente: só pode solicitar aprovação para concluir; não pode reabrir
-    if (user.role === 'dependente') {
-      if (!task.completed) {
-        await requestTaskApproval(task);
-      } else {
-        Alert.alert('Permissão necessária', 'Somente administradores podem reabrir tarefas.');
-      }
-      return;
-    }
 
-    // Verificar se tarefa recorrente pode ser concluída
-    const repeatConfig = getRepeat(task);
-    if (!task.completed && repeatConfig.type !== RepeatType.NONE) {
-      if (!isRecurringTaskCompletable(task.dueDate, true)) {
-        Alert.alert(
-          'Tarefa Recorrente',
-          'Esta tarefa recorrente só pode ser concluída na data de vencimento ou após.',
-          [{ text: 'OK' }]
-        );
-        return;
-      }
-    }
 
-    // Para admins e demais papéis, seguir para alternar a tarefa normalmente
-    await handleTaskToggle(task);
-  }, [tasks, user, currentFamily, isOffline]);
 
-  const handleTaskToggle = useCallback(async (task: Task) => {
-    // Safety net adicional: dependente não altera diretamente
-    if (user.role === 'dependente') {
-      if (!task.completed) {
-        await requestTaskApproval(task);
-      } else {
-        Alert.alert('Permissão necessária', 'Somente administradores podem reabrir tarefas.');
-      }
-      return;
-    }
-
-    // Salvar estado anterior para funcionalidade de desfazer
-    setLastAction({
-      type: 'toggle',
-      task: { ...task },
-      previousState: { ...task },
-      timestamp: Date.now()
-    });
-    setShowUndoButton(true);
-
-    // Limpar timeout anterior se existir
-    if (undoTimeoutRef.current) {
-      clearTimeout(undoTimeoutRef.current);
-    }
-
-    // Esconder botão de desfazer após 10 segundos
-    undoTimeoutRef.current = setTimeout(() => {
-      setShowUndoButton(false);
-      setLastAction(null);
-    }, 10000);
-
-    let updatedTasks: Task[];
-
-    if (!task.completed) {
-      // Marcando como concluída
-      const repeatConfig = getRepeat(task);
-      if (repeatConfig.type !== RepeatType.NONE) {
-        // Tarefa recorrente: criar nova instância para a próxima ocorrência
-        logger.debug('REPEAT', `Calculando próxima data: ${task.title}, currentDate=${task.dueDate}, repeatType=${repeatConfig.type}`);
-
-        // Respeitar duração em meses: se ultrapassou, não cria próxima
-        if (repeatConfig.durationMonths && (task as any).repeatStartDate) {
-          const start = safeToDate((task as any).repeatStartDate) || new Date();
-          const end = new Date(start);
-          end.setMonth(end.getMonth() + (repeatConfig.durationMonths || 0));
-          const current = safeToDate(task.dueDate) || new Date();
-          if (current >= end) {
-            // Não cria próxima, apenas marca concluída
-            logger.debug('REPEAT', 'Recorrência por intervalo expirou pela duração definida.');
-            const updated = tasks.map(t => t.id === task.id ? { ...t, completed: true, status: 'concluida' as TaskStatus } : t);
-            setTasks(updated);
-
-            // Remover do cache local pois está concluída
-            await LocalStorageService.deleteTaskFromCache(task.id);
-            console.log('🗑️ Tarefa recorrente expirada removida do cache local:', task.id);
-            return;
-          }
-        }
-
-        let nextDate: Date;
-        if (repeatConfig.type === RepeatType.INTERVAL) {
-          const step = Math.max(1, repeatConfig.intervalDays || (task as any).repeatIntervalDays || 1);
-          // ✅ CORREÇÃO: Usar repeatStartDate como base para manter alinhamento com data inicial
-          const startDate = (task as any).repeatStartDate ? safeToDate((task as any).repeatStartDate) : task.dueDate;
-          const base = startDate || new Date();
-          const hoje = new Date();
-          hoje.setHours(0, 0, 0, 0);
-
-          // Calcular próxima data mantendo múltiplo do intervalo desde a data inicial
-          nextDate = new Date(base);
-          nextDate.setHours(0, 0, 0, 0);
-
-          // Se a data base já passou, calcular quantos ciclos se passaram
-          if (nextDate < hoje) {
-            const diffTime = hoje.getTime() - nextDate.getTime();
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-            const cyclesPassed = Math.ceil(diffDays / step);
-            nextDate.setDate(base.getDate() + (cyclesPassed * step));
-          } else {
-            // Se ainda não passou, apenas adicionar o intervalo
-            nextDate.setDate(nextDate.getDate() + step);
-          }
-
-          logger.debug('REPEAT', `Próxima data (intervalo) calculada: nextDate=${nextDate}`);
-        } else {
-          nextDate = getNextRecurrenceDate(
-            task.dueDate || new Date(),
-            repeatConfig.type,
-            repeatConfig.days
-          );
-        }
-
-        logger.debug('REPEAT', `Próxima data calculada: ${nextDate}`);
-
-        // Preservar o horário original se existir
-        let nextDateTime: Date | undefined = undefined;
-        if (task.dueTime) {
-          const originalTime = safeToDate(task.dueTime);
-          if (originalTime) {
-            nextDateTime = new Date(nextDate);
-            nextDateTime.setHours(
-              originalTime.getHours(),
-              originalTime.getMinutes(),
-              originalTime.getSeconds(),
-              originalTime.getMilliseconds()
-            );
-            logger.debug('REPEAT', `Horário preservado: original=${originalTime}, next=${nextDateTime}`);
-          }
-        }
-
-        // Resetar subtarefas para não concluídas
-        const resetSubtasks = Array.isArray((task as any).subtasks)
-          ? (task as any).subtasks.map((st: any) => ({
-            ...st,
-            done: false,
-            completedById: undefined,
-            completedByName: undefined,
-            completedAt: undefined
-          }))
-          : undefined;
-
-        const nextTask: Task = {
-          ...task,
-          id: uuidv4(),
-          completed: false,
-          completedAt: undefined, // Limpar data de conclusão da tarefa anterior
-          status: 'pendente',
-          dueDate: nextDate,
-          dueTime: nextDateTime,
-          subtasks: resetSubtasks,
-          createdAt: new Date(),
-          createdBy: user.id,
-          createdByName: user.name,
-          editedBy: user.id,
-          editedByName: user.name,
-          editedAt: new Date()
-        } as any;
-
-        logger.success('REPEAT', `Nova tarefa recorrente criada: ${nextTask.title}, dueDate=${nextTask.dueDate}`);
-
-        // Marcar tarefa atual como concluída e adicionar nova tarefa
-        updatedTasks = tasks.map(t =>
-          t.id === task.id ? {
-            ...t,
-            completed: true,
-            status: 'concluida' as TaskStatus,
-            editedBy: user.id,
-            editedByName: user.name,
-            editedAt: new Date()
-          } : t
-        );
-
-        // Adicionar nova tarefa recorrente à lista
-        updatedTasks.push(nextTask);
-
-        // Atualizar estado local imediatamente
-        setTasks(updatedTasks);
-
-        // cancelar lembrete da tarefa atual concluída
-        try {
-          await NotificationService.cancelTaskReminder(task.id);
-        } catch (e) {
-          logger.warn('NOTIFY', 'cancelTaskReminder falhou', e);
-        }
-
-        // Remover tarefa concluída do cache local (mantém no Firebase para histórico)
-        await LocalStorageService.deleteTaskFromCache(task.id);
-        console.log('🗑️ Tarefa recorrente concluída removida do cache local:', task.id);
-
-        // Salvar nova tarefa no Firebase e na família imediatamente
-        try {
-          const remoteNextTask = taskToRemoteTask(nextTask as any, currentFamily?.id);
-          await LocalStorageService.saveTask(remoteNextTask as any);
-          await SyncService.addOfflineOperation('create', 'tasks', remoteNextTask);
-
-          // Salvar imediatamente no Firestore se online
-          if (currentFamily && !isOffline) {
-            try {
-              const toSave = { ...remoteNextTask, familyId: currentFamily.id } as any;
-              const res = await FirestoreService.saveTask(toSave);
-              await LocalStorageService.saveTask({ ...toSave, id: toSave.id || (res && (res as any).id) } as any);
-              logger.debug('SYNC', `Próxima ocorrência recorrente salva no Firestore: taskId=${toSave.id || (res && (res as any).id)} familyId=${currentFamily.id}`);
-            } catch (e) {
-              logger.warn('SYNC', 'Falha ao salvar próxima ocorrência no Firestore, fallback local', e);
-              try { await FamilySyncHelper.saveTaskToFamily(remoteNextTask as any, currentFamily.id, 'create'); } catch (_) { }
-              await SyncService.addOfflineOperation('create', 'tasks', { ...remoteNextTask, familyId: currentFamily.id });
-            }
-          } else if (currentFamily) {
-            // Enfileirar como 'tasks' e incluir explicitamente familyId para que o SyncService envie para Firestore
-            await SyncService.addOfflineOperation('create', 'tasks', {
-              ...remoteNextTask,
-              familyId: currentFamily.id,
-            });
-            logger.debug('OFFLINE_SYNC', `Próxima ocorrência enfileirada (offline): taskId=${remoteNextTask.id} familyId=${currentFamily.id}`);
-          }
-
-          // agendar lembrete da próxima ocorrência
-          try {
-            await NotificationService.scheduleTaskReminder(nextTask as any);
-          } catch (e) {
-            logger.warn('NOTIFY', 'scheduleTaskReminder falhou', e);
-          }
-
-          logger.success('REPEAT', `Nova tarefa recorrente criada e sincronizada: taskId=${remoteNextTask.id}` +
-            `${currentFamily ? ` familyId=${currentFamily.id}` : ''}`);
-        } catch (error) {
-          logger.error('REPEAT', 'Erro ao sincronizar nova tarefa recorrente', error);
-          // Em caso de erro, manter a nova tarefa no estado local
-          Alert.alert(
-            'Aviso',
-            'A próxima tarefa foi criada localmente, mas houve um problema na sincronização. Ela será enviada quando a conexão for restabelecida.'
-          );
-        }
-      } else {
-        // Tarefa normal: apenas marcar como concluída
-        updatedTasks = tasks.map(t =>
-          t.id === task.id ? {
-            ...t,
-            completed: true,
-            status: 'concluida' as TaskStatus,
-            editedBy: user.id,
-            editedByName: user.name,
-            editedAt: new Date()
-          } : t
-        );
-
-        // Atualizar estado local imediatamente
-        setTasks(updatedTasks);
-
-        // cancelar lembrete
-        try {
-          await NotificationService.cancelTaskReminder(task.id);
-        } catch (e) {
-          logger.warn('NOTIFY', 'cancelTaskReminder falhou', e);
-        }
-
-        // Remover tarefa concluída do cache local (mantém no Firebase para histórico)
-        await LocalStorageService.deleteTaskFromCache(task.id);
-        console.log('🗑️ Tarefa normal concluída removida do cache local:', task.id);
-      }
-    } else {
-      // Desmarcando como concluída (apenas para tarefas não recorrentes)
-      const repeatConfig = getRepeat(task);
-      if (repeatConfig.type === RepeatType.NONE) {
-        updatedTasks = tasks.map(t =>
-          t.id === task.id ? {
-            ...t,
-            completed: false,
-            status: 'pendente' as TaskStatus,
-            editedBy: user.id,
-            editedByName: user.name,
-            editedAt: new Date()
-          } : t
-        );
-
-        // Atualizar estado local imediatamente
-        setTasks(updatedTasks);
-
-        // reprogramar lembrete se ainda futuro
-        const t = updatedTasks.find(x => x.id === task.id);
-        if (t) {
-          try {
-            await NotificationService.rescheduleTaskReminder(t as any);
-          } catch (e) {
-            logger.warn('NOTIFY', 'rescheduleTaskReminder falhou', e);
-          }
-        }
-      } else {
-        // Para tarefas recorrentes concluídas, não permite desmarcar
-        // (porque já foi criada a próxima instância)
-        Alert.alert(
-          'Tarefa Recorrente',
-          'Tarefas recorrentes não podem ser desmarcadas. Uma nova instância já foi criada para a próxima ocorrência.'
-        );
-        return;
-      }
-    }
-
-    // Salvar tarefa atualizada no cache local e sincronizar com o servidor remoto
-    const updatedTask = updatedTasks.find(t => t.id === task.id);
-    if (updatedTask) {
-      try {
-        const remoteTask = taskToRemoteTask(updatedTask as any, currentFamily?.id);
-
-        // Se a tarefa foi CONCLUÍDA, remover do cache local (mantém apenas no Firebase para histórico)
-        if (updatedTask.completed) {
-          await LocalStorageService.deleteTaskFromCache(updatedTask.id);
-          console.log('🗑️ Tarefa concluída removida do cache local:', updatedTask.id);
-        } else {
-          await LocalStorageService.saveTask(remoteTask as any);
-        }
-
-        // Determinar se é create ou update baseado no ID
-        const isTemporaryId = updatedTask.id.startsWith('temp_') || updatedTask.id === 'temp';
-        const operationType = isTemporaryId ? 'create' : 'update';
-
-        await SyncService.addOfflineOperation(operationType, 'tasks', remoteTask);
-
-        // Para tarefas da família, sincronizar imediatamente para evitar conflitos (prefer Firestore quando online)
-        if (currentFamily && !isOffline) {
-          try {
-            const toSave = { ...remoteTask, familyId: currentFamily.id } as any;
-            const res = await FirestoreService.saveTask(toSave);
-            await LocalStorageService.saveTask({ ...toSave, id: toSave.id || (res && (res as any).id) } as any);
-            logger.debug('SYNC', `Tarefa atualizada no Firestore: taskId=${toSave.id || (res && (res as any).id)} familyId=${currentFamily.id}`);
-          } catch (error) {
-            logger.error('SYNC', 'Erro ao atualizar tarefa na família via Firestore, fallback local', error);
-            try { await FamilySyncHelper.saveTaskToFamily(remoteTask as any, currentFamily.id, operationType); } catch (e) { logger.warn('SYNC', 'Falha fallback saveFamilyTask', e); }
-            await SyncService.addOfflineOperation(operationType, 'tasks', { ...remoteTask, familyId: currentFamily.id });
-          }
-        } else if (currentFamily) {
-          await SyncService.addOfflineOperation(operationType, 'tasks', { ...remoteTask, familyId: currentFamily.id });
-          logger.debug('OFFLINE_SYNC', `Atualização enfileirada (offline): taskId=${remoteTask.id} familyId=${currentFamily.id}`);
-        }
-
-        logger.success('SAVE_TASK', `Status da tarefa atualizado e sincronizado: taskId=${updatedTask.id}` +
-          `${currentFamily ? ` familyId=${currentFamily.id}` : ''}`);
-      } catch (error) {
-        logger.error('SAVE_TASK', 'Erro ao sincronizar toggle da tarefa', error);
-      }
-    }
-
-    // Adicionar ao histórico
-    await addToHistory(
-      !task.completed ? 'completed' : 'uncompleted',
-      task.title,
-      task.id
-    );
-  }, [user.role, tasks]);
-
-  // Função para pular uma ocorrência de tarefa recorrente
-  const handleSkipOccurrence = useCallback(async (task: Task) => {
-    const repeatConfig = getRepeat(task);
-
-    // Só funciona para tarefas recorrentes não concluídas
-    if (repeatConfig.type === RepeatType.NONE || task.completed) {
-      Alert.alert('Ação inválida', 'Esta ação só está disponível para tarefas recorrentes não concluídas.');
-      return;
-    }
-
-    // Confirmar ação
-    Alert.alert(
-      'Pular Ocorrência',
-      'Deseja pular esta ocorrência? A tarefa será reagendada para a próxima data sem ser marcada como concluída.',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Pular',
-          onPress: async () => {
-            try {
-              // Calcular próxima data
-              let nextDate: Date;
-              if (repeatConfig.type === RepeatType.INTERVAL) {
-                const step = Math.max(1, repeatConfig.intervalDays || (task as any).repeatIntervalDays || 1);
-                nextDate = new Date(task.dueDate || new Date());
-                nextDate.setDate(nextDate.getDate() + step);
-              } else {
-                nextDate = getNextRecurrenceDate(
-                  task.dueDate || new Date(),
-                  repeatConfig.type,
-                  repeatConfig.days
-                );
-              }
-
-              // Preservar horário original
-              let nextDateTime: Date | undefined = undefined;
-              if (task.dueTime) {
-                const originalTime = safeToDate(task.dueTime);
-                if (originalTime) {
-                  nextDateTime = new Date(nextDate);
-                  nextDateTime.setHours(
-                    originalTime.getHours(),
-                    originalTime.getMinutes(),
-                    originalTime.getSeconds(),
-                    originalTime.getMilliseconds()
-                  );
-                }
-              }
-
-              // Atualizar tarefa com nova data
-              const updatedTask: Task = {
-                ...task,
-                dueDate: nextDate,
-                dueTime: nextDateTime,
-                editedBy: user.id,
-                editedByName: user.name,
-                editedAt: new Date()
-              };
-
-              // Atualizar estado local
-              const updatedTasks = tasks.map(t => t.id === task.id ? updatedTask : t);
-              setTasks(updatedTasks);
-
-              // Salvar e sincronizar
-              const remoteTask = taskToRemoteTask(updatedTask as any, currentFamily?.id);
-              await LocalStorageService.saveTask(remoteTask as any);
-              await SyncService.addOfflineOperation('update', 'tasks', remoteTask);
-
-              if (currentFamily && !isOffline) {
-                try {
-                  const toSave = { ...remoteTask, familyId: currentFamily.id } as any;
-                  await FirestoreService.saveTask(toSave);
-                  logger.debug('SYNC', `Ocorrência pulada e sincronizada: taskId=${task.id}`);
-                } catch (error) {
-                  logger.warn('SYNC', 'Erro ao sincronizar pulo de ocorrência', error);
-                }
-              }
-
-              // Reagendar notificação
-              try {
-                await NotificationService.rescheduleTaskReminder(updatedTask as any);
-              } catch (e) {
-                logger.warn('NOTIFY', 'rescheduleTaskReminder falhou', e);
-              }
-
-              // Adicionar ao histórico
-              await addToHistory('skipped', task.title, task.id);
-
-              logger.success('REPEAT', `Ocorrência pulada: ${task.title}, próxima data: ${nextDate}`);
-            } catch (error) {
-              logger.error('REPEAT', 'Erro ao pular ocorrência', error);
-              Alert.alert('Erro', 'Não foi possível pular a ocorrência.');
-            }
-          }
-        }
-      ]
-    );
-  }, [tasks, user, currentFamily, isOffline]);
 
   // Persistir alterações de subtarefas feitas no modal durante edição (salvar imediatamente)
   // FUNÇÃO DESABILITADA: Subtarefas agora só são salvas quando o botão Salvar/Adicionar da task principal é clicado
@@ -4005,263 +2681,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
 
 
   // Alternar subtarefa (checkbox no card)
-  const toggleSubtask = useCallback(async (taskId: string, subtaskId: string, categoryId?: string) => {
-    const task = tasks.find(t => t.id === taskId);
-    if (!task) return;
+  // toggleSubtask vem do hook useTaskActions
 
-    let subtaskToCheck: any = null;
-
-    // Se categoryId foi fornecido, procurar na categoria específica
-    if (categoryId) {
-      const category = (task as any).subtaskCategories?.find((cat: any) => cat.id === categoryId);
-      subtaskToCheck = category?.subtasks?.find((st: any) => st.id === subtaskId);
-    } else {
-      // Caso contrário, procurar nas subtarefas simples
-      subtaskToCheck = (task as any).subtasks?.find((st: any) => st.id === subtaskId);
-    }
-
-    // Verificar se a subtarefa pode ser concluída (data de vencimento)
-    if (subtaskToCheck && !subtaskToCheck.done && subtaskToCheck.dueDate) {
-      const now = new Date();
-      const dueDate = safeToDate(subtaskToCheck.dueDate);
-
-      if (dueDate) {
-        // Se tem hora definida, considerar data+hora, senão apenas data
-        if (subtaskToCheck.dueTime) {
-          const dueTime = safeToDate(subtaskToCheck.dueTime);
-          if (dueTime) {
-            const dueDateTimeCheck = new Date(dueDate);
-            dueDateTimeCheck.setHours(dueTime.getHours(), dueTime.getMinutes(), 0, 0);
-
-            if (now < dueDateTimeCheck) {
-              Alert.alert(
-                'Subtarefa Agendada',
-                `Esta subtarefa só pode ser concluída a partir de ${formatDate(dueDate)} às ${formatTime(dueTime)}.`
-              );
-              return;
-            }
-          }
-        } else {
-          // Apenas data, comparar início do dia
-          const dueDateStart = new Date(dueDate);
-          dueDateStart.setHours(0, 0, 0, 0);
-          const nowStart = new Date(now);
-          nowStart.setHours(0, 0, 0, 0);
-
-          if (nowStart < dueDateStart) {
-            Alert.alert(
-              'Subtarefa Agendada',
-              `Esta subtarefa só pode ser concluída a partir de ${formatDate(dueDate)}.`
-            );
-            return;
-          }
-        }
-      }
-    }
-
-    // Dependente pode marcar subtarefa, mas a conclusão da tarefa principal pode exigir aprovação
-    const now = new Date();
-    const updatedTasks = tasks.map(t => {
-      if (t.id !== taskId) return t;
-
-      // Atualizar subtarefas simples ou categorias dependendo do tipo
-      let updatedSubtasks = (t as any).subtasks || [];
-      let updatedSubtaskCategories = (t as any).subtaskCategories || [];
-
-      if (categoryId) {
-        // Atualizar subtarefa dentro de uma categoria
-        updatedSubtaskCategories = updatedSubtaskCategories.map((cat: any) => {
-          if (cat.id !== categoryId) return cat;
-          return {
-            ...cat,
-            subtasks: cat.subtasks?.map((st: any) => {
-              if (st.id !== subtaskId) return st;
-              const newDone = !st.done;
-              return {
-                ...st,
-                done: newDone,
-                completedById: newDone ? user.id : undefined,
-                completedByName: newDone ? user.name : undefined,
-                completedAt: newDone ? now : undefined,
-              };
-            }) || []
-          };
-        });
-      } else {
-        // Atualizar subtarefa simples
-        updatedSubtasks = (t as any).subtasks?.map((st: any) => {
-          if (st.id !== subtaskId) return st;
-          const newDone = !st.done;
-          return {
-            ...st,
-            done: newDone,
-            completedById: newDone ? user.id : undefined,
-            completedByName: newDone ? user.name : undefined,
-            completedAt: newDone ? now : undefined,
-          };
-        }) || [];
-      }
-
-      // Coletar todas as subtarefas para recalcular tempo
-      const allSubtasks = [
-        ...updatedSubtasks,
-        ...updatedSubtaskCategories.flatMap((cat: any) => cat.subtasks || [])
-      ];
-
-      // Recalcular data/hora da tarefa principal baseado nas subtarefas pendentes
-      const subtaskBasedTime = calculateMainTaskTimeFromPendingSubtasks(allSubtasks);
-      const shouldUpdateMainTaskTime = subtaskBasedTime.date || subtaskBasedTime.time;
-
-      return {
-        ...t,
-        subtasks: updatedSubtasks,
-        subtaskCategories: updatedSubtaskCategories,
-        // Atualizar data/hora da tarefa principal se houver subtarefas pendentes com data/hora
-        dueDate: shouldUpdateMainTaskTime ? (subtaskBasedTime.date || t.dueDate) : t.dueDate,
-        dueTime: shouldUpdateMainTaskTime ? (subtaskBasedTime.time || t.dueTime) : t.dueTime,
-        editedBy: user.id,
-        editedByName: user.name,
-        editedAt: now,
-      } as any;
-    });
-
-    setTasks(updatedTasks);
-
-    const updatedTask = updatedTasks.find(t => t.id === taskId)!;
-    let subtask: any = null;
-
-    if (categoryId) {
-      const category = (updatedTask as any).subtaskCategories?.find((cat: any) => cat.id === categoryId);
-      subtask = category?.subtasks?.find((st: any) => st.id === subtaskId);
-    } else {
-      subtask = (updatedTask as any).subtasks?.find((st: any) => st.id === subtaskId);
-    }
-
-    // Adicionar ao histórico com detalhes da subtarefa
-    if (subtask) {
-      const action = subtask.done ? 'completed' : 'uncompleted';
-      const details = `Subtarefa: "${subtask.title}"`;
-      await addToHistory(action, updatedTask.title, taskId, details);
-    }
-
-    // Cancelar notificação da subtarefa se foi marcada como concluída
-    if (subtask?.done) {
-      try {
-        await NotificationService.cancelSubtaskReminder(taskId, subtaskId);
-      } catch (e) {
-        logger.warn('NOTIFY', 'Falha ao cancelar notificação de subtarefa', e);
-      }
-    }
-
-    try {
-      const remoteTask = taskToRemoteTask(updatedTask as any, currentFamily?.id);
-      await LocalStorageService.saveTask(remoteTask as any);
-      await SyncService.addOfflineOperation('update', 'tasks', remoteTask);
-      if (currentFamily) {
-        if (!isOffline) {
-          try {
-            const toSave = { ...remoteTask, familyId: currentFamily.id } as any;
-            const res = await FirestoreService.saveTask(toSave);
-            await LocalStorageService.saveTask({ ...toSave, id: toSave.id || (res && (res as any).id) } as any);
-          } catch (e) {
-            try { await FamilySyncHelper.saveTaskToFamily(remoteTask as any, currentFamily.id, 'update'); } catch (_) { }
-            await SyncService.addOfflineOperation('update', 'tasks', { ...remoteTask, familyId: currentFamily.id });
-          }
-        } else {
-          await SyncService.addOfflineOperation('update', 'tasks', { ...remoteTask, familyId: currentFamily.id });
-        }
-      }
-    } catch (e) {
-      logger.error('SAVE_TASK', 'Erro ao sincronizar subtarefa', e);
-    }
-
-    // Se todas subtarefas concluídas, agir sobre a tarefa principal
-    try {
-      const allDone = Array.isArray((updatedTask as any).subtasks) && (updatedTask as any).subtasks.length > 0 && (updatedTask as any).subtasks.every((st: any) => st.done);
-      if (allDone && !updatedTask.completed) {
-        if (user.role === 'admin') {
-          // Admin pode concluir diretamente (reutiliza fluxo do handleTaskToggle)
-          await handleTaskToggle(updatedTask);
-        } else {
-          // Dependente: solicitar aprovação para concluir tarefa
-          await requestTaskApproval(updatedTask);
-        }
-      }
-    } catch (e) {
-      logger.warn('SAVE_TASK', 'Erro ao processar conclusão automática por subtarefas', e);
-    }
-  }, [tasks, user, currentFamily, isOffline]);
-
-  const requestTaskApproval = async (task: Task) => {
-    const approval: TaskApproval = {
-      id: Date.now().toString(),
-      taskId: task.id,
-      dependenteId: user.id,
-      dependenteName: user.name,
-      status: 'pendente',
-      requestedAt: new Date(),
-      // Vincular familyId usando currentFamily ou fallback para user.familyId
-      ...(currentFamily?.id
-        ? { familyId: currentFamily.id } as any
-        : (user.familyId ? { familyId: user.familyId } as any : {})),
-    };
-
-    setApprovals([...approvals, approval]);
-
-    // Atualizar tarefa para status pendente aprovação (local)
-    setTasks(tasks.map(t =>
-      t.id === task.id ? {
-        ...t,
-        status: 'pendente_aprovacao',
-        approvalId: approval.id
-      } : t
-    ));
-
-    // Persistir alteração para sincronização/tempo real
-    try {
-      const updated = { ...task, status: 'pendente_aprovacao' as TaskStatus, approvalId: approval.id };
-      const remoteTask = taskToRemoteTask(updated as any, currentFamily?.id);
-      await LocalStorageService.saveTask(remoteTask as any);
-      await SyncService.addOfflineOperation('update', 'tasks', remoteTask);
-      if (currentFamily && !isOffline) {
-        try {
-          const toSave = { ...remoteTask, familyId: currentFamily.id } as any;
-          const res = await FirestoreService.saveTask(toSave);
-          await LocalStorageService.saveTask({ ...toSave, id: toSave.id || (res && (res as any).id) } as any);
-        } catch (e) {
-          logger.warn('APPROVAL', 'Falha ao salvar approval/task pending no Firestore, delegando ao FamilySyncHelper', e);
-          try { await FamilySyncHelper.saveTaskToFamily(remoteTask, currentFamily.id, 'update'); } catch (_) { }
-          await SyncService.addOfflineOperation('update', 'tasks', { ...remoteTask, familyId: currentFamily.id });
-        }
-      }
-      // Persistir a aprovação (Firestore + cache + fila)
-      await LocalStorageService.saveApproval(approval as any);
-      // Garantir que familyId esteja no payload enviado para o Firestore; se não houver, tentar buscar
-      let familyIdToSend = approval.familyId;
-      if (!familyIdToSend) {
-        try {
-          const fam = await familyService.getUserFamily(user.id);
-          familyIdToSend = fam?.id;
-        } catch { }
-      }
-      await SyncService.addOfflineOperation('create', 'approvals', {
-        ...approval,
-        ...(familyIdToSend ? { familyId: familyIdToSend } : {}),
-      });
-    } catch (err) {
-      logger.error('APPROVAL', 'Erro ao persistir status pendente_aprovacao', err);
-    }
-
-    // Notificações para admin serão derivadas de approvals (ver useEffect abaixo)
-
-    Alert.alert(
-      'Solicitação Enviada',
-      'Sua solicitação para completar a tarefa foi enviada para aprovação dos administradores.',
-      [{ text: 'OK' }]
-    );
-
-    await addToHistory('approval_requested', task.title, task.id);
-  };
+  // requestTaskApproval vem do hook useTaskActions
 
   // Derivar notificações a partir das aprovações pendentes (apenas para admins)
   useEffect(() => {
@@ -4312,184 +2734,9 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
     return () => { mounted = false; };
   }, []);
 
-  const approveTask = async (approvalId: string, adminComment?: string) => {
-    const approval = approvals.find(a => a.id === approvalId);
-    if (!approval || user.role !== 'admin') return;
+  // approveTask vem do hook useTaskActions
 
-    // Atualizar aprovação
-    setApprovals(approvals.map(a =>
-      a.id === approvalId ? {
-        ...a,
-        status: 'aprovada',
-        adminId: user.id,
-        resolvedAt: new Date(),
-        adminComment
-      } : a
-    ));
-
-    // Completar tarefa
-    setTasks(tasks.map(t =>
-      t.id === approval.taskId ? {
-        ...t,
-        completed: true,
-        status: 'aprovada'
-      } : t
-    ));
-    // cancelar notificação
-    try {
-      await NotificationService.cancelTaskReminder(approval.taskId);
-    } catch (e) {
-      logger.warn('NOTIFY', 'cancelTaskReminder falhou', e);
-    }
-
-    // Persistir aprovação e atualizar tarefa (cache + fila + família)
-    try {
-      const updatedApproval = {
-        ...approval,
-        status: 'aprovada' as const,
-        adminId: user.id,
-        resolvedAt: new Date(),
-        adminComment
-      };
-      await LocalStorageService.saveApproval(updatedApproval as any);
-      await SyncService.addOfflineOperation('update', 'approvals', updatedApproval);
-
-      const t = tasks.find(t => t.id === approval.taskId);
-      if (t) {
-        const updatedTask = {
-          ...t,
-          completed: true,
-          status: 'aprovada' as TaskStatus,
-          completedAt: new Date(),
-          editedAt: new Date(),
-          editedBy: user.id,
-          editedByName: user.name,
-        };
-        const remoteTask = taskToRemoteTask(updatedTask as any, currentFamily?.id);
-
-        // Tarefa aprovada/concluída: remover do cache local (mantém no Firebase para histórico)
-        await LocalStorageService.deleteTaskFromCache(updatedTask.id);
-        console.log('🗑️ Tarefa aprovada removida do cache local:', updatedTask.id);
-
-        await SyncService.addOfflineOperation('update', 'tasks', remoteTask);
-        if (currentFamily && !isOffline) {
-          try {
-            const toSave = { ...remoteTask, familyId: currentFamily.id } as any;
-            await FirestoreService.saveTask(toSave);
-          } catch (e) {
-            logger.warn('APPROVAL', 'Falha ao salvar aprovação/tarefa aprovada no Firestore, delegando ao FamilySyncHelper', e);
-            try { await FamilySyncHelper.saveTaskToFamily(remoteTask as any, currentFamily.id, 'update'); } catch (_) { }
-            await SyncService.addOfflineOperation('update', 'tasks', { ...remoteTask, familyId: currentFamily.id });
-          }
-        }
-      }
-    } catch (e) {
-      logger.error('APPROVAL', 'Erro ao persistir aprovação/tarefa aprovada', e);
-    }
-
-    // Remover notificação e a própria aprovação (local e remoto)
-    setNotifications(notifications.filter(n => n.taskId !== approval.taskId));
-    setApprovals(prev => prev.filter(a => a.id !== approvalId));
-    try {
-      await LocalStorageService.removeFromCache('approvals' as any, approvalId);
-      await SyncService.addOfflineOperation('delete', 'approvals', { id: approvalId });
-    } catch (e) {
-      logger.error('APPROVAL', 'Erro ao remover aprovação após aprovar', e);
-    }
-
-    await addToHistory('approved', approval.dependenteName + ' - ' + tasks.find(t => t.id === approval.taskId)?.title || '', approval.taskId, adminComment);
-
-    Alert.alert('Tarefa Aprovada', 'A tarefa foi aprovada e marcada como concluída.');
-  };
-
-  const rejectTask = async (approvalId: string, adminComment?: string) => {
-    const approval = approvals.find(a => a.id === approvalId);
-    if (!approval || user.role !== 'admin') return;
-
-    // Atualizar aprovação
-    setApprovals(approvals.map(a =>
-      a.id === approvalId ? {
-        ...a,
-        status: 'rejeitada',
-        adminId: user.id,
-        resolvedAt: new Date(),
-        adminComment
-      } : a
-    ));
-
-    // Reverter tarefa para pendente
-    setTasks(tasks.map(t =>
-      t.id === approval.taskId ? {
-        ...t,
-        status: 'rejeitada',
-        approvalId: undefined
-      } : t
-    ));
-    // reprogramar lembrete se necessário
-    const t = tasks.find(x => x.id === approval.taskId);
-    if (t) {
-      try {
-        await NotificationService.rescheduleTaskReminder(t as any);
-      } catch (e) {
-        logger.warn('NOTIFY', 'rescheduleTaskReminder falhou', e);
-      }
-    }
-
-    // Persistir aprovação rejeitada e atualizar tarefa (cache + fila + família)
-    try {
-      const updatedApproval = {
-        ...approval,
-        status: 'rejeitada' as const,
-        adminId: user.id,
-        resolvedAt: new Date(),
-        adminComment
-      };
-      await LocalStorageService.saveApproval(updatedApproval as any);
-      await SyncService.addOfflineOperation('update', 'approvals', updatedApproval);
-
-      const t2 = tasks.find(x => x.id === approval.taskId);
-      if (t2) {
-        const updatedTask = {
-          ...t2,
-          status: 'rejeitada' as TaskStatus,
-          approvalId: undefined,
-          editedAt: new Date(),
-          editedBy: user.id,
-          editedByName: user.name,
-        };
-        const remoteTask = taskToRemoteTask(updatedTask as any, currentFamily?.id);
-        await LocalStorageService.saveTask(remoteTask as any);
-        await SyncService.addOfflineOperation('update', 'tasks', remoteTask);
-        if (currentFamily && !isOffline) {
-          try {
-            const toSave = { ...remoteTask, familyId: currentFamily.id } as any;
-            const res = await FirestoreService.saveTask(toSave);
-            await LocalStorageService.saveTask({ ...toSave, id: toSave.id || (res && (res as any).id) } as any);
-          } catch (e) {
-            logger.warn('APPROVAL', 'Falha ao salvar aprovação/tarefa rejeitada no Firestore, delegando ao FamilySyncHelper', e);
-            try { await FamilySyncHelper.saveTaskToFamily(remoteTask as any, currentFamily.id, 'update'); } catch (_) { }
-            await SyncService.addOfflineOperation('update', 'tasks', { ...remoteTask, familyId: currentFamily.id });
-          }
-        }
-      }
-    } catch (e) {
-      logger.error('APPROVAL', 'Erro ao persistir aprovação/tarefa rejeitada', e);
-    }
-
-    // Remover notificação e a própria aprovação (local e remoto)
-    setNotifications(notifications.filter(n => n.taskId !== approval.taskId));
-    setApprovals(prev => prev.filter(a => a.id !== approvalId));
-    try {
-      await LocalStorageService.removeFromCache('approvals' as any, approvalId);
-      await SyncService.addOfflineOperation('delete', 'approvals', { id: approvalId });
-    } catch (e) {
-      logger.error('APPROVAL', 'Erro ao remover aprovação após rejeitar', e);
-    }
-
-    await addToHistory('rejected', approval.dependenteName + ' - ' + tasks.find(t => t.id === approval.taskId)?.title || '', approval.taskId, adminComment);
-
-    Alert.alert('Tarefa Rejeitada', 'A solicitação de conclusão foi rejeitada.');
-  };
+  // rejectTask vem do hook useTaskActions
 
   const openApprovalModal = (approval: TaskApproval) => {
     setSelectedApproval(approval);
@@ -4718,7 +2965,6 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
         email: user.email,
         name: user.name,
         role: 'admin' as UserRole,
-        isGuest: false,
         joinedAt: new Date(),
       });
 
@@ -4961,85 +3207,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
     setLastAction(null);
   }, [lastAction, tasks, currentFamily, isOffline, user]);
 
-  const deleteTask = useCallback(async (taskId: string) => {
-    const task = tasks.find(t => t.id === taskId);
-    if (!task) return;
-    const isFamilyTask = (task as any).familyId && (task as any).private !== true;
-    if (user.role === 'dependente' && isFamilyTask) {
-      const ok = await ensureFamilyPermission('delete');
-      if (!ok) {
-        Alert.alert('Sem permissão', 'Você não tem permissão para excluir tarefas da família.');
-        return;
-      }
-    }
-
-    Alert.alert(
-      'Excluir Tarefa',
-      'Tem certeza que deseja excluir esta tarefa?',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Excluir',
-          onPress: async () => {
-            try {
-              // 🔄 SALVAR ESTADO PARA DESFAZER: Salvar tarefa completa antes de excluir
-              const taskToDelete = { ...task };
-
-              // Mostrar loading enquanto aguardamos sincronização de exclusão (apenas se online)
-              if (!isOffline) setGlobalLoading(true);
-              // Atualizar UI imediatamente
-              setTasks(prev => prev.filter(t => t.id !== taskId));
-              await NotificationService.cancelTaskReminder(taskId).catch(() => { });
-
-              // Cancelar todas as notificações de subtarefas
-              try {
-                await NotificationService.cancelAllSubtaskReminders(taskId);
-              } catch (e) {
-                logger.warn('NOTIFY', 'Falha ao cancelar notificações de subtarefas', e);
-              }
-
-              // Usar SyncService para executar remotamente quando online ou enfileirar quando offline
-              // Inclui familyId para respeitar lógica de famílias locais
-              const opData: any = { id: taskId, familyId: (task as any).familyId ?? null };
-              await SyncService.addOfflineOperation('delete', 'tasks', opData);
-
-              // Remover do cache local sempre
-              await LocalStorageService.removeFromCache('tasks', taskId);
-
-              // Histórico
-              await addToHistory('deleted', task.title, taskId);
-
-              // ✅ CONFIGURAR DESFAZER: Salvar ação de exclusão
-              setLastAction({
-                type: 'delete',
-                task: taskToDelete,
-                previousState: taskToDelete, // Guardar tarefa completa para restauração
-                timestamp: Date.now()
-              });
-
-              setShowUndoButton(true);
-
-              // Timer para esconder botão de desfazer após 10 segundos
-              if (undoTimeoutRef.current) {
-                clearTimeout(undoTimeoutRef.current);
-              }
-              undoTimeoutRef.current = setTimeout(() => {
-                setShowUndoButton(false);
-                setLastAction(null);
-              }, 10000);
-
-            } catch (error) {
-              logger.error('DELETE_TASK', 'Erro ao deletar tarefa', error);
-              Alert.alert('Erro', 'Não foi possível deletar a tarefa. Tente novamente.');
-            } finally {
-              setGlobalLoading(false);
-            }
-          },
-          style: 'destructive'
-        },
-      ]
-    );
-  }, [tasks, isOffline, user.role, ensureFamilyPermission]);
+  // deleteTask vem do hook useTaskActions
 
 
   const removeFamilyMember = useCallback((memberId: string) => {
@@ -5638,9 +3806,7 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
           onHistory={() => setHistoryModalVisible(true)}
           onInfo={() => { setSettingsModalVisible(true); openManagedModal('settings'); }}
           onLogout={handleLogout}
-          onLogout={handleLogout}
           onRefresh={handleUpdateData}
-          onCleanupTasks={cleanupInactiveTasks}
           showUndoButton={showUndoButton}
           onUndo={handleUndo}
           notificationCount={user.role === 'admin' ? (notifications.filter(n => !n.read).length + adminRoleRequests.length) : 0}

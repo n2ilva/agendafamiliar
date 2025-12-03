@@ -25,7 +25,6 @@ interface HeaderMenuProps {
   onHistory: () => void;
   onInfo: () => void;
   onRefresh?: () => void;
-  onCleanupTasks?: () => void;
   onLogout: () => void;
 }
 
@@ -39,7 +38,6 @@ export const HeaderMenu: React.FC<HeaderMenuProps> = ({
   onHistory,
   onInfo,
   onRefresh,
-  onCleanupTasks,
   onLogout,
 }) => {
   const { colors, themeMode, setThemeMode } = useTheme();
@@ -91,12 +89,6 @@ export const HeaderMenu: React.FC<HeaderMenuProps> = ({
               <Ionicons name="information-circle-outline" size={18} color={APP_COLORS.status.success} />
               <Text style={styles.menuText}>Manual e Informações</Text>
             </Pressable>
-            {onCleanupTasks && (
-              <Pressable onPress={() => { onClose(); onCleanupTasks(); }} style={styles.menuItem}>
-                <Ionicons name="trash-bin-outline" size={18} color={APP_COLORS.status.warning} />
-                <Text style={styles.menuText}>Limpar Tarefas Antigas</Text>
-              </Pressable>
-            )}
             {/* Atualizar dados */}
             {onRefresh && (
               <Pressable onPress={() => { onClose(); onRefresh(); }} style={styles.menuItem}>

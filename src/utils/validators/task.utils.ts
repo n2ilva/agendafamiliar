@@ -2,10 +2,10 @@ import { RepeatConfig, RepeatType, Task } from '../../types/family.types';
 import { AVAILABLE_EMOJIS } from '../../constants/task.constants';
 
 // Helper para converter RepeatConfig para repeatOption/repeatDays
-export const repeatConfigToOption = (repeat?: RepeatConfig): { 
-  repeatOption: 'nenhum' | 'diario' | 'semanal' | 'mensal' | 'anual' | 'quinzenal' | 'intervalo'; 
-  repeatDays?: number[]; 
-  repeatIntervalDays?: number; 
+export const repeatConfigToOption = (repeat?: RepeatConfig): {
+  repeatOption: 'nenhum' | 'diario' | 'semanal' | 'mensal' | 'anual' | 'quinzenal' | 'intervalo';
+  repeatDays?: number[];
+  repeatIntervalDays?: number;
   repeatDurationMonths?: number;
   repeatEndDate?: Date | string;
 } => {
@@ -28,9 +28,9 @@ export const repeatConfigToOption = (repeat?: RepeatConfig): {
     return { repeatOption: 'quinzenal' };
   }
   if (repeat.type === RepeatType.INTERVAL) {
-    return { 
-      repeatOption: 'intervalo', 
-      repeatIntervalDays: repeat.intervalDays, 
+    return {
+      repeatOption: 'intervalo',
+      repeatIntervalDays: repeat.intervalDays,
       repeatDurationMonths: repeat.durationMonths,
       repeatEndDate: repeat.endDate
     };
@@ -40,8 +40,8 @@ export const repeatConfigToOption = (repeat?: RepeatConfig): {
 
 // Helper para criar RepeatConfig a partir de repeatOption/repeatDays
 export const optionToRepeatConfig = (
-  repeatOption?: string, 
-  repeatDays?: number[], 
+  repeatOption?: string,
+  repeatDays?: number[],
   opts?: { repeatIntervalDays?: number; repeatDurationMonths?: number; repeatEndDate?: Date | string }
 ): RepeatConfig => {
   if (!repeatOption || repeatOption === 'nenhum') {
@@ -63,9 +63,9 @@ export const optionToRepeatConfig = (
     return { type: RepeatType.BIWEEKLY };
   }
   if (repeatOption === 'intervalo') {
-    return { 
-      type: RepeatType.INTERVAL, 
-      intervalDays: opts?.repeatIntervalDays || 1, 
+    return {
+      type: RepeatType.INTERVAL,
+      intervalDays: opts?.repeatIntervalDays || 1,
       durationMonths: opts?.repeatDurationMonths || 0,
       endDate: opts?.repeatEndDate
     };
@@ -88,14 +88,14 @@ export const getRepeat = (task: Task): RepeatConfig => {
 export const filterOldCompletedTasks = <T extends { completed?: boolean; completedAt?: Date | string | any }>(tasks: T[]): T[] => {
   const sevenDaysAgo = new Date();
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-  
+
   return tasks.filter(task => {
     // Se não está concluída, mantém
     if (!task.completed) return true;
-    
+
     // Se está concluída mas não tem data, mantém (para evitar perder dados)
     if (!task.completedAt) return true;
-    
+
     // Converter completedAt para Date
     let completedDate: Date;
     if (task.completedAt instanceof Date) {
@@ -107,15 +107,81 @@ export const filterOldCompletedTasks = <T extends { completed?: boolean; complet
     } else {
       return true; // Formato desconhecido, mantém
     }
-    
+
     // Mantém apenas se foi concluída nos últimos 7 dias
     return completedDate >= sevenDaysAgo;
   });
 };
 
-// Função helper para obter emoji do ícone
 export const getEmojiForIcon = (iconName?: string): string => {
   if (!iconName) return '😊';
   const icon = AVAILABLE_EMOJIS.find(i => i.name === iconName);
   return icon ? icon.emoji : '😊';
+};
+
+// Função para calcular horário da task principal baseado na subtarefa mais próxima
+export const calculateMainTaskTimeFromSubtasks = (subtasks: any[]): { date?: Date; time?: Date } => {
+  const subtasksWithDateTime = subtasks.filter(st => st.dueDate || st.dueTime);
+
+  if (subtasksWithDateTime.length === 0) {
+    return {};
+  }
+
+  // Converter subtarefas para timestamps para comparação
+  const subtaskTimes = subtasksWithDateTime.map(st => {
+    const baseDate = st.dueDate ? new Date(st.dueDate) : new Date();
+    if (st.dueTime) {
+      const timeDate = new Date(st.dueTime);
+      baseDate.setHours(timeDate.getHours(), timeDate.getMinutes(), 0, 0);
+    }
+    return {
+      subtask: st,
+      timestamp: baseDate.getTime(),
+      date: st.dueDate ? new Date(st.dueDate) : undefined,
+      time: st.dueTime ? new Date(st.dueTime) : undefined
+    };
+  });
+
+  // Ordenar por timestamp e pegar o mais próximo (mais cedo)
+  subtaskTimes.sort((a, b) => a.timestamp - b.timestamp);
+  const earliest = subtaskTimes[0];
+
+  return {
+    date: earliest.date,
+    time: earliest.time
+  };
+};
+
+// Função para calcular horário da task principal baseado apenas nas subtarefas NÃO CONCLUÍDAS
+export const calculateMainTaskTimeFromPendingSubtasks = (subtasks: any[]): { date?: Date; time?: Date } => {
+  // Filtrar apenas subtarefas não concluídas que têm data/hora
+  const pendingSubtasksWithDateTime = subtasks.filter(st => !st.done && (st.dueDate || st.dueTime));
+
+  if (pendingSubtasksWithDateTime.length === 0) {
+    return {};
+  }
+
+  // Converter subtarefas para timestamps para comparação
+  const subtaskTimes = pendingSubtasksWithDateTime.map(st => {
+    const baseDate = st.dueDate ? new Date(st.dueDate) : new Date();
+    if (st.dueTime) {
+      const timeDate = new Date(st.dueTime);
+      baseDate.setHours(timeDate.getHours(), timeDate.getMinutes(), 0, 0);
+    }
+    return {
+      subtask: st,
+      timestamp: baseDate.getTime(),
+      date: st.dueDate ? new Date(st.dueDate) : undefined,
+      time: st.dueTime ? new Date(st.dueTime) : undefined
+    };
+  });
+
+  // Ordenar por timestamp e pegar o mais próximo (mais cedo)
+  subtaskTimes.sort((a, b) => a.timestamp - b.timestamp);
+  const earliest = subtaskTimes[0];
+
+  return {
+    date: earliest.date,
+    time: earliest.time
+  };
 };

@@ -83,21 +83,26 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
   // Separar tarefas do dia selecionado por status
   const getDayTasksByStatus = () => {
     if (!selectedDayTasks || selectedDayTasks.length === 0) {
-      return { pending: [], overdue: [], completed: [] };
+      return { pending: [], completed: [], deleted: [] };
     }
     
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
     const pending: any[] = [];
-    const overdue: any[] = [];
     const completed: any[] = [];
+    const deleted: any[] = [];
     
     selectedDayTasks.forEach((task: any) => {
+      // Verificar se a tarefa foi excluída
+      if (task.deleted || task.isDeleted) {
+        deleted.push(task);
+        return;
+      }
+      
       // Verificar data da tarefa
       const taskDate = new Date(task.dueDate?.toDate?.() || task.dueDate);
       taskDate.setHours(0, 0, 0, 0);
-      const isOverdueDate = taskDate < today;
       
       // Verificar se está concluída (pelo campo completed OU pelo status)
       const isCompleted = task.completed === true || task.status === 'concluida';
@@ -112,24 +117,21 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
           wasCompletedLate = completedDate > taskDate;
         } else {
           // Se não tem completedAt mas a data de vencimento já passou, considerar como atrasada
+          const isOverdueDate = taskDate < today;
           wasCompletedLate = isOverdueDate;
         }
         
         completed.push({ ...task, wasCompletedLate });
       } else {
-        // Tarefa NÃO concluída
-        if (isOverdueDate) {
-          overdue.push(task);
-        } else {
-          pending.push(task);
-        }
+        // Tarefa NÃO concluída e NÃO excluída = pendente
+        pending.push(task);
       }
     });
     
-    return { pending, overdue, completed };
+    return { pending, completed, deleted };
   };
   
-  const { pending: pendingTasks, overdue: overdueTasks, completed: completedTasks } = getDayTasksByStatus();
+  const { pending: pendingTasks, completed: completedTasks, deleted: deletedTasks } = getDayTasksByStatus();
 
   // Renderizar tarefa do dia selecionado
   const renderSelectedDayTask = (task: any) => {
@@ -321,20 +323,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
                         </View>
                       )}
                       
-                      {/* Vencidas */}
-                      {overdueTasks.length > 0 && (
-                        <View style={localStyles.statusSection}>
-                          <View style={localStyles.statusHeader}>
-                            <MaterialCommunityIcons name="alert-circle" size={16} color={APP_COLORS.status.error} />
-                            <Text style={[localStyles.statusTitle, { color: APP_COLORS.status.error }]}>
-                              Vencidas ({overdueTasks.length})
-                            </Text>
-                          </View>
-                          {overdueTasks.map(renderSelectedDayTask)}
-                        </View>
-                      )}
-                      
-                      {/* Concluídas */}
+                      {/* Concluídas (incluindo as com atraso) */}
                       {completedTasks.length > 0 && (
                         <View style={localStyles.statusSection}>
                           <View style={localStyles.statusHeader}>
@@ -344,6 +333,19 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
                             </Text>
                           </View>
                           {completedTasks.map(renderSelectedDayTask)}
+                        </View>
+                      )}
+                      
+                      {/* Excluídas */}
+                      {deletedTasks.length > 0 && (
+                        <View style={localStyles.statusSection}>
+                          <View style={localStyles.statusHeader}>
+                            <MaterialCommunityIcons name="delete" size={16} color="#999" />
+                            <Text style={[localStyles.statusTitle, { color: '#999' }]}>
+                              Excluídas ({deletedTasks.length})
+                            </Text>
+                          </View>
+                          {deletedTasks.map(renderSelectedDayTask)}
                         </View>
                       )}
                     </>

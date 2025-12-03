@@ -122,7 +122,7 @@ class LocalFamilyService {
         role: 'admin',
         familyId: familyId,
         joinedAt: Timestamp.fromDate(now),
-        isGuest: false
+
       });
 
       console.log('✅ Admin adicionado como membro da família');
@@ -220,9 +220,17 @@ class LocalFamilyService {
     return unsub;
   }
 
+  // Cache para getUserFamily (evita múltiplas chamadas duplicadas)
+  private userFamilyCache: Map<string, { family: Family | null; timestamp: number }> = new Map();
+  private readonly CACHE_TTL = 30000; // 30 segundos
+
   async getUserFamily(userId: string): Promise<Family | null> {
     try {
-
+      // Verificar cache
+      const cached = this.userFamilyCache.get(userId);
+      if (cached && (Date.now() - cached.timestamp) < this.CACHE_TTL) {
+        return cached.family;
+      }
 
       // Guard: verifica se há autenticação do Firebase antes de tentar query
       const auth = firebaseAuth() as any;
@@ -234,7 +242,6 @@ class LocalFamilyService {
       const db = this.getFirestore();
 
       // Usar collectionGroup para buscar em todas as subcoleções "members"
-
       const membersQuery = query(
         collectionGroup(db, 'members'),
         where('id', '==', userId)
@@ -242,9 +249,9 @@ class LocalFamilyService {
 
       const memberSnap = await getDocs(membersQuery);
 
-
       if (memberSnap.empty) {
         console.log('❌ Usuário não pertence a nenhuma família');
+        this.userFamilyCache.set(userId, { family: null, timestamp: Date.now() });
         return null;
       }
 
@@ -255,10 +262,24 @@ class LocalFamilyService {
       const familyId = memberData.familyId;
 
       console.log('✅ Família do usuário encontrada:', familyId);
-      return this.getFamilyById(familyId);
+      const family = await this.getFamilyById(familyId);
+      
+      // Atualizar cache
+      this.userFamilyCache.set(userId, { family, timestamp: Date.now() });
+      
+      return family;
     } catch (error) {
       console.error('❌ Erro ao buscar família do usuário:', error);
       throw new Error('Não foi possível buscar a família do usuário.');
+    }
+  }
+
+  // Método para limpar cache quando necessário
+  clearUserFamilyCache(userId?: string) {
+    if (userId) {
+      this.userFamilyCache.delete(userId);
+    } else {
+      this.userFamilyCache.clear();
     }
   }
 

@@ -15,7 +15,6 @@ class LocalAuthService {
       name,
       email,
       role,
-      isGuest: false,
       familyId: '',
       joinedAt: new Date()
     };
@@ -85,7 +84,6 @@ class LocalAuthService {
               name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Usuário',
               email: firebaseUser.email || '',
               role: 'admin',
-              isGuest: false,
               familyId: '',
               joinedAt: new Date()
             };

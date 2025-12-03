@@ -8,13 +8,14 @@ import * as SplashScreen from 'expo-splash-screen';
 
 import { AuthProvider, useAuth } from './contexts/auth.context';
 import { ThemeProvider, useTheme } from './contexts/theme.context';
+import { DIProvider } from './contexts/di.context';
+import { TaskProvider } from './contexts/task.context';
 import { TaskScreen } from './screens/tasks/TaskScreen';
 import { LoginScreen } from './screens/login/LoginScreen';
 import FamilySetupScreen from './screens/family-setup/FamilySetupScreen';
 import { LoadingScreen } from './components/common/LoadingScreen';
 import { SyncSystemBarsAndroid } from './components/common/SyncSystemBars';
-import BackgroundSyncService from './services/sync/background-sync.service';
-import { MigrationService } from './services/storage/migration.service';
+import { BackgroundSyncService } from './core/infrastructure/services';
 
 function AppContent() {
   const {
@@ -108,9 +109,6 @@ export default function App() {
       try {
         await SplashScreen.preventAutoHideAsync();
 
-        // Executar migração de dados para SecureStorage
-        await MigrationService.migrateToSecureStorage();
-
         // Define a task de background
         await BackgroundSyncService.defineBackgroundSyncTask();
       } catch (e) {
@@ -121,11 +119,15 @@ export default function App() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <AuthProvider>
-        <ThemeProvider>
-          <AppContent />
-        </ThemeProvider>
-      </AuthProvider>
+      <DIProvider>
+        <AuthProvider>
+          <ThemeProvider>
+            <TaskProvider initialFamilyId={undefined}>
+              <AppContent />
+            </TaskProvider>
+          </ThemeProvider>
+        </AuthProvider>
+      </DIProvider>
     </GestureHandlerRootView>
   );
 }

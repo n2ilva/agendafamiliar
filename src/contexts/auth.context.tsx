@@ -41,6 +41,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isAuthReady, setIsAuthReady] = useState(false); // Firebase Auth inicializado
   const [isDataReady, setIsDataReady] = useState(false); // Dados sincronizados
 
+  // Flags para evitar execuções duplicadas
+  const preloadInProgressRef = React.useRef(false);
+  const syncInProgressRef = React.useRef(false);
+  const lastPreloadUserIdRef = React.useRef<string | null>(null);
+
   // ============= STORAGE OPERATIONS =============
   const saveUserToStorage = useCallback(async (userData: FamilyUser) => {
     try {
@@ -63,10 +68,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // ============= PRE-LOAD DATA =============
   // Carrega e sincroniza todos os dados antes de mostrar a tela principal
   const preloadData = async (userData: FamilyUser) => {
+    // Evitar execuções duplicadas
+    if (preloadInProgressRef.current || lastPreloadUserIdRef.current === userData.id) {
+      console.log('⏭️ Preload já executado ou em andamento, pulando...');
+      setIsDataReady(true);
+      return;
+    }
+
+    preloadInProgressRef.current = true;
+    lastPreloadUserIdRef.current = userData.id;
     console.log('🔄 Pré-carregando dados...');
 
     try {
-      // 1. Limpar cache de tarefas antigas
+      // 1. Limpar cache de tarefas antigas (apenas uma vez)
       console.log('🧹 Limpando tarefas antigas do cache...');
       await LocalStorageService.clearOldCompletedTasks(7);
 
@@ -91,13 +105,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.log('✅ Pré-carregamento concluído');
     } catch (error) {
       console.warn('⚠️ Erro no pré-carregamento (continuando com cache):', error);
+    } finally {
+      preloadInProgressRef.current = false;
+      setIsDataReady(true);
     }
-
-    setIsDataReady(true);
   };
 
   // ============= FAMILY SYNC =============
   const syncUserFamily = async (userData: FamilyUser): Promise<boolean> => {
+    // Evitar sincronizações duplicadas
+    if (syncInProgressRef.current) {
+      console.log('⏭️ Sync de família já em andamento, pulando...');
+      return !!userData.familyId;
+    }
+
+    syncInProgressRef.current = true;
+
     try {
       // Se já tem familyId salvo, considera configurado (otimização para abertura rápida)
       if (userData.familyId) {
@@ -164,6 +187,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error('❌ Erro ao sincronizar família:', error);
       // Se já tinha familyId, considera configurado mesmo com erro
       return !!userData.familyId;
+    } finally {
+      syncInProgressRef.current = false;
     }
   };
 
@@ -349,9 +374,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!user) return;
 
     try {
-      if (!user.isGuest) {
-        await LocalAuthService.updateUserRole(user.id, newRole);
-      }
+      await LocalAuthService.updateUserRole(user.id, newRole);
 
       const updatedUser = { ...user, role: newRole };
       setUser(updatedUser);

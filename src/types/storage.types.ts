@@ -12,7 +12,11 @@ export interface PendingOperation {
 export interface HistoryItem {
     id: string;
     userId: string;
+    userName?: string;
+    userRole?: string;
     action: string;
+    taskId?: string;
+    taskTitle?: string;
     details?: string;
     timestamp: Date | string | number;
     relatedId?: string; // ID da tarefa ou item relacionado

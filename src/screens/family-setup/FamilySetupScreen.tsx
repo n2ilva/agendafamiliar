@@ -96,7 +96,6 @@ export default function FamilySetupScreen({
         email: effectiveUserEmail,
         name: effectiveUserName,
         role: 'admin' as UserRole,
-        isGuest: false,
         joinedAt: new Date(),
       });
 
@@ -133,7 +132,6 @@ export default function FamilySetupScreen({
         email: effectiveUserEmail,
         name: effectiveUserName,
         role: 'dependente' as UserRole,
-        isGuest: false,
         joinedAt: new Date(),
       });
 

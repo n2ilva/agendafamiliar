@@ -41,7 +41,6 @@ export interface FamilyUser {
   // Ícone alternativo (quando usuário não deseja foto). Ex: 'cat', 'dog', 'rocket'
   profileIcon?: string;
   role: UserRole;
-  isGuest: boolean;
   familyId?: string;
   joinedAt: Date | string;
   // Permissões específicas atribuídas pelo admin (ausente = sem permissão)
@@ -224,4 +223,22 @@ export interface SyncChangeLog {
   approvals: Record<string, number>;
   // Timestamp da última verificação de mudanças
   lastCheckTime: number;
+}
+
+/**
+ * Item de histórico usado na UI e sincronização
+ * Inclui campos extras de tarefa para exibição
+ */
+export interface HistoryItem {
+  id: string;
+  userId: string;
+  userName?: string;
+  userRole?: string;
+  action: string;
+  taskId?: string;
+  taskTitle?: string;
+  details?: string;
+  timestamp: Date | string | number;
+  relatedId?: string;
+  relatedType?: 'task' | 'family' | 'user' | 'approval';
 }

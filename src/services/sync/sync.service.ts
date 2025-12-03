@@ -1,4 +1,5 @@
-import LocalStorageService, { PendingOperation } from '../storage/local-storage.service';
+import { PendingOperation } from '../../types/storage.types';
+import LocalStorageService from '../storage/local-storage.service';
 import ConnectivityService from './connectivity.service';
 import LocalAuthService from '../auth/local-auth.service';
 import familyService from '../family/local-family.service';
@@ -1144,43 +1145,59 @@ class SyncService {
     return { ...this.syncStatus };
   }
 
+  // Promise para enfileirar solicitações de sincronização
+  private static syncPromise: Promise<void> | null = null;
+
   // Forçar sincronização completa (incluindo download de dados da família)
   static async forceFullSync(): Promise<void> {
+    // Se já existe uma sincronização em andamento, aguardar ela terminar
+    if (this.syncPromise) {
+      console.log('⏭️ Sincronização já em andamento, aguardando conclusão...');
+      return this.syncPromise;
+    }
+
     if (this.isSyncing) {
       console.log('🔄 Sincronização já em andamento');
       return;
     }
 
-    console.log('🔄 Iniciando sincronização completa...');
-    this.updateSyncStatus({ isSyncing: true, hasError: false });
+    // Criar promise de sincronização
+    this.syncPromise = (async () => {
+      console.log('🔄 Iniciando sincronização completa...');
+      this.updateSyncStatus({ isSyncing: true, hasError: false });
 
-    try {
-      // Baixar dados remotos primeiro
-      await this.downloadRemoteData();
+      try {
+        // Baixar dados remotos primeiro
+        await this.downloadRemoteData();
 
-      // Depois processar operações pendentes
-      await this.processPendingOperations();
+        // Depois processar operações pendentes
+        await this.processPendingOperations();
 
-      // Limpar tarefas antigas do cache (mesma lógica do Firestore: > 7 dias)
-      await LocalStorageService.clearOldCompletedTasks(7);
+        // Limpar tarefas antigas do cache (mesma lógica do Firestore: > 7 dias)
+        await LocalStorageService.clearOldCompletedTasks(7);
 
-      this.updateSyncStatus({
-        lastSync: Date.now(),
-        isSyncing: false
-      });
+        this.updateSyncStatus({
+          lastSync: Date.now(),
+          isSyncing: false
+        });
 
-      console.log('✅ Sincronização completa finalizada');
-    } catch (error) {
-      console.error('❌ Erro na sincronização completa:', {
-        message: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined
-      });
-      this.updateSyncStatus({
-        isSyncing: false,
-        hasError: true,
-        errorMessage: error instanceof Error ? error.message : 'Erro desconhecido'
-      });
-    }
+        console.log('✅ Sincronização completa finalizada');
+      } catch (error) {
+        console.error('❌ Erro na sincronização completa:', {
+          message: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined
+        });
+        this.updateSyncStatus({
+          isSyncing: false,
+          hasError: true,
+          errorMessage: error instanceof Error ? error.message : 'Erro desconhecido'
+        });
+      } finally {
+        this.syncPromise = null;
+      }
+    })();
+
+    return this.syncPromise;
   }
 
   // Forçar sincronização manual

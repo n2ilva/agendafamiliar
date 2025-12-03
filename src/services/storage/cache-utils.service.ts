@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Task } from '../../types/family.types';
-import LocalStorageService, { OfflineData } from './local-storage.service';
+import { OfflineData } from '../../types/storage.types';
+import LocalStorageService from './local-storage.service';
 
 /**
  * Extensão do LocalStorageService com utilitários para debug e limpeza de cache

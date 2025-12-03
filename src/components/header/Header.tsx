@@ -36,7 +36,6 @@ interface HeaderProps {
   onManageFamily?: () => void;
   onJoinFamilyByCode?: (code: string) => Promise<void> | void;
   onRefresh?: () => void;
-  onCleanupTasks?: () => void;
   syncStatus?: {
     hasError?: boolean;
     isOnline?: boolean;
@@ -70,7 +69,6 @@ export const Header: React.FC<HeaderProps> = ({
   onManageFamily,
   onJoinFamilyByCode,
   onRefresh,
-  onCleanupTasks,
   syncStatus,
   isSyncingPermissions,
   showUndoButton = false,
@@ -210,7 +208,6 @@ export const Header: React.FC<HeaderProps> = ({
         onHistory={onHistory}
         onInfo={onInfo}
         onRefresh={onRefresh}
-        onCleanupTasks={onCleanupTasks}
         onLogout={onLogout}
       />
 

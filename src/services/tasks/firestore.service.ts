@@ -34,9 +34,16 @@ export type RemoteHistoryItem = {
   createdAt?: any;
 };
 
-const tasksCol = () => collection(firebaseFirestore() as any, 'tasks');
-const historyCol = () => collection(firebaseFirestore() as any, 'history');
-const approvalsCol = () => collection(firebaseFirestore() as any, 'approvals');
+// Obter instância real do Firestore ao invés de usar o proxy
+const getDb = () => {
+  const db = firebaseFirestore();
+  // Se firebaseFirestore retornar uma função, invoca novamente
+  return typeof db === 'function' ? db() : db;
+};
+
+const tasksCol = () => collection(getDb(), 'tasks');
+const historyCol = () => collection(getDb(), 'history');
+const approvalsCol = () => collection(getDb(), 'approvals');
 
 function ensureFamilyId(val: string | null | undefined) {
   return val === undefined ? null : val;
@@ -111,7 +118,7 @@ export const FirestoreService = {
     }
 
     try {
-      const familyRef = doc(firebaseFirestore() as any, 'families', familyId);
+      const familyRef = doc(getDb(), 'families', familyId);
       const familySnap = await getDoc(familyRef);
 
       if (!familySnap.exists()) {
@@ -129,7 +136,7 @@ export const FirestoreService = {
 
       // Também considerar administradores definidos via members/{userId}.role === 'admin'
       try {
-        const memberRef = doc(firebaseFirestore() as any, 'families', familyId, 'members', userId);
+        const memberRef = doc(getDb(), 'families', familyId, 'members', userId);
         const memberSnap = await getDoc(memberRef);
 
         if (memberSnap.exists()) {
@@ -156,7 +163,7 @@ export const FirestoreService = {
   },
 
   async saveTask(task: RemoteTask & Record<string, any>) {
-    const db = firebaseFirestore() as any;
+    const db = getDb();
 
     const taskToSaveBase: any = {
       ...task,
@@ -214,7 +221,7 @@ export const FirestoreService = {
       throw new Error('permission-denied');
     }
 
-    const ref = doc(firebaseFirestore() as any, 'tasks', taskId);
+    const ref = doc(getDb(), 'tasks', taskId);
     const snap = await getDoc(ref);
     if (!snap.exists()) {
 
@@ -264,7 +271,7 @@ export const FirestoreService = {
     }
 
     try {
-      const memberRef = doc(firebaseFirestore() as any, 'families', familyId, 'members', userId);
+      const memberRef = doc(getDb(), 'families', familyId, 'members', userId);
       const memberSnap = await getDoc(memberRef);
 
       if (!memberSnap.exists()) {
@@ -535,13 +542,13 @@ export const FirestoreService = {
     if (!toSave.requestedAt) {
       toSave.requestedAt = serverTimestamp();
     }
-    await setDoc(doc(firebaseFirestore() as any, 'approvals', toSave.id), toSave, { merge: true });
+    await setDoc(doc(getDb(), 'approvals', toSave.id), toSave, { merge: true });
     return { id: toSave.id };
   },
 
   async deleteApproval(approvalId: string) {
     try {
-      await deleteDoc(doc(firebaseFirestore() as any, 'approvals', approvalId));
+      await deleteDoc(doc(getDb(), 'approvals', approvalId));
     } catch (e) {
       console.error('[FirestoreService] deleteApproval erro:', e);
       throw e;

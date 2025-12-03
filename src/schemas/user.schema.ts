@@ -15,7 +15,7 @@ export const FamilyUserSchema = z.object({
     picture: z.string().url().optional().or(z.literal('')),
     profileIcon: z.string().optional(),
     role: UserRoleSchema,
-    isGuest: z.boolean(),
+
     familyId: z.string().optional(),
     joinedAt: z.union([z.date(), z.string(), z.number()]),
     permissions: MemberPermissionsSchema.optional(),
