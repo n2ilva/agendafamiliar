@@ -297,23 +297,33 @@ export function useTaskActions({
                     onPress: async () => {
                         try {
                             const taskToDelete = { ...task };
-                            setTasks(prev => prev.filter(t => t.id !== taskId));
+                            const deletedTask = {
+                                ...task,
+                                deleted: true,
+                                status: 'excluida' as const,
+                                deletedBy: user.id,
+                                deletedByName: user.name,
+                                deletedAt: new Date()
+                            };
+                            
+                            setTasks(prev => prev.map(t => t.id === taskId ? deletedTask : t));
 
                             await NotificationService.cancelTaskReminder(taskId).catch(() => { });
                             try {
                                 await NotificationService.cancelAllSubtaskReminders(taskId);
                             } catch (e) { }
 
-                            await LocalStorageService.deleteTaskFromCache(taskId);
-                            await SyncService.addOfflineOperation('delete', 'tasks', { id: taskId, familyId: (task as any).familyId });
+                            const remoteTask = taskToRemoteTask(deletedTask as any, currentFamily?.id);
+                            await LocalStorageService.saveTask(remoteTask as any);
+                            await SyncService.addOfflineOperation('update', 'tasks', remoteTask);
 
                             if (currentFamily && !isOffline) {
                                 if (isFamilyTask) {
                                     try {
-                                        await FirestoreService.deleteTask(taskId);
+                                        await FirestoreService.saveTask({ ...remoteTask, familyId: currentFamily.id } as any);
                                     } catch (e) {
-                                        try { await FamilySyncHelper.saveTaskToFamily({ id: taskId } as any, currentFamily.id, 'delete'); } catch (_) { }
-                                        await SyncService.addOfflineOperation('delete', 'tasks', { id: taskId, familyId: currentFamily.id });
+                                        try { await FamilySyncHelper.saveTaskToFamily(remoteTask, currentFamily.id, 'update'); } catch (_) { }
+                                        await SyncService.addOfflineOperation('update', 'tasks', { ...remoteTask, familyId: currentFamily.id });
                                     }
                                 }
                             }

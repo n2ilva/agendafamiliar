@@ -1,6 +1,6 @@
 export type UserRole = 'admin' | 'dependente';
 
-export type TaskStatus = 'pendente' | 'concluida' | 'pendente_aprovacao' | 'aprovada' | 'rejeitada';
+export type TaskStatus = 'pendente' | 'concluida' | 'pendente_aprovacao' | 'aprovada' | 'rejeitada' | 'excluida' | 'cancelada';
 
 export interface CategoryConfig {
   id: string;
@@ -183,6 +183,10 @@ export interface Task {
   unlocked?: boolean;
   unlockedBy?: string; // ID do admin que desbloqueou
   unlockedAt?: Date | string; // Quando foi desbloqueada
+  deleted?: boolean;
+  deletedBy?: string;
+  deletedByName?: string;
+  deletedAt?: Date | string;
 }
 
 export interface FamilyData {

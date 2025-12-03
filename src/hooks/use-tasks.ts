@@ -138,12 +138,11 @@ export function useTasks(user: any, currentFamily: any, isOffline: boolean) {
       if (cachedTasks.length > 0) {
         // 🆕 Filtrar: apenas tarefas ATIVAS (não concluídas, não excluídas) + privacidade
         const filtered = cachedTasks.filter(t => {
-          // Validação de tarefa ativa (não concluída nem excluída)
           if (t.completed) return false;
           if (t.status === 'concluida') return false;
           if ((t as any).deleted === true) return false;
+          if (t.status === 'excluida' || t.status === 'cancelada') return false;
 
-          // Filtro de privacidade
           const isPrivate = (t as any).private === true;
           return !(isPrivate && t.createdBy && t.createdBy !== user.id);
         });
@@ -159,11 +158,11 @@ export function useTasks(user: any, currentFamily: any, isOffline: boolean) {
         // Salvar TODAS as tarefas para o calendário
         setAllTasks(convertedTasks);
 
-        // 🆕 Filtrar: apenas tarefas ATIVAS (não concluídas, não excluídas)
         const activeTasks = convertedTasks.filter(t => {
           if (t.completed) return false;
           if (t.status === 'concluida') return false;
           if ((t as any).deleted === true) return false;
+          if (t.status === 'excluida' || t.status === 'cancelada') return false;
           return true;
         });
 
@@ -171,11 +170,11 @@ export function useTasks(user: any, currentFamily: any, isOffline: boolean) {
 
         // Merge logic simplificada (pode ser refinada depois)
         setTasks(prev => {
-          // Remover tarefas inativas do estado anterior também
           const activePrev = prev.filter(t => {
             if (t.completed) return false;
             if (t.status === 'concluida') return false;
             if ((t as any).deleted === true) return false;
+            if (t.status === 'excluida' || t.status === 'cancelada') return false;
             return true;
           });
           const merged = new Map(activePrev.map(t => [t.id, t]));

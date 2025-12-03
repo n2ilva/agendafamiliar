@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const TaskStatusSchema = z.enum(['pendente', 'concluida', 'pendente_aprovacao', 'aprovada', 'rejeitada']);
+export const TaskStatusSchema = z.enum(['pendente', 'concluida', 'pendente_aprovacao', 'aprovada', 'rejeitada', 'excluida', 'cancelada']);
 
 export const RepeatTypeSchema = z.enum(['none', 'daily', 'weekends', 'custom', 'monthly', 'yearly', 'biweekly', 'interval']);
 
@@ -55,6 +55,11 @@ export const TaskSchema = z.object({
     unlocked: z.boolean().optional(),
     unlockedBy: z.string().optional(),
     unlockedAt: z.union([z.date(), z.string(), z.number()]).optional(),
+
+    deleted: z.boolean().optional(),
+    deletedBy: z.string().optional(),
+    deletedByName: z.string().optional(),
+    deletedAt: z.union([z.date(), z.string(), z.number()]).optional(),
 });
 
 export type TaskSchemaType = z.infer<typeof TaskSchema>;
