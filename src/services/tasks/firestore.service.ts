@@ -177,6 +177,8 @@ export const FirestoreService = {
 
     const taskToSaveBase: any = {
       ...task,
+      // Garantir userId usando createdBy como fallback (para operações pendentes antigas)
+      userId: task.userId || task.createdBy,
       familyId: ensureFamilyId(task.familyId ?? null),
       updatedAt: serverTimestamp()
     };
