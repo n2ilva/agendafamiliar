@@ -31,6 +31,10 @@ interface RepeatConfigModalProps {
   setTempWeekly: (weekly: boolean) => void;
   tempWeeksCount: number;
   setTempWeeksCount: (weeks: number) => void;
+  tempMonthly?: boolean;
+  setTempMonthly?: (monthly: boolean) => void;
+  tempMonthsCount?: number;
+  setTempMonthsCount?: (months: number) => void;
   activeTheme: 'light' | 'dark';
 }
 
@@ -49,8 +53,35 @@ export const RepeatConfigModal: React.FC<RepeatConfigModalProps> = ({
   setTempWeekly,
   tempWeeksCount,
   setTempWeeksCount,
+  tempMonthly = false,
+  setTempMonthly,
+  tempMonthsCount = 1,
+  setTempMonthsCount,
   activeTheme,
 }) => {
+  // Tipo de intervalo: 'days' | 'weeks' | 'months'
+  const intervalMode = tempMonthly ? 'months' : (tempWeekly ? 'weeks' : 'days');
+  
+  const setIntervalMode = (mode: 'days' | 'weeks' | 'months') => {
+    if (mode === 'days') {
+      setTempWeekly(false);
+      setTempMonthly?.(false);
+    } else if (mode === 'weeks') {
+      setTempWeekly(true);
+      setTempMonthly?.(false);
+      const currentDays = tempIntervalDays || 7;
+      const weeks = Math.max(1, Math.round(currentDays / 7));
+      setTempWeeksCount(weeks);
+      setTempIntervalDays(weeks * 7);
+    } else {
+      setTempWeekly(false);
+      setTempMonthly?.(true);
+      setTempMonthsCount?.(tempMonthsCount || 1);
+      // Sinalizar intervalo mensal com valor especial (30 * meses)
+      setTempIntervalDays((tempMonthsCount || 1) * 30);
+    }
+  };
+
   return (
     <Modal
       visible={visible}
@@ -91,28 +122,29 @@ export const RepeatConfigModal: React.FC<RepeatConfigModalProps> = ({
           
           {repeatType === RepeatType.INTERVAL && (
             <View style={{ gap: 12 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+              <Text style={styles.customDaysLabel}>Repetir a cada:</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                 <Pressable
-                  style={[styles.toggleButton, !tempWeekly && styles.toggleButtonActive]}
-                  onPress={() => setTempWeekly(false)}
+                  style={[styles.toggleButton, intervalMode === 'days' && styles.toggleButtonActive]}
+                  onPress={() => setIntervalMode('days')}
                 >
-                  <Text style={[styles.toggleButtonText, !tempWeekly && styles.toggleButtonTextActive]}>Dias</Text>
+                  <Text style={[styles.toggleButtonText, intervalMode === 'days' && styles.toggleButtonTextActive]}>Dias</Text>
                 </Pressable>
                 <Pressable
-                  style={[styles.toggleButton, tempWeekly && styles.toggleButtonActive]}
-                  onPress={() => {
-                    setTempWeekly(true);
-                    const currentDays = tempIntervalDays || 7;
-                    const weeks = Math.max(1, Math.round(currentDays / 7));
-                    setTempWeeksCount(weeks);
-                    setTempIntervalDays(weeks * 7);
-                  }}
+                  style={[styles.toggleButton, intervalMode === 'weeks' && styles.toggleButtonActive]}
+                  onPress={() => setIntervalMode('weeks')}
                 >
-                  <Text style={[styles.toggleButtonText, tempWeekly && styles.toggleButtonTextActive]}>Semanas</Text>
+                  <Text style={[styles.toggleButtonText, intervalMode === 'weeks' && styles.toggleButtonTextActive]}>Semanas</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.toggleButton, intervalMode === 'months' && styles.toggleButtonActive]}
+                  onPress={() => setIntervalMode('months')}
+                >
+                  <Text style={[styles.toggleButtonText, intervalMode === 'months' && styles.toggleButtonTextActive]}>Meses</Text>
                 </Pressable>
               </View>
               
-              {!tempWeekly && (
+              {intervalMode === 'days' && (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                   <Text style={[styles.customDaysLabel, { flex: 0, minWidth: 60 }]}>A cada</Text>
                   <TextInput
@@ -123,11 +155,11 @@ export const RepeatConfigModal: React.FC<RepeatConfigModalProps> = ({
                     placeholder="dias"
                     placeholderTextColor={activeTheme === 'dark' ? '#888' : '#999'}
                   />
-                  <Text style={styles.customDaysLabel}>dias</Text>
+                  <Text style={styles.customDaysLabel}>dia(s)</Text>
                 </View>
               )}
               
-              {tempWeekly && (
+              {intervalMode === 'weeks' && (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                   <Text style={[styles.customDaysLabel, { flex: 0, minWidth: 60 }]}>A cada</Text>
                   <TextInput
@@ -145,18 +177,37 @@ export const RepeatConfigModal: React.FC<RepeatConfigModalProps> = ({
                   <Text style={styles.customDaysLabel}>semana(s)</Text>
                 </View>
               )}
+
+              {intervalMode === 'months' && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Text style={[styles.customDaysLabel, { flex: 0, minWidth: 60 }]}>A cada</Text>
+                  <TextInput
+                    style={[styles.input, { width: 80, textAlign: 'center' }]}
+                    keyboardType="number-pad"
+                    value={String(tempMonthsCount || '')}
+                    onChangeText={(v) => {
+                      const m = Math.max(1, parseInt(v || '0', 10) || 0);
+                      setTempMonthsCount?.(m);
+                      setTempIntervalDays(m * 30);
+                    }}
+                    placeholder="meses"
+                    placeholderTextColor={activeTheme === 'dark' ? '#888' : '#999'}
+                  />
+                  <Text style={styles.customDaysLabel}>mês(es)</Text>
+                </View>
+              )}
               
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 }}>
                 <Text style={[styles.customDaysLabel, { flex: 0, minWidth: 60 }]}>Duração</Text>
                 <TextInput
                   style={[styles.input, { width: 80, textAlign: 'center' }]}
                   keyboardType="number-pad"
                   value={String(tempDurationMonths || '')}
                   onChangeText={(v) => setTempDurationMonths(Math.max(0, parseInt(v || '0', 10) || 0))}
-                  placeholder="meses"
+                  placeholder="∞"
                   placeholderTextColor={activeTheme === 'dark' ? '#888' : '#999'}
                 />
-                <Text style={styles.customDaysLabel}>meses</Text>
+                <Text style={styles.customDaysLabel}>mês(es) (0 = sem fim)</Text>
               </View>
             </View>
           )}

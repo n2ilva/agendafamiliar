@@ -1689,29 +1689,43 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
   const [tempDurationMonths, setTempDurationMonths] = useState<number>(0);
   const [tempWeekly, setTempWeekly] = useState<boolean>(true); // Default: modo semanas
   const [tempWeeksCount, setTempWeeksCount] = useState<number>(1);
+  const [tempMonthly, setTempMonthly] = useState<boolean>(false); // Modo meses
+  const [tempMonthsCount, setTempMonthsCount] = useState<number>(1);
 
   // Função para obter o texto descritivo da repetição
   const getRepeatLabel = (): string => {
     if (repeatType === RepeatType.NONE) return 'Não repetir';
     if (repeatType === RepeatType.DAILY) return 'Repetir diariamente';
-    if (repeatType === RepeatType.MONTHLY) return 'Repetir mensalmente';
-    if (repeatType === RepeatType.YEARLY) return 'Repetir anualmente';
-    if (repeatType === RepeatType.BIWEEKLY) return 'Repetir quinzenalmente';
     if (repeatType === RepeatType.CUSTOM) {
       if (customDays.length === 0) return 'Repetir semanalmente';
       const dayNames = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
       const selectedDays = customDays.map(d => dayNames[d]).join(', ');
-      return `Repetir: ${selectedDays}`;
+      return `Semanal: ${selectedDays}`;
     }
     if (repeatType === RepeatType.INTERVAL) {
       const iv = intervalDays || 7;
-      const isWeekly = iv > 0 && iv % 7 === 0;
-      if (isWeekly) {
+      const dur = durationMonths || 0;
+      const isMonthly = iv >= 30 && iv % 30 === 0;
+      const isWeekly = !isMonthly && iv > 0 && iv % 7 === 0;
+      let label = '';
+      if (isMonthly) {
+        const months = Math.round(iv / 30);
+        label = `A cada ${months} ${months > 1 ? 'meses' : 'mês'}`;
+      } else if (isWeekly) {
         const weeks = Math.round(iv / 7);
-        return `Repetir a cada ${weeks} semana${weeks > 1 ? 's' : ''}`;
+        label = `A cada ${weeks} semana${weeks > 1 ? 's' : ''}`;
+      } else {
+        label = `A cada ${iv} dia${iv > 1 ? 's' : ''}`;
       }
-      return `Repetir a cada ${iv} dia${iv > 1 ? 's' : ''}`;
+      if (dur > 0) {
+        label += ` por ${dur} ${dur > 1 ? 'meses' : 'mês'}`;
+      }
+      return label;
     }
+    // Fallback para tipos legados
+    if (repeatType === RepeatType.MONTHLY) return 'Repetir mensalmente';
+    if (repeatType === RepeatType.YEARLY) return 'Repetir anualmente';
+    if (repeatType === RepeatType.BIWEEKLY) return 'Repetir quinzenalmente';
     return 'Não repetir';
   };
 
@@ -5106,11 +5120,10 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
                   </View>
                   <View style={styles.repeatContainer}>
                     {[
-                      { type: RepeatType.NONE, icon: 'ban-outline' },
-                      { type: RepeatType.DAILY, icon: 'repeat-outline' },
-                      { type: RepeatType.MONTHLY, icon: 'calendar-number-outline' },
-                      { type: RepeatType.CUSTOM, icon: 'calendar-outline' },
-                      { type: RepeatType.INTERVAL, icon: 'time-outline' }
+                      { type: RepeatType.NONE, icon: 'ban-outline', label: 'Não' },
+                      { type: RepeatType.DAILY, icon: 'reload-outline', label: 'Diário' },
+                      { type: RepeatType.CUSTOM, icon: 'calendar-outline', label: 'Semanal' },
+                      { type: RepeatType.INTERVAL, icon: 'time-outline', label: 'Intervalo' }
                     ].map((option) => (
                       <Pressable
                         key={option.type}
@@ -5131,10 +5144,13 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
                             const iv = intervalDays || 7; // Default: 7 dias (1 semana)
                             setTempIntervalDays(iv);
                             setTempDurationMonths(durationMonths || 0);
-                            // Se o intervalo é múltiplo de 7, mostrar em semanas
-                            const isWeekly = iv > 0 && iv % 7 === 0;
+                            // Detectar modo: mensal, semanal ou dias
+                            const isMonthly = iv >= 30 && iv % 30 === 0;
+                            const isWeekly = !isMonthly && iv > 0 && iv % 7 === 0;
+                            setTempMonthly(isMonthly);
+                            setTempMonthsCount(isMonthly ? Math.max(1, Math.round(iv / 30)) : 1);
                             setTempWeekly(isWeekly);
-                            setTempWeeksCount(Math.max(1, Math.round(iv / 7)));
+                            setTempWeeksCount(isWeekly ? Math.max(1, Math.round(iv / 7)) : 1);
                             // Fechar teclado antes de abrir modal de repetição
                             Keyboard.dismiss();
                             setRepeatModalVisible(true);
@@ -5507,7 +5523,14 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
               setCustomDays(tempCustomDays);
               logger.success('REPEAT', `Dias customizados salvos: ${JSON.stringify(tempCustomDays)}`);
             } else if (repeatType === RepeatType.INTERVAL) {
-              const calculatedIntervalDays = Math.max(1, (tempWeekly ? (Math.max(1, tempWeeksCount || 1) * 7) : (tempIntervalDays || 1)));
+              let calculatedIntervalDays: number;
+              if (tempMonthly) {
+                calculatedIntervalDays = Math.max(1, (tempMonthsCount || 1) * 30);
+              } else if (tempWeekly) {
+                calculatedIntervalDays = Math.max(1, (tempWeeksCount || 1) * 7);
+              } else {
+                calculatedIntervalDays = Math.max(1, tempIntervalDays || 1);
+              }
               const calculatedDurationMonths = Math.max(0, tempDurationMonths || 0);
               setIntervalDays(calculatedIntervalDays);
               setDurationMonths(calculatedDurationMonths);
@@ -5527,6 +5550,10 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
           setTempWeekly={setTempWeekly}
           tempWeeksCount={tempWeeksCount}
           setTempWeeksCount={setTempWeeksCount}
+          tempMonthly={tempMonthly}
+          setTempMonthly={setTempMonthly}
+          tempMonthsCount={tempMonthsCount}
+          setTempMonthsCount={setTempMonthsCount}
           activeTheme={activeTheme}
         />
 
