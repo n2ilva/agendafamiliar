@@ -166,15 +166,20 @@ class LocalStorageService {
     return data.families[familyId] || null;
   }
 
-  // Recuperar todas as tarefas do cache
+  // Recuperar todas as tarefas do cache (exclui tarefas deletadas por soft-delete)
   static async getTasks(): Promise<Task[]> {
     const data = await this.getOfflineData();
-    return (Object.values(data.tasks) as Task[]).map(task => this.fixTaskDates(task));
+    const allTasks = (Object.values(data.tasks) as Task[]).map(task => this.fixTaskDates(task));
+    // Filtrar tarefas excluídas (soft-delete)
+    return allTasks.filter(task => {
+      const isDeleted = (task as any).deleted === true || task.status === 'excluida';
+      return !isDeleted;
+    });
   }
 
-  // Recuperar tarefas por família
+  // Recuperar tarefas por família (exclui tarefas deletadas por soft-delete)
   static async getTasksByFamily(familyId: string): Promise<Task[]> {
-    const tasks = await this.getTasks();
+    const tasks = await this.getTasks(); // Já vem filtrado
     const data = await this.getOfflineData();
 
     // Buscar usuários da família
