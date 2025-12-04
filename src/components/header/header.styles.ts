@@ -29,24 +29,10 @@ export const getHeaderStyles = (colors: any) => StyleSheet.create({
     elevation: 3,
     zIndex: 1000,
   },
-  containerOnline: {
-    shadowColor: APP_COLORS.status.success,
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 8,
-  },
-  containerError: {
-    shadowColor: APP_COLORS.status.error,
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 8,
-  },
-  containerOffline: {
-    shadowColor: APP_COLORS.status.warning,
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 8,
-  },
+  // Estilos de status removidos - sombras coloridas desativadas
+  containerOnline: {},
+  containerError: {},
+  containerOffline: {},
   leftSection: {
     flexDirection: 'row',
     alignItems: 'center',
