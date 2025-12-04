@@ -17,6 +17,7 @@ describe('Logger', () => {
       warn: jest.spyOn(console, 'warn').mockImplementation(),
       error: jest.spyOn(console, 'error').mockImplementation(),
     };
+    logger.setMinLevel('debug'); // Enable all logs for testing
   });
 
   afterEach(() => {
@@ -26,34 +27,34 @@ describe('Logger', () => {
 
   describe('log levels', () => {
     it('should log debug messages', () => {
-      logger.debug('Debug message');
+      logger.debug('Test', 'Debug message');
       expect(consoleSpy.log).toHaveBeenCalled();
     });
 
     it('should log info messages', () => {
-      logger.info('Info message');
+      logger.info('Test', 'Info message');
       expect(consoleSpy.log).toHaveBeenCalled();
     });
 
     it('should log warning messages', () => {
-      logger.warn('Warning message');
+      logger.warn('Test', 'Warning message');
       expect(consoleSpy.warn).toHaveBeenCalled();
     });
 
     it('should log error messages', () => {
-      logger.error('Error message');
+      logger.error('Test', 'Error message');
       expect(consoleSpy.error).toHaveBeenCalled();
     });
 
     it('should log success messages', () => {
-      logger.success('Success message');
+      logger.success('Test', 'Success message');
       expect(consoleSpy.log).toHaveBeenCalled();
     });
   });
 
   describe('tags', () => {
     it('should include tag in log message', () => {
-      logger.info('Tagged message', 'TestTag');
+      logger.info('TestTag', 'Tagged message');
       expect(consoleSpy.log).toHaveBeenCalledWith(
         expect.stringContaining('[TestTag]'),
         expect.anything()
@@ -63,15 +64,15 @@ describe('Logger', () => {
 
   describe('history', () => {
     it('should store log history', () => {
-      logger.info('First message');
-      logger.warn('Second message');
+      logger.info('Test', 'First message');
+      logger.warn('Test', 'Second message');
       
       const history = logger.getHistory();
       expect(history.length).toBe(2);
     });
 
     it('should clear history', () => {
-      logger.info('Message');
+      logger.info('Test', 'Message');
       logger.clearHistory();
       
       const history = logger.getHistory();
@@ -81,7 +82,7 @@ describe('Logger', () => {
     it('should limit history size', () => {
       // Log more than maxHistory (default 100)
       for (let i = 0; i < 150; i++) {
-        logger.debug(`Message ${i}`);
+        logger.debug('Test', `Message ${i}`);
       }
       
       const history = logger.getHistory();
@@ -89,15 +90,18 @@ describe('Logger', () => {
     });
   });
 
-  describe('filtering', () => {
-    it('should filter history by level', () => {
-      logger.info('Info message');
-      logger.warn('Warning message');
-      logger.error('Error message');
+  describe('min level filtering', () => {
+    it('should filter based on min level', () => {
+      logger.setMinLevel('warn');
       
-      const warnings = logger.getHistory('warn');
-      expect(warnings.length).toBe(1);
-      expect(warnings[0].level).toBe('warn');
+      logger.debug('Test', 'Debug message');
+      logger.info('Test', 'Info message');
+      
+      // Debug and info should not be logged when minLevel is warn
+      expect(consoleSpy.log).not.toHaveBeenCalled();
+      
+      logger.warn('Test', 'Warning message');
+      expect(consoleSpy.warn).toHaveBeenCalled();
     });
   });
 });

@@ -9,6 +9,7 @@
       "esnext",
       "dom"
     ],
+    "types": ["jest"],
     "baseUrl": ".",
     "paths": {
       "~/*": [
@@ -29,13 +30,6 @@
     "**/*.tsx"
   ],
   "exclude": [
-    "node_modules",
-    "**/__tests__/**",
-    "**/*.test.ts",
-    "**/*.test.tsx",
-    "**/*.spec.ts",
-    "**/*.spec.tsx",
-    "jest.config.js",
-    "jest.setup.js"
+    "node_modules"
   ]
 }
