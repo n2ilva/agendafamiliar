@@ -21,14 +21,14 @@ import {
   Timestamp,
   writeBatch,
 } from 'firebase/firestore';
-import { firebaseFirestore } from '../../../config/firebase.config';
+import { firebaseFirestore } from '../../config/firebase.config';
 
 const firestore = firebaseFirestore as any;
 import {
   IHistoryRepository,
   HistoryItem,
   HistoryAction,
-} from '../../interfaces/repositories/IHistoryRepository';
+} from '../../core/interfaces/repositories/IHistoryRepository';
 
 export class FirestoreHistoryRepository implements IHistoryRepository {
   private readonly collectionName = 'history';

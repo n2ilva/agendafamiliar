@@ -20,10 +20,10 @@ import {
   Query,
   DocumentData,
 } from 'firebase/firestore';
-import { ITaskRepository, TaskFilters } from '../../interfaces/repositories/ITaskRepository';
-import { Task, TaskProps } from '../../domain/entities/Task';
-import { TaskStatus } from '../../domain/value-objects/TaskStatus';
-import { DateRange } from '../../domain/value-objects/DateRange';
+import { ITaskRepository, TaskFilters } from '../../core/interfaces/repositories/ITaskRepository';
+import { Task, TaskProps } from '../../core/domain/entities/Task';
+import { TaskStatus } from '../../core/domain/value-objects/TaskStatus';
+import { DateRange } from '../../core/domain/value-objects/DateRange';
 
 export class FirestoreTaskRepository implements ITaskRepository {
   private readonly collectionName = 'tasks';

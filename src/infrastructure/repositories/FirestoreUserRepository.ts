@@ -5,9 +5,9 @@
  * - Implementa a interface IUserRepository
  */
 
-import { IUserRepository } from '../../interfaces/repositories/IUserRepository';
-import { User, UserProps } from '../../domain/entities/User';
-import { UserRole } from '../../domain/value-objects/UserRole';
+import { IUserRepository } from '../../core/interfaces/repositories/IUserRepository';
+import { User, UserProps } from '../../core/domain/entities/User';
+import { UserRole } from '../../core/domain/value-objects/UserRole';
 
 export class FirestoreUserRepository implements IUserRepository {
   private readonly collectionName = 'users';

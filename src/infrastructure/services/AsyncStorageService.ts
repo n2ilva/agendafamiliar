@@ -12,7 +12,7 @@ import {
   IStorageService,
   StorageOptions,
   CacheInfo,
-} from '../../interfaces/services/IStorageService';
+} from '../../core/interfaces/services/IStorageService';
 
 interface StorageItem<T> {
   value: T;

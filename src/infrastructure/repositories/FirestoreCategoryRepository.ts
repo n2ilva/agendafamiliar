@@ -18,11 +18,11 @@ import {
   where,
   onSnapshot,
 } from 'firebase/firestore';
-import { firebaseFirestore } from '../../../config/firebase.config';
+import { firebaseFirestore } from '../../config/firebase.config';
 
 const firestore = firebaseFirestore as any;
-import { ICategoryRepository } from '../../interfaces/repositories/ICategoryRepository';
-import { Category, CategoryProps } from '../../domain/entities/Category';
+import { ICategoryRepository } from '../../core/interfaces/repositories/ICategoryRepository';
+import { Category, CategoryProps } from '../../core/domain/entities/Category';
 
 // Categorias padrão do sistema - inicializadas via getters
 let _defaultCategories: Category[] | null = null;

@@ -15,7 +15,7 @@ import { LoginScreen } from './screens/login/LoginScreen';
 import FamilySetupScreen from './screens/family-setup/FamilySetupScreen';
 import { LoadingScreen } from './components/common/LoadingScreen';
 import { SyncSystemBarsAndroid } from './components/common/SyncSystemBars';
-import { BackgroundSyncService } from './core/infrastructure/services';
+import { BackgroundSyncService } from './infrastructure/services';
 
 function AppContent() {
   const {

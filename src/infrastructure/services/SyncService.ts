@@ -15,8 +15,8 @@ import {
   OperationType,
   EntityType,
   ConflictResolution,
-} from '../../interfaces/services/ISyncService';
-import { IStorageService } from '../../interfaces/services/IStorageService';
+} from '../../core/interfaces/services/ISyncService';
+import { IStorageService } from '../../core/interfaces/services/IStorageService';
 
 export class SyncService implements ISyncService {
   private isOnlineState: boolean = true;

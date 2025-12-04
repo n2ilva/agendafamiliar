@@ -29,7 +29,7 @@ import {
   FirestoreApprovalRepository,
   FirestoreCategoryRepository,
   FirestoreHistoryRepository,
-} from '../core/infrastructure/repositories';
+} from '../infrastructure/repositories';
 
 // Serviços
 import {
@@ -37,7 +37,7 @@ import {
   AsyncStorageService,
   SyncService,
   NotificationService,
-} from '../core/infrastructure/services';
+} from '../infrastructure/services';
 
 // Use Cases - Tasks
 import { CreateTaskUseCase } from '../core/usecases/tasks/CreateTaskUseCase';

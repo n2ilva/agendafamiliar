@@ -21,14 +21,14 @@ import {
   Timestamp,
   getCountFromServer,
 } from 'firebase/firestore';
-import { firebaseFirestore } from '../../../config/firebase.config';
+import { firebaseFirestore } from '../../config/firebase.config';
 
 const firestore = firebaseFirestore as any;
 import {
   IApprovalRepository,
   ApprovalRequest,
   ApprovalStatus,
-} from '../../interfaces/repositories/IApprovalRepository';
+} from '../../core/interfaces/repositories/IApprovalRepository';
 
 export class FirestoreApprovalRepository implements IApprovalRepository {
   private readonly collectionName = 'approvals';

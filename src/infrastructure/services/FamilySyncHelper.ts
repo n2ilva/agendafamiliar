@@ -1,8 +1,8 @@
 import { ConnectivityService } from './ConnectivityService';
-import { ITaskRepository } from '../../interfaces/repositories/ITaskRepository';
-import { IStorageService } from '../../interfaces/services/IStorageService';
-import { ISyncService } from '../../interfaces/services/ISyncService';
-import { Task } from '../../domain/entities/Task';
+import { ITaskRepository } from '../../core/interfaces/repositories/ITaskRepository';
+import { IStorageService } from '../../core/interfaces/services/IStorageService';
+import { ISyncService } from '../../core/interfaces/services/ISyncService';
+import { Task } from '../../core/domain/entities/Task';
 
 /**
  * Helper de Sincronização de Família - Clean Architecture

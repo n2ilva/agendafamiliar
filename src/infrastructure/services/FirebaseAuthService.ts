@@ -19,15 +19,15 @@ import {
   User as FirebaseUser,
 } from 'firebase/auth';
 import { doc, setDoc, getDoc, updateDoc } from 'firebase/firestore';
-import { firebaseAuth, firebaseFirestore } from '../../../config/firebase.config';
+import { firebaseAuth, firebaseFirestore } from '../../config/firebase.config';
 import {
   IAuthService,
   AuthUser,
   LoginResult,
   RegisterResult,
   AuthProvider,
-} from '../../interfaces/services/IAuthService';
-import { User } from '../../domain/entities/User';
+} from '../../core/interfaces/services/IAuthService';
+import { User } from '../../core/domain/entities/User';
 
 export class FirebaseAuthService implements IAuthService {
   private auth: any;

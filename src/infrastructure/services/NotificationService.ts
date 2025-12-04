@@ -14,8 +14,8 @@ import {
   NotificationPayload,
   NotificationRequest,
   ScheduledNotification,
-} from '../../interfaces/services/INotificationService';
-import { Task } from '../../domain/entities/Task';
+} from '../../core/interfaces/services/INotificationService';
+import { Task } from '../../core/domain/entities/Task';
 
 // Configuração do comportamento de notificações
 Notifications.setNotificationHandler({

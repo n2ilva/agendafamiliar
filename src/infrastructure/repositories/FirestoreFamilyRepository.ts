@@ -5,9 +5,9 @@
  * - Implementa a interface IFamilyRepository
  */
 
-import { IFamilyRepository } from '../../interfaces/repositories/IFamilyRepository';
-import { Family, FamilyProps, FamilyMember } from '../../domain/entities/Family';
-import { RolePermissions } from '../../domain/value-objects/UserRole';
+import { IFamilyRepository } from '../../core/interfaces/repositories/IFamilyRepository';
+import { Family, FamilyProps, FamilyMember } from '../../core/domain/entities/Family';
+import { RolePermissions } from '../../core/domain/value-objects/UserRole';
 
 export class FirestoreFamilyRepository implements IFamilyRepository {
   private readonly collectionName = 'families';
