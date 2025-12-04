@@ -1088,9 +1088,6 @@ export async function cleanupOrphanedNotifications(activeTaskIds: string[]) {
         }
       }
 
-      if (cleanedCount > 0) {
-        `);
-      }
       return;
     }
 
@@ -1104,12 +1101,6 @@ export async function cleanupOrphanedNotifications(activeTaskIds: string[]) {
         await cancelTaskReminder(taskId);
         cleanedCount++;
       }
-    }
-
-    if (cleanedCount > 0) {
-      `);
-    } else {
-      
     }
 
   } catch (e) {

@@ -99,9 +99,7 @@ function getFirestoreInstance() {
       try {
         // Ignorar erros de múltiplas abas: o app continua funcionando sem persistência
         // @ts-ignore
-        enableIndexedDbPersistence(_db).then(() => {
-          habilitada no web');
-        }).catch((e: any) => {
+        enableIndexedDbPersistence(_db).catch((e: any) => {
           console.warn('ℹ️ Firestore persistence não habilitada (provável múltiplas abas):', e?.code || e);
         });
       } catch (e) {
