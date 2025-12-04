@@ -153,41 +153,57 @@ export default function FamilySetupScreen({
   const ChooseStep = () => (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Ionicons name="people" size={60} color={APP_COLORS.primary.main} />
+        <View style={styles.iconContainer}>
+          <Ionicons name="people" size={48} color={APP_COLORS.primary.main} />
+        </View>
         <Text style={styles.title}>Bem-vindo!</Text>
-        <Text style={styles.subtitle}>Escolha uma opção para começar:</Text>
+        <Text style={styles.subtitle}>
+          Para começar, escolha uma das opções abaixo
+        </Text>
       </View>
 
       <View style={styles.optionsContainer}>
         <Pressable
           style={({ pressed }) => [
             styles.roleOption,
+            styles.roleOptionCreate,
             Platform.OS === 'web' && styles.roleOptionWeb,
-            pressed && { opacity: 0.7, transform: [{ scale: 0.98 }] }
+            pressed && { opacity: 0.9, transform: [{ scale: 0.98 }] }
           ]}
           onPress={() => goTo('create')}
           android_ripple={{ color: 'rgba(0, 122, 255, 0.1)' }}
         >
-          <Ionicons name="person-circle" size={40} color="#007AFF" />
+          <View style={[styles.roleIconContainer, styles.roleIconContainerCreate]}>
+            <Ionicons name="add-circle" size={32} color={APP_COLORS.primary.main} />
+          </View>
           <Text style={styles.roleTitle}>Criar nova família</Text>
           <Text style={styles.roleDescription}>
-            Crie uma nova família e seja o administrador
+            Crie um grupo familiar e convide seus familiares para participar
           </Text>
         </Pressable>
+
+        <View style={styles.divider}>
+          <View style={styles.dividerLine} />
+          <Text style={styles.dividerText}>ou</Text>
+          <View style={styles.dividerLine} />
+        </View>
 
         <Pressable
           style={({ pressed }) => [
             styles.roleOption,
+            styles.roleOptionJoin,
             Platform.OS === 'web' && styles.roleOptionWeb,
-            pressed && { opacity: 0.7, transform: [{ scale: 0.98 }] }
+            pressed && { opacity: 0.9, transform: [{ scale: 0.98 }] }
           ]}
           onPress={() => goTo('join')}
           android_ripple={{ color: 'rgba(52, 199, 89, 0.1)' }}
         >
-          <Ionicons name="person" size={40} color="#34C759" />
+          <View style={[styles.roleIconContainer, styles.roleIconContainerJoin]}>
+            <Ionicons name="enter" size={32} color="#34C759" />
+          </View>
           <Text style={styles.roleTitle}>Entrar em uma família</Text>
           <Text style={styles.roleDescription}>
-            Use o código da família para entrar como dependente
+            Use o código de convite compartilhado por um familiar
           </Text>
         </Pressable>
       </View>
@@ -196,8 +212,8 @@ export default function FamilySetupScreen({
         style={({ pressed }) => [styles.logoutButton, pressed && { opacity: 0.7 }]}
         onPress={onLogout}
       >
-        <Ionicons name="log-out-outline" size={20} color={APP_COLORS.text.secondary} />
-        <Text style={styles.logoutButtonText}>Entrar com outro email</Text>
+        <Ionicons name="swap-horizontal-outline" size={20} color={APP_COLORS.text.secondary} />
+        <Text style={styles.logoutButtonText}>Usar outro email</Text>
       </Pressable>
     </View>
   );
@@ -209,36 +225,56 @@ export default function FamilySetupScreen({
         <Pressable style={styles.backButton} onPress={goBack}>
           <Ionicons name="arrow-back" size={24} color={APP_COLORS.primary.main} />
         </Pressable>
-        <Ionicons name="home" size={60} color={APP_COLORS.primary.main} />
-        <Text style={styles.title}>Criar Família</Text>
-        <Text style={styles.subtitle}>Insira o nome da sua família:</Text>
+        <View style={styles.iconContainer}>
+          <Ionicons name="home" size={48} color={APP_COLORS.primary.main} />
+        </View>
+        <Text style={styles.title}>Nova Família</Text>
+        <Text style={styles.subtitle}>
+          Escolha um nome para identificar sua família no app
+        </Text>
       </View>
 
       <View style={styles.formContainer}>
-        <TextInput
-          style={styles.input}
-          placeholder="Nome da família"
-          placeholderTextColor="#999"
-          value={state.familyName}
-          onChangeText={(name) => setState(prev => ({ ...prev, familyName: name }))}
-          maxLength={50}
-          editable={!state.isLoading}
-        />
+        <View style={styles.inputContainer}>
+          <Text style={styles.inputLabel}>Nome da família</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Ex: Família Silva"
+            placeholderTextColor="#999"
+            value={state.familyName}
+            onChangeText={(name) => setState(prev => ({ ...prev, familyName: name }))}
+            maxLength={50}
+            editable={!state.isLoading}
+            autoFocus
+          />
+        </View>
 
         <Pressable
-          style={[styles.primaryButton, state.isLoading && styles.disabledButton]}
+          style={({ pressed }) => [
+            styles.primaryButton, 
+            state.isLoading && styles.disabledButton,
+            pressed && !state.isLoading && { opacity: 0.9, transform: [{ scale: 0.98 }] }
+          ]}
           onPress={handleCreateFamily}
           disabled={state.isLoading}
         >
-          <Text style={styles.primaryButtonText}>
-            {state.isLoading ? 'Criando...' : 'Criar Família'}
-          </Text>
+          {state.isLoading ? (
+            <Text style={styles.primaryButtonText}>Criando...</Text>
+          ) : (
+            <>
+              <Ionicons name="checkmark-circle" size={20} color="white" />
+              <Text style={styles.primaryButtonText}>Criar Família</Text>
+            </>
+          )}
         </Pressable>
 
         {state.lastInviteCode && (
           <View style={styles.inviteCodeBoxInline}>
-            <Text style={styles.inviteCodeLabelInline}>Código gerado:</Text>
+            <Text style={styles.inviteCodeLabelInline}>🎉 Código de convite gerado:</Text>
             <Text style={styles.inviteCodeTextInline}>{state.lastInviteCode}</Text>
+            <Text style={styles.helpText}>
+              Compartilhe este código com seus familiares
+            </Text>
           </View>
         )}
       </View>
@@ -252,33 +288,54 @@ export default function FamilySetupScreen({
         <Pressable style={styles.backButton} onPress={goBack}>
           <Ionicons name="arrow-back" size={24} color={APP_COLORS.primary.main} />
         </Pressable>
-        <Ionicons name="enter" size={60} color={APP_COLORS.status.warning} />
+        <View style={styles.iconContainer}>
+          <Ionicons name="enter" size={48} color={APP_COLORS.status.warning} />
+        </View>
         <Text style={styles.title}>Entrar na Família</Text>
-        <Text style={styles.subtitle}>Insira o código da família:</Text>
+        <Text style={styles.subtitle}>
+          Digite o código de 6 caracteres que você recebeu
+        </Text>
       </View>
 
       <View style={styles.formContainer}>
-        <TextInput
-          style={styles.input}
-          placeholder="Código da família (6 caracteres)"
-          placeholderTextColor="#999"
-          value={state.familyCode}
-          onChangeText={handleCodeChange}
-          maxLength={6}
-          autoCapitalize="characters"
-          autoCorrect={false}
-          editable={!state.isLoading}
-        />
+        <View style={styles.inputContainer}>
+          <Text style={styles.inputLabel}>Código de convite</Text>
+          <TextInput
+            style={[styles.input, styles.codeInput]}
+            placeholder="ABC123"
+            placeholderTextColor="#ccc"
+            value={state.familyCode}
+            onChangeText={handleCodeChange}
+            maxLength={6}
+            autoCapitalize="characters"
+            autoCorrect={false}
+            editable={!state.isLoading}
+            autoFocus
+          />
+        </View>
 
         <Pressable
-          style={[styles.primaryButton, state.isLoading && styles.disabledButton]}
+          style={({ pressed }) => [
+            styles.primaryButton, 
+            state.isLoading && styles.disabledButton,
+            pressed && !state.isLoading && { opacity: 0.9, transform: [{ scale: 0.98 }] }
+          ]}
           onPress={handleJoinFamily}
           disabled={state.isLoading}
         >
-          <Text style={styles.primaryButtonText}>
-            {state.isLoading ? 'Entrando...' : 'Entrar na Família'}
-          </Text>
+          {state.isLoading ? (
+            <Text style={styles.primaryButtonText}>Entrando...</Text>
+          ) : (
+            <>
+              <Ionicons name="log-in" size={20} color="white" />
+              <Text style={styles.primaryButtonText}>Entrar na Família</Text>
+            </>
+          )}
         </Pressable>
+
+        <Text style={styles.helpText}>
+          Peça o código para o administrador da família
+        </Text>
       </View>
     </View>
   );
