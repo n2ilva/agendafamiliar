@@ -219,7 +219,6 @@ class LocalFamilyService {
     }, (err: any) => {
       // Erros de permissão são esperados se o usuário ainda não é membro ou perdeu acesso
       if (err?.code === 'permission-denied') {
-        ');
         callback([]); // Retorna lista vazia em vez de deixar o listener quebrado
       } else {
         console.warn('[subscribeToFamilyMembers] onSnapshot error:', err);
