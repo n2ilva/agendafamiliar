@@ -1,3 +1,12 @@
+/**
+ * @deprecated Use os Use Cases em /core/usecases/family em vez deste serviço:
+ * - CreateFamilyUseCase para criar família
+ * - JoinFamilyUseCase para entrar na família
+ * - LeaveFamilyUseCase para sair da família
+ * - UpdateMemberRoleUseCase para alterar role
+ * 
+ * Ver: src/services/MIGRATION_GUIDE.md
+ */
 import { Family, FamilyUser, Task } from '../../types/family.types';
 import { firebaseFirestore, firebaseAuth } from '../../config/firebase.config';
 import {

@@ -1,3 +1,13 @@
+/**
+ * @deprecated Use os Use Cases em /core/usecases/tasks em vez deste serviço:
+ * - CreateTaskUseCase para criar tarefas
+ * - UpdateTaskUseCase para atualizar tarefas
+ * - DeleteTaskUseCase para excluir tarefas
+ * - GetTasksUseCase para carregar tarefas
+ * - CompleteTaskUseCase para completar tarefas
+ * 
+ * Ver: src/services/MIGRATION_GUIDE.md
+ */
 import { firebaseFirestore, firebaseAuth } from '../../config/firebase.config';
 import {
   collection,

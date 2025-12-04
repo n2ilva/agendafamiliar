@@ -1,3 +1,18 @@
+/**
+ * @deprecated Tipos legados - Migrar gradualmente para /core/domain/entities
+ * 
+ * Mapeamento de migração:
+ * - Task → /core/domain/entities/Task
+ * - Family → /core/domain/entities/Family  
+ * - FamilyUser → /core/domain/entities/User
+ * - CategoryConfig → /core/domain/entities/Category
+ * - TaskStatus → /core/domain/value-objects/TaskStatus
+ * - UserRole → /core/domain/value-objects/UserRole
+ * - RepeatType, RepeatConfig → /core/domain/value-objects/RepeatConfig
+ * 
+ * Ver: src/services/MIGRATION_GUIDE.md
+ */
+
 export type UserRole = 'admin' | 'dependente';
 
 export type TaskStatus = 'pendente' | 'concluida' | 'pendente_aprovacao' | 'aprovada' | 'rejeitada' | 'excluida' | 'cancelada';

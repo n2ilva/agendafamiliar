@@ -1,3 +1,11 @@
+/**
+ * @deprecated Use os Use Cases em /core/usecases/auth em vez deste serviço:
+ * - RegisterUseCase para registerUser
+ * - LoginUseCase para loginUser  
+ * - ResetPasswordUseCase para resetPassword
+ * 
+ * Ver: src/services/MIGRATION_GUIDE.md
+ */
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 import { collection, doc, setDoc } from 'firebase/firestore';
 import { firebaseAuth, firebaseFirestore } from '../../config/firebase.config';
