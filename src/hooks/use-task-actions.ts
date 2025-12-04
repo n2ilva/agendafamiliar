@@ -306,7 +306,7 @@ export function useTaskActions({
                                 deletedAt: new Date()
                             };
                             
-                            setTasks(prev => prev.map(t => t.id === taskId ? deletedTask : t));
+                            setTasks(prev => prev.filter(t => t.id !== taskId));
 
                             await NotificationService.cancelTaskReminder(taskId).catch(() => { });
                             try {
