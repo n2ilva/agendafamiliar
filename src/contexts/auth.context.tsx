@@ -113,7 +113,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // ============= FAMILY SYNC =============
   const syncUserFamily = async (userData: FamilyUser): Promise<boolean> => {
-    // Evitar sincronizações duplicadas
     if (syncInProgressRef.current) {
       console.log('⏭️ Sync de família já em andamento, pulando...');
       return !!userData.familyId;
@@ -122,39 +121,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     syncInProgressRef.current = true;
 
     try {
-      // Se já tem familyId salvo, considera configurado (otimização para abertura rápida)
       if (userData.familyId) {
         console.log('🏠 Usuário já possui familyId:', userData.familyId);
 
-        // Tentar sincronizar em background, mas não bloquear
         try {
           const userFamily = await familyService.getUserFamily(userData.id);
           if (userFamily) {
-            // Sincronizar role e profileIcon silenciosamente
             const member = userFamily.members.find(m => m.id === userData.id);
             if (member) {
-              // Sincronizar role
               if (member.role && member.role !== userData.role) {
                 userData.role = member.role;
                 try {
                   await LocalAuthService.updateUserRole(userData.id, member.role);
                 } catch { }
               }
-              // Sincronizar profileIcon
               if (member.profileIcon && member.profileIcon !== userData.profileIcon) {
                 userData.profileIcon = member.profileIcon;
                 console.log('🎨 ProfileIcon sincronizado da família:', member.profileIcon);
               }
             }
+            console.log('✅ Família confirmada:', userFamily.name);
+            return true;
+          } else {
+            console.warn('⚠️ Família não encontrada no Firebase, mas familyId existe localmente');
+            return true;
           }
         } catch (error) {
-          console.warn('⚠️ Sync em background falhou, usando dados locais');
+          console.warn('⚠️ Sync em background falhou, mantendo familyId local:', error);
+          return true;
         }
-
-        return true;
       }
 
-      // Sem familyId local, buscar no Firebase
+      console.log('🔍 Buscando família no Firebase para usuário:', userData.id);
       const userFamily = await familyService.getUserFamily(userData.id);
 
       if (!userFamily) {
@@ -165,17 +163,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.log('🏠 Família encontrada:', userFamily.name);
       userData.familyId = userFamily.id;
 
-      // Sincronizar role e profileIcon silenciosamente
       const member = userFamily.members.find(m => m.id === userData.id);
       if (member) {
-        // Sincronizar role
         if (member.role && member.role !== userData.role) {
           userData.role = member.role;
           try {
             await LocalAuthService.updateUserRole(userData.id, member.role);
           } catch { }
         }
-        // Sincronizar profileIcon
         if (member.profileIcon && member.profileIcon !== userData.profileIcon) {
           userData.profileIcon = member.profileIcon;
           console.log('🎨 ProfileIcon sincronizado da família:', member.profileIcon);
@@ -185,8 +180,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return true;
     } catch (error) {
       console.error('❌ Erro ao sincronizar família:', error);
-      // Se já tinha familyId, considera configurado mesmo com erro
-      return !!userData.familyId;
+      if (userData.familyId) {
+        console.log('ℹ️ Mantendo familyId local apesar do erro:', userData.familyId);
+        return true;
+      }
+      return false;
     } finally {
       syncInProgressRef.current = false;
     }

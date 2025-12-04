@@ -226,13 +226,12 @@ class LocalFamilyService {
 
   async getUserFamily(userId: string): Promise<Family | null> {
     try {
-      // Verificar cache
       const cached = this.userFamilyCache.get(userId);
       if (cached && (Date.now() - cached.timestamp) < this.CACHE_TTL) {
+        console.log('📦 Retornando família do cache para:', userId);
         return cached.family;
       }
 
-      // Guard: verifica se há autenticação do Firebase antes de tentar query
       const auth = firebaseAuth() as any;
       if (!auth || !auth.currentUser) {
         console.log('⚠️ getUserFamily: sem usuário autenticado no Firebase, retornando null');
@@ -241,7 +240,6 @@ class LocalFamilyService {
 
       const db = this.getFirestore();
 
-      // Usar collectionGroup para buscar em todas as subcoleções "members"
       const membersQuery = query(
         collectionGroup(db, 'members'),
         where('id', '==', userId)
@@ -250,12 +248,34 @@ class LocalFamilyService {
       const memberSnap = await getDocs(membersQuery);
 
       if (memberSnap.empty) {
+        console.log('⚠️ Nenhuma família encontrada por userId, tentando buscar por email...');
+        
+        const userEmail = auth.currentUser.email;
+        if (userEmail) {
+          const emailQuery = query(
+            collectionGroup(db, 'members'),
+            where('email', '==', userEmail)
+          );
+          
+          const emailSnap = await getDocs(emailQuery);
+          
+          if (!emailSnap.empty) {
+            console.log('✅ Família encontrada pelo email:', userEmail);
+            const memberDoc = emailSnap.docs[0];
+            const memberData = memberDoc.data() as { familyId: string };
+            const familyId = memberData.familyId;
+            const family = await this.getFamilyById(familyId);
+            
+            this.userFamilyCache.set(userId, { family, timestamp: Date.now() });
+            return family;
+          }
+        }
+        
         console.log('❌ Usuário não pertence a nenhuma família');
         this.userFamilyCache.set(userId, { family: null, timestamp: Date.now() });
         return null;
       }
 
-      // Pegar o ID da família do primeiro resultado
       const memberDoc = memberSnap.docs[0];
       const memberData = memberDoc.data() as { familyId: string };
 
@@ -264,7 +284,6 @@ class LocalFamilyService {
       console.log('✅ Família do usuário encontrada:', familyId);
       const family = await this.getFamilyById(familyId);
       
-      // Atualizar cache
       this.userFamilyCache.set(userId, { family, timestamp: Date.now() });
       
       return family;
