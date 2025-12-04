@@ -306,6 +306,8 @@ export function useTaskActions({
                                 deletedAt: new Date()
                             };
                             
+                            logger.info('DELETE_TASK', `Iniciando exclusão da tarefa: ${taskId} - ${task.title}`);
+                            
                             setTasks(prev => prev.filter(t => t.id !== taskId));
 
                             await NotificationService.cancelTaskReminder(taskId).catch(() => { });
@@ -314,12 +316,18 @@ export function useTaskActions({
                             } catch (e) { }
 
                             const remoteTask = taskToRemoteTask(deletedTask as any, currentFamily?.id);
+                            
+                            logger.debug('DELETE_TASK', `RemoteTask criado com deleted=${(remoteTask as any).deleted}, status=${(remoteTask as any).status}`);
+                            
                             await LocalStorageService.saveTask(remoteTask as any);
+                            logger.debug('DELETE_TASK', 'Tarefa excluída salva no LocalStorage');
+                            
                             await SyncService.addOfflineOperation('update', 'tasks', remoteTask);
 
                             if (!isOffline) {
                                 try {
                                     await FirestoreService.saveTask(remoteTask as any);
+                                    logger.info('DELETE_TASK', `✅ Tarefa ${taskId} marcada como excluída no Firebase`);
                                 } catch (e) {
                                     logger.error('DELETE_TASK', 'Erro ao salvar tarefa excluída no Firebase', e);
                                     if (currentFamily && isFamilyTask) {
@@ -329,6 +337,8 @@ export function useTaskActions({
                                     }
                                     await SyncService.addOfflineOperation('update', 'tasks', remoteTask);
                                 }
+                            } else {
+                                logger.warn('DELETE_TASK', 'Offline - tarefa será sincronizada quando online');
                             }
 
                             await addToHistory('deleted', task.title, taskId);

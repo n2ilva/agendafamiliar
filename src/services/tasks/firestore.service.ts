@@ -339,6 +339,10 @@ export const FirestoreService = {
       snapshots.forEach(snap => {
         iterateSnap(snap, (docSnap: any) => {
           const data = docSnap.data() as any;
+          // Filtrar tarefas excluídas (soft-delete)
+          if (data.deleted === true || data.status === 'excluida') {
+            return; // Ignorar tarefa excluída
+          }
           // Filtrar tarefas concluídas há mais de 7 dias
           if (data.completed && data.completedAt) {
             const completedDate = data.completedAt.toDate ? data.completedAt.toDate() : new Date(data.completedAt);
@@ -410,6 +414,10 @@ export const FirestoreService = {
       snapshots.forEach(snap => {
         iterateSnap(snap, (docSnap: any) => {
           const data = docSnap.data() as any;
+          // Filtrar tarefas excluídas (soft-delete)
+          if (data.deleted === true || data.status === 'excluida') {
+            return; // Ignorar tarefa excluída
+          }
           // Filtrar tarefas concluídas há mais de 7 dias
           if (data.completed && data.completedAt) {
             const completedDate = data.completedAt.toDate ? data.completedAt.toDate() : new Date(data.completedAt);
@@ -447,7 +455,12 @@ export const FirestoreService = {
       segments.user.forEach((value, key) => merged.set(key, value));
       const all = Array.from(merged.values());
       // Filtro defensivo: nunca emitir tarefas privadas de outros usuários
-      const filtered = all.filter(t => !(t?.private === true && t?.createdBy !== userId));
+      // Filtro de tarefas excluídas (soft-delete)
+      const filtered = all.filter(t => {
+        if (t?.private === true && t?.createdBy !== userId) return false;
+        if (t?.deleted === true || t?.status === 'excluida') return false;
+        return true;
+      });
       callback(sortTasksByUpdatedAt(filtered));
     };
 

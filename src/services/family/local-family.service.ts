@@ -561,11 +561,25 @@ class LocalFamilyService {
           createdAt: data.createdAt?.toDate?.() || new Date(data.createdAt),
           updatedAt: data.updatedAt?.toDate?.() || new Date(data.updatedAt),
           editedAt: data.editedAt?.toDate?.() || null,
-          completedAt: data.completedAt?.toDate?.() || null
+          completedAt: data.completedAt?.toDate?.() || null,
+          deletedAt: data.deletedAt?.toDate?.() || null
         } as Task;
       });
 
       let tasks = snapshots.flatMap(processSnap);
+      
+      // ⚠️ Filtrar tarefas excluídas (soft-delete) - IMPORTANTE para evitar que tarefas voltem após exclusão
+      const beforeFilter = tasks.length;
+      tasks = tasks.filter(t => {
+        const isDeleted = (t as any).deleted === true || t.status === 'excluida';
+        if (isDeleted) {
+          console.log(`🗑️ [getFamilyTasks] Tarefa excluída filtrada: ${t.id} - ${t.title}`);
+        }
+        return !isDeleted;
+      });
+      if (tasks.length !== beforeFilter) {
+        console.log(`🗑️ [getFamilyTasks] ${beforeFilter - tasks.length} tarefas excluídas filtradas`);
+      }
 
       // Remover duplicatas caso uma tarefa seja acidentalmente marcada de forma inconsistente
       const uniqueTasks = Array.from(new Map(tasks.map(t => [t.id, t])).values());
