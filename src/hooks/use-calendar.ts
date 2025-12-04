@@ -59,6 +59,9 @@ export const useCalendarLogic = (
   // Filtrar tarefas baseado no filtro selecionado
   const filteredTasks = useMemo(() => {
     return tasks.filter((task: any) => {
+      // Ignorar tarefas excluídas
+      if (task.deleted === true || task.status === 'excluida') return false;
+      
       const dateObj = parseDueDate(task.dueDate);
       if (!dateObj) return false;
       
