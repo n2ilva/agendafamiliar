@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, memo } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -85,7 +85,7 @@ interface TaskItemProps {
     myEffectivePerms?: MemberPermissions | null;
 }
 
-export const TaskItem: React.FC<TaskItemProps> = ({
+const TaskItemComponent: React.FC<TaskItemProps> = ({
     item,
     user,
     activeTheme,
@@ -815,4 +815,21 @@ const getStyles = (activeTheme: string) => StyleSheet.create({
         fontWeight: '600',
         color: APP_COLORS.text.white,
     },
+});
+
+// Memoized export com comparação customizada para evitar re-renders
+export const TaskItem = memo(TaskItemComponent, (prevProps, nextProps) => {
+    // Comparação profunda apenas dos campos que realmente afetam a renderização
+    return (
+        prevProps.item.id === nextProps.item.id &&
+        prevProps.item.completed === nextProps.item.completed &&
+        prevProps.item.status === nextProps.item.status &&
+        prevProps.item.title === nextProps.item.title &&
+        prevProps.item.unlocked === nextProps.item.unlocked &&
+        prevProps.isCollapsed === nextProps.isCollapsed &&
+        prevProps.activeTheme === nextProps.activeTheme &&
+        prevProps.activeTab === nextProps.activeTab &&
+        prevProps.user.id === nextProps.user.id &&
+        JSON.stringify(prevProps.item.subtasks) === JSON.stringify(nextProps.item.subtasks)
+    );
 });

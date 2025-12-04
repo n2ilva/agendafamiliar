@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, memo, useCallback, useMemo } from 'react';
 import {
   View, Text, StyleSheet, Modal, KeyboardAvoidingView, ScrollView,
   TextInput, Pressable, Platform, Alert, Keyboard, ActivityIndicator
@@ -34,7 +34,7 @@ interface TaskModalProps {
   isAddingTask: boolean;
 }
 
-export const TaskModal = ({
+const TaskModalComponent = ({
   visible,
   onClose,
   initialTask,
@@ -1004,5 +1004,15 @@ const styles = StyleSheet.create({
   intervalInputContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 20, marginBottom: 16 },
   intervalButton: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center', backgroundColor: APP_COLORS.background.lightGray, borderRadius: 20 },
   intervalValue: { fontSize: 16, fontWeight: '600', color: APP_COLORS.text.primary, minWidth: 100, textAlign: 'center' },
+});
+
+// Export memoizado para evitar re-renders desnecessários
+export const TaskModal = memo(TaskModalComponent, (prevProps, nextProps) => {
+  return (
+    prevProps.visible === nextProps.visible &&
+    prevProps.isAddingTask === nextProps.isAddingTask &&
+    prevProps.initialTask?.id === nextProps.initialTask?.id &&
+    prevProps.categories.length === nextProps.categories.length
+  );
 });
 
