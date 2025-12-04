@@ -10,6 +10,9 @@ import { useAuth } from '../contexts/auth.context';
 
 // Funções de conversão (extraídas para fora do componente para serem puras/reutilizáveis)
 export const taskToRemoteTask = (task: Task, familyId: string | undefined): RemoteTask => {
+  // userId é obrigatório - usar createdBy como fallback se userId não estiver definido
+  const userId = task.userId || task.createdBy;
+  
   const remoteTask: any = {
     id: task.id,
     title: task.title,
@@ -27,7 +30,7 @@ export const taskToRemoteTask = (task: Task, familyId: string | undefined): Remo
     repeatIntervalDays: (task as any).repeatIntervalDays || null,
     repeatDurationMonths: (task as any).repeatDurationMonths || null,
     repeatStartDate: (task as any).repeatStartDate || (task as any).createdAt || task.dueDate || null,
-    userId: task.userId,
+    userId: userId,
     familyId: (task as any)?.private === true ? null : (familyId ?? null),
     createdBy: task.createdBy,
     createdByName: task.createdByName,
