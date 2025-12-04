@@ -1,3 +1,17 @@
+/**
+ * AuthContext - Contexto principal de autenticação (COMPATIBILIDADE)
+ * 
+ * Este contexto mantém compatibilidade com código existente.
+ * Para novos componentes, prefira usar os contextos específicos:
+ * 
+ * - useUser() / useCurrentUser() - Para dados do usuário
+ * - useAuthActions() - Para ações (logout, updateProfile, etc)
+ * - useAppState() - Para estados da aplicação (ready states)
+ * 
+ * Isso evita re-renders desnecessários em componentes que não
+ * precisam de todas as informações do contexto.
+ */
+
 import React, { createContext, useState, useEffect, useContext, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FamilyUser, UserRole } from '../types/family.types';
@@ -9,13 +23,12 @@ import SyncService from '../services/sync/sync.service';
 import LocalStorageService from '../services/storage/local-storage.service';
 import Alert from '../utils/helpers/alert';
 
-const USER_STORAGE_KEY = 'familyApp_currentUser';
+// Import dos contextos separados
+import { UserProvider, useUser, useCurrentUser, useIsLoggedIn, useUserFamily, useUserRole } from './user.context';
+import { AuthActionsProvider, useAuthActions, useLogout, useUpdateProfile, useFamilySetup, type UserUpdatePayload } from './auth-actions.context';
+import { AppStateProvider, useAppState, useAppReady, useAuthReady, useDataReady, useIsFullyReady } from './app-state.context';
 
-interface UserUpdatePayload {
-  field: 'name' | 'picture' | 'profileIcon';
-  value: string;
-  historyDetails: string;
-}
+const USER_STORAGE_KEY = 'familyApp_currentUser';
 
 interface AuthContextData {
   user: FamilyUser | null;
@@ -32,6 +45,29 @@ interface AuthContextData {
 }
 
 const AuthContext = createContext<AuthContextData>({} as AuthContextData);
+
+// Re-exportar hooks dos contextos separados para facilitar imports
+export {
+  // User context
+  useUser,
+  useCurrentUser,
+  useIsLoggedIn,
+  useUserFamily,
+  useUserRole,
+  // Auth actions context
+  useAuthActions,
+  useLogout,
+  useUpdateProfile,
+  useFamilySetup,
+  // App state context
+  useAppState,
+  useAppReady,
+  useAuthReady,
+  useDataReady,
+  useIsFullyReady
+};
+
+export type { UserUpdatePayload };
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<FamilyUser | null>(null);
@@ -390,22 +426,45 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [user, saveUserToStorage]);
 
   return (
-    <AuthContext.Provider value={{
-      user,
-      loading,
-      familyConfigured,
-      appIsReady,
-      isAuthReady,
-      isDataReady,
-      updateUserProfile,
-      handleLogout,
-      handleFamilySetup,
-      handleUserRoleChange,
-      setAppIsReady
-    }}>
-      {children}
-    </AuthContext.Provider>
+    <UserProvider user={user} loading={loading} familyConfigured={familyConfigured}>
+      <AuthActionsProvider
+        updateUserProfile={updateUserProfile}
+        handleLogout={handleLogout}
+        handleFamilySetup={handleFamilySetup}
+        handleUserRoleChange={handleUserRoleChange}
+      >
+        <AppStateProvider
+          appIsReady={appIsReady}
+          isAuthReady={isAuthReady}
+          isDataReady={isDataReady}
+          setAppIsReady={setAppIsReady}
+        >
+          {/* Manter AuthContext para compatibilidade com código existente */}
+          <AuthContext.Provider value={{
+            user,
+            loading,
+            familyConfigured,
+            appIsReady,
+            isAuthReady,
+            isDataReady,
+            updateUserProfile,
+            handleLogout,
+            handleFamilySetup,
+            handleUserRoleChange,
+            setAppIsReady
+          }}>
+            {children}
+          </AuthContext.Provider>
+        </AppStateProvider>
+      </AuthActionsProvider>
+    </UserProvider>
   );
 };
 
+/**
+ * @deprecated Use os hooks específicos para melhor performance:
+ * - useUser() - dados do usuário
+ * - useAuthActions() - ações de autenticação  
+ * - useAppState() - estados da aplicação
+ */
 export const useAuth = () => useContext(AuthContext);

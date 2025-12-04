@@ -13,3 +13,4 @@ export {
   TextLineSkeleton,
   FullScreenSkeleton,
 } from './Skeleton';
+export { LazyScreen, usePreloadScreen, clearLazyScreenCache } from './LazyScreen';

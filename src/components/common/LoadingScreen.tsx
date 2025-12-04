@@ -4,12 +4,13 @@ import { APP_COLORS } from '../../constants/colors';
 
 interface LoadingScreenProps {
   colors: any;
+  message?: string;
 }
 
-export const LoadingScreen: React.FC<LoadingScreenProps> = ({ colors }) => (
+export const LoadingScreen: React.FC<LoadingScreenProps> = ({ colors, message = 'Carregando...' }) => (
   <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
     <ActivityIndicator size="large" color={colors.primary} />
-    <Text style={{ marginTop: 10, color: colors.textSecondary }}>Carregando...</Text>
+    <Text style={{ marginTop: 10, color: colors.textSecondary }}>{message}</Text>
   </View>
 );
 
