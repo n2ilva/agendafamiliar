@@ -645,6 +645,7 @@ class LocalFamilyService {
 
       const historyItem = {
         ...base,
+        timestamp: item.timestamp ? Timestamp.fromDate(new Date(item.timestamp)) : Timestamp.now(),
         createdAt: item.createdAt ? Timestamp.fromDate(new Date(item.createdAt)) : Timestamp.now()
       } as any;
 

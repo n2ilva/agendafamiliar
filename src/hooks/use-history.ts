@@ -87,7 +87,8 @@ export function useHistory(user: any, currentFamily: any, isOffline: boolean) {
                     userId: historyItem.userId,
                     userName: historyItem.userName,
                     userRole: historyItem.userRole,
-                    details
+                    details,
+                    timestamp: historyItem.timestamp
                 });
                 logger.debug('HISTORY', 'Item adicionado ao histórico da família');
             } catch (error) {
