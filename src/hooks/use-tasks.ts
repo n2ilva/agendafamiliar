@@ -52,6 +52,10 @@ export const taskToRemoteTask = (task: Task, familyId: string | undefined): Remo
   if (task.editedBy) remoteTask.editedBy = task.editedBy;
   if (task.editedByName) remoteTask.editedByName = task.editedByName;
   if (task.editedAt) remoteTask.editedAt = task.editedAt;
+  if ((task as any).deleted) remoteTask.deleted = (task as any).deleted;
+  if ((task as any).deletedBy) remoteTask.deletedBy = (task as any).deletedBy;
+  if ((task as any).deletedByName) remoteTask.deletedByName = (task as any).deletedByName;
+  if ((task as any).deletedAt) remoteTask.deletedAt = (task as any).deletedAt;
 
   return remoteTask as RemoteTask;
 };

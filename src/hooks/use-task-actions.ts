@@ -317,14 +317,17 @@ export function useTaskActions({
                             await LocalStorageService.saveTask(remoteTask as any);
                             await SyncService.addOfflineOperation('update', 'tasks', remoteTask);
 
-                            if (currentFamily && !isOffline) {
-                                if (isFamilyTask) {
-                                    try {
-                                        await FirestoreService.saveTask({ ...remoteTask, familyId: currentFamily.id } as any);
-                                    } catch (e) {
-                                        try { await FamilySyncHelper.saveTaskToFamily(remoteTask, currentFamily.id, 'update'); } catch (_) { }
-                                        await SyncService.addOfflineOperation('update', 'tasks', { ...remoteTask, familyId: currentFamily.id });
+                            if (!isOffline) {
+                                try {
+                                    await FirestoreService.saveTask(remoteTask as any);
+                                } catch (e) {
+                                    logger.error('DELETE_TASK', 'Erro ao salvar tarefa excluída no Firebase', e);
+                                    if (currentFamily && isFamilyTask) {
+                                        try { 
+                                            await FamilySyncHelper.saveTaskToFamily(remoteTask, currentFamily.id, 'update'); 
+                                        } catch (_) { }
                                     }
+                                    await SyncService.addOfflineOperation('update', 'tasks', remoteTask);
                                 }
                             }
 
