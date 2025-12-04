@@ -32,12 +32,12 @@ class SecureStorageService {
 
             if (!key) {
                 // Generate new key if none exists
-                console.log('🔐 [SecureStorage] No existing key found. Generating new encryption key...');
+                
                 key = uuidv4() + '-' + uuidv4(); // Simple high-entropy string
                 await SecureStore.setItemAsync(this.KEY_ALIAS, key);
-                console.log('🔐 [SecureStorage] New key generated and saved.');
+                
             } else {
-                console.log('🔐 [SecureStorage] Existing key found and loaded.');
+                
             }
 
             this.encryptionKey = key;

@@ -86,7 +86,7 @@ async function registerNotificationHandlers() {
     });
 
     notificationHandlersRegistered = true;
-    console.log('✅ Handlers de notificações registrados');
+    
 
     // Retornar função para desregistrar (cleanup)
     return () => {
@@ -612,7 +612,7 @@ export async function cancelTaskReminder(taskId: string) {
       if (notifId) {
         try {
           await Notifications.cancelScheduledNotificationAsync(notifId);
-          console.log(`🗑️ [Notifications] Cancelada: ${type} da tarefa ${taskId}`);
+          
         } catch (e) {
           console.warn(`[Notifications] Falha ao cancelar ${type}:`, e);
         }
@@ -945,7 +945,7 @@ export async function sendOverdueTaskNotification(task: any) {
 
         try {
           new (window as any).Notification(title, { body, data: { taskId: task.id, type: 'overdue_task' } });
-          console.log('[Notifications][Web] Notificação de tarefa vencida enviada:', { taskId: task.id, title: task.title });
+          
           return task.id;
         } catch (e) {
           console.warn('[Notifications][Web] Falha ao criar notificação:', e);
@@ -953,7 +953,7 @@ export async function sendOverdueTaskNotification(task: any) {
         }
       }
 
-      console.log('[Notifications][Web] Permissão de notificação não concedida');
+      
       return null;
     } catch (e) {
       console.warn('[Notifications][Web] Erro ao enviar notificação vencida:', e);
@@ -1057,14 +1057,14 @@ export async function cancelAllNotifications(): Promise<void> {
     // Limpar o objeto
     Object.keys(webTimeouts).forEach(key => delete webTimeouts[key]);
     await AsyncStorage.removeItem(STORAGE_KEY_WEB);
-    console.log('[Notifications][Web] Todas as notificações canceladas');
+    
     return;
   }
 
   try {
     await Notifications.cancelAllScheduledNotificationsAsync();
     await setMap({});
-    console.log('[Notifications] ✅ Todas as notificações canceladas');
+    
   } catch (e) {
     console.warn('[Notifications] Erro ao cancelar todas:', e);
   }
@@ -1073,7 +1073,7 @@ export async function cancelAllNotifications(): Promise<void> {
 // Limpar notificações de tarefas que não existem mais
 export async function cleanupOrphanedNotifications(activeTaskIds: string[]) {
   try {
-    console.log('[Notifications] Iniciando limpeza de notificações órfãs...');
+    
 
     if (Platform.OS === 'web') {
       const raw = await AsyncStorage.getItem(STORAGE_KEY_WEB);
@@ -1089,7 +1089,7 @@ export async function cleanupOrphanedNotifications(activeTaskIds: string[]) {
       }
 
       if (cleanedCount > 0) {
-        console.log(`[Notifications] 🧹 Limpas ${cleanedCount} notificações órfãs (Web)`);
+        `);
       }
       return;
     }
@@ -1107,9 +1107,9 @@ export async function cleanupOrphanedNotifications(activeTaskIds: string[]) {
     }
 
     if (cleanedCount > 0) {
-      console.log(`[Notifications] 🧹 Limpas ${cleanedCount} notificações órfãs (Mobile)`);
+      `);
     } else {
-      console.log('[Notifications] Nenhuma notificação órfã encontrada.');
+      
     }
 
   } catch (e) {

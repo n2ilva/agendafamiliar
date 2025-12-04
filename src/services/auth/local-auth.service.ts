@@ -32,7 +32,7 @@ class LocalAuthService {
   }
 
   static async logout() {
-    console.log('🚪 Executando logout completo');
+    
 
     await SecureStorageService.removeItem(USER_STORAGE_KEY);
 
@@ -40,7 +40,7 @@ class LocalAuthService {
     try {
       const auth = firebaseAuth() as any;
       if (auth && auth.currentUser) {
-        console.log('🔥 Fazendo logout do Firebase Auth');
+        
         await signOut(auth);
       }
     } catch (error) {
@@ -51,13 +51,13 @@ class LocalAuthService {
   }
 
   static onAuthStateChange(callback: (user: FamilyUser | null) => void) {
-    console.log('🔔 Configurando listener de autenticação');
+    
 
     // Verifica usuário local primeiro
     (async () => {
       const user = await SecureStorageService.getItem(USER_STORAGE_KEY);
       if (user) {
-        console.log('📱 Usuário local encontrado no SecureStorage');
+        
         callback(user as FamilyUser);
       }
     })();
@@ -65,10 +65,10 @@ class LocalAuthService {
     // Monitora mudanças no Firebase Auth
     try {
       const auth = firebaseAuth() as any;
-      console.log('🔥 Configurando onAuthStateChanged do Firebase');
+      
 
       const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-        console.log('🔥 Firebase Auth State Changed:', firebaseUser ? `Usuário: ${firebaseUser.email}` : 'Nenhum usuário');
+        
 
         if (firebaseUser) {
           const localUser = await SecureStorageService.getItem(USER_STORAGE_KEY);
@@ -117,17 +117,17 @@ class LocalAuthService {
             // Sincronizar profileIcon do Firestore
             if (firestoreProfileIcon) {
               familyUser.profileIcon = firestoreProfileIcon;
-              console.log('🎨 ProfileIcon sincronizado do Firebase:', firestoreProfileIcon);
+              
             }
           } catch (e) {
             console.warn('[LocalAuthService.onAuthStateChange] Falha ao resolver foto de perfil:', e);
           }
 
           await SecureStorageService.setItem(USER_STORAGE_KEY, familyUser);
-          console.log('✅ FamilyUser salvo no SecureStorage:', familyUser.name);
+          
           callback(familyUser);
         } else {
-          console.log('🚪 Firebase logout detectado - limpando SecureStorage');
+          
           await SecureStorageService.removeItem(USER_STORAGE_KEY);
           callback(null);
         }
@@ -246,7 +246,7 @@ class LocalAuthService {
   }
 
   static async resetPassword(email: string) {
-    console.log('🔑 Iniciando reset de senha para:', email);
+    
 
     try {
       // Tenta usar o Firebase Auth primeiro
@@ -254,7 +254,7 @@ class LocalAuthService {
       if (auth) {
         const { sendPasswordResetEmail } = await import('firebase/auth');
         await sendPasswordResetEmail(auth, email);
-        console.log('✅ Email de reset enviado via Firebase');
+        
         return { success: true, error: undefined };
       }
     } catch (error: any) {
@@ -274,7 +274,7 @@ class LocalAuthService {
     }
 
     // Fallback: apenas para modo offline/desenvolvimento
-    console.log('⚠️ Firebase não disponível - modo offline');
+    
     return {
       success: false,
       error: 'Sem conexão. O reset de senha requer internet.'
@@ -301,7 +301,7 @@ class LocalAuthService {
         const blob = await response.blob();
         await uploadBytes(storageRef, blob);
         downloadURL = await getDownloadURL(storageRef);
-        console.log('✅ Nova imagem enviada para o Storage:', downloadURL);
+        
       }
 
       // 2. ATUALIZA TODAS AS REFERÊNCIAS NO FIREBASE E AUTH
@@ -327,12 +327,12 @@ class LocalAuthService {
       }
 
       await Promise.all(updatePromises);
-      console.log('✅ Referências da foto de perfil atualizadas no Auth e Firestore.');
+      
 
       // 3. ATUALIZA O ARMAZENAMENTO LOCAL
       const updatedUser = { ...user, picture: downloadURL } as FamilyUser;
       await this.saveUserToLocalStorage(updatedUser);
-      console.log('✅ Foto de perfil atualizada no armazenamento local.');
+      
 
       // 4. DELETA A IMAGEM ANTIGA (se existir)
       if (oldPicture && oldPicture !== downloadURL) {
@@ -373,7 +373,7 @@ class LocalAuthService {
 
       const fileRef = ref(storage, filePath);
       await deleteObject(fileRef);
-      console.log('🗑️ Foto antiga removida do Storage:', filePath);
+      
     } catch (error: any) {
       // Códigos de erro comuns: 'storage/object-not-found', 'storage/unauthorized'
       if (error.code === 'storage/object-not-found') {
@@ -477,14 +477,14 @@ class LocalAuthService {
       }
 
       await Promise.all(updatePromises);
-      console.log('✅ Referências da foto de perfil removidas do Auth e Firestore.');
+      
 
       // 2. ATUALIZA O ARMAZENAMENTO LOCAL
       const updatedUser = { ...user } as FamilyUser;
       delete updatedUser.picture;
       delete updatedUser.profileIcon; // Garante que o ícone também seja limpo
       await this.saveUserToLocalStorage(updatedUser);
-      console.log('✅ Foto de perfil removida do armazenamento local.');
+      
 
       // 3. DELETA O ARQUIVO ANTIGO DO STORAGE
       if (oldPicture) {

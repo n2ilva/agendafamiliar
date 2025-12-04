@@ -44,7 +44,6 @@ class LocalStorageService {
       this.saveTimeout = setTimeout(async () => {
         try {
           await SecureStorageService.setItem(this.STORAGE_KEY, this.memoryCache);
-          console.log('💾 Dados persistidos no disco (debounced)');
           this.saveTimeout = null;
         } catch (err) {
           console.error('Erro ao persistir dados:', err);
@@ -61,7 +60,6 @@ class LocalStorageService {
       this.saveTimeout = null;
       try {
         await SecureStorageService.setItem(this.STORAGE_KEY, this.memoryCache);
-        console.log('💾 Flush imediato realizado');
       } catch (err) {
         console.error('Erro no flush:', err);
       }
@@ -123,7 +121,6 @@ class LocalStorageService {
     if (data.tasks[taskId]) {
       delete data.tasks[taskId];
       await this.saveOfflineData(data);
-      console.log('🗑️ Tarefa removida do cache local:', taskId);
     }
   }
 
@@ -139,7 +136,6 @@ class LocalStorageService {
     }
     if (count > 0) {
       await this.saveOfflineData(data);
-      console.log(`🗑️ ${count} tarefas removidas do cache local`);
     }
   }
 
@@ -279,7 +275,6 @@ class LocalStorageService {
     if (removedCount > 0) {
       data.tasks = filteredTasks;
       await this.saveOfflineData(data);
-      console.log(`🧹 Cache: ${removedCount} tarefas antigas removidas`);
     }
 
     return removedCount;
@@ -303,11 +298,6 @@ class LocalStorageService {
 
     data.pendingOperations.push(pendingOp);
     await this.saveOfflineData(data);
-    const opTaskId = pendingOp.data && pendingOp.data.id ? pendingOp.data.id : undefined;
-    const opFamilyId = pendingOp.data && (pendingOp.data.familyId !== undefined) ? pendingOp.data.familyId : undefined;
-    console.log('Operação adicionada à fila offline:', `id=${pendingOp.id} type=${pendingOp.type} collection=${pendingOp.collection}` +
-      `${opTaskId ? ` taskId=${opTaskId}` : ''}` +
-      `${opFamilyId !== undefined ? ` familyId=${opFamilyId}` : ''}`);
   }
 
   // Obter operações pendentes
@@ -412,14 +402,12 @@ class LocalStorageService {
     data.pendingOperations = data.pendingOperations.filter((op: PendingOperation) => {
       // Remover operações muito antigas (mais de 7 dias)
       if (now - op.timestamp > sevenDays) {
-        console.log(`🗑️ Removendo operação antiga: ${op.type} ${op.collection} (${new Date(op.timestamp).toLocaleString()})`);
         reasons.old++;
         return false;
       }
 
       // Remover operações que falharam muitas vezes
       if (op.retry >= this.MAX_RETRIES) {
-        console.log(`🗑️ Removendo operação que falhou ${op.retry} vezes: ${op.type} ${op.collection}`);
         reasons.maxRetries++;
         return false;
       }
@@ -429,17 +417,14 @@ class LocalStorageService {
 
     if (data.pendingOperations.length !== initialCount) {
       await this.saveOfflineData(data);
-      console.log(`🧹 Limpeza concluída: ${initialCount - data.pendingOperations.length} operações removidas (${reasons.old} antigas, ${reasons.maxRetries} max retries)`);
     }
   }
 
   // Forçar limpeza de todas as operações pendentes
   static async clearAllPendingOperations(): Promise<void> {
     const data = await this.getOfflineData();
-    const count = data.pendingOperations.length;
     data.pendingOperations = [];
     await this.saveOfflineData(data);
-    console.log(`🧹 Todas as ${count} operações pendentes foram removidas`);
   }
 
   // Compactar cache removendo dados redundantes e muito antigos
@@ -480,11 +465,6 @@ class LocalStorageService {
       data.tasks = tasksToKeep;
       data.history = historyToKeep;
       await this.saveOfflineData(data);
-
-      const finalSize = JSON.stringify(data).length;
-      const savedBytes = initialSize - finalSize;
-      console.log(`🗜️ Cache compactado: ${tasksRemoved} tarefas antigas removidas, ${historyRemoved} itens de histórico removidos`);
-      console.log(`📉 Espaço economizado: ${(savedBytes / 1024).toFixed(2)}KB`);
     } catch (error) {
       console.error('Erro ao compactar cache:', error);
     }

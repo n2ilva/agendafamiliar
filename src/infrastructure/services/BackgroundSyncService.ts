@@ -26,10 +26,10 @@ async function defineBackgroundSyncTask() {
   try {
     TaskManager.defineTask(BACKGROUND_SYNC_TASK, async () => {
       try {
-        console.log('🔄 [BG] Executando tarefa de sincronização...');
+        
 
         if (Platform.OS === 'web' || await isExpoGo()) {
-          console.log('⚠️ [BG] Ignorado: não disponível no Expo Go ou Web.');
+          
           return BackgroundFetch.BackgroundFetchResult.NoData;
         }
 
@@ -38,7 +38,7 @@ async function defineBackgroundSyncTask() {
         
         // Assumindo que SyncService terá método performBackgroundSync
         // TODO: Implementar performBackgroundSync no SyncService
-        console.log('✅ [BG] Tarefa concluída.');
+        
         return BackgroundFetch.BackgroundFetchResult.NoData;
       } catch (e) {
         console.error('❌ [BG] Erro na tarefa de sincronização:', e);
@@ -46,7 +46,7 @@ async function defineBackgroundSyncTask() {
       }
     });
     taskDefined = true;
-    console.log('✅ Task de background sync definida.');
+    
   } catch (e) {
     console.error('❌ Erro ao definir background sync task:', e);
   }
@@ -54,7 +54,7 @@ async function defineBackgroundSyncTask() {
 
 async function registerBackgroundSyncAsync() {
   if (Platform.OS === 'web' || await isExpoGo()) {
-    console.log('⚠️ Background sync não registrado: não disponível no Expo Go ou Web.');
+    
     return;
   }
 
@@ -69,7 +69,7 @@ async function registerBackgroundSyncAsync() {
 
   const isRegistered = await TaskManager.isTaskRegisteredAsync(BACKGROUND_SYNC_TASK);
   if (isRegistered) {
-    console.log('ℹ️ Background sync já estava registrado.');
+    
     return;
   }
 
@@ -79,7 +79,7 @@ async function registerBackgroundSyncAsync() {
       stopOnTerminate: false,
       startOnBoot: true
     });
-    console.log('✅ Background sync registrado.');
+    
   } catch (e: any) {
     const msg = String(e?.message || e);
     if (msg.includes('is not defined')) {
@@ -95,7 +95,7 @@ async function registerBackgroundSyncAsync() {
 
 async function unregisterBackgroundSyncAsync() {
   if (Platform.OS === 'web' || await isExpoGo()) {
-    console.log('⚠️ Background sync não precisa ser cancelado.');
+    
     return;
   }
 
@@ -103,7 +103,7 @@ async function unregisterBackgroundSyncAsync() {
     const isRegistered = await TaskManager.isTaskRegisteredAsync(BACKGROUND_SYNC_TASK);
     if (isRegistered) {
       await BackgroundFetch.unregisterTaskAsync(BACKGROUND_SYNC_TASK);
-      console.log('✅ Background sync cancelado.');
+      
     }
   } catch (e) {
     console.error('❌ Falha ao cancelar background sync:', e);

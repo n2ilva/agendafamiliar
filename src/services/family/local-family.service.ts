@@ -111,7 +111,7 @@ class LocalFamilyService {
         inviteCodeExpiry: Timestamp.fromDate(expiry)
       });
 
-      console.log('✅ Família criada no Firestore:', familyId);
+      
 
       // Criar mapeamento público inviteCodes -> família para lookup sem listar families
       const inviteMapRef = doc(db, 'inviteCodes', inviteCode);
@@ -134,7 +134,7 @@ class LocalFamilyService {
 
       });
 
-      console.log('✅ Admin adicionado como membro da família');
+      
 
       family.members = [{
         ...adminUser,
@@ -160,7 +160,7 @@ class LocalFamilyService {
       const familySnap = await getDoc(familyRef);
 
       if (!familySnap.exists()) {
-        console.log('❌ Família não encontrada');
+        
         return null;
       }
 
@@ -184,7 +184,6 @@ class LocalFamilyService {
         members: members as FamilyUser[]
       };
 
-      console.log('✅ Família encontrada:', family.name);
       // Tentar repopular mapping se admin abrir a família (maior chance de possuir permissão)
       try { await this.ensureInviteCodeMapping(familyId); } catch { /* noop */ }
       return family;
@@ -220,7 +219,7 @@ class LocalFamilyService {
     }, (err: any) => {
       // Erros de permissão são esperados se o usuário ainda não é membro ou perdeu acesso
       if (err?.code === 'permission-denied') {
-        console.log('[subscribeToFamilyMembers] Permissão negada - usuário não é membro ou acesso revogado (esperado)');
+        ');
         callback([]); // Retorna lista vazia em vez de deixar o listener quebrado
       } else {
         console.warn('[subscribeToFamilyMembers] onSnapshot error:', err);
@@ -237,13 +236,11 @@ class LocalFamilyService {
     try {
       const cached = this.userFamilyCache.get(userId);
       if (cached && (Date.now() - cached.timestamp) < this.CACHE_TTL) {
-        console.log('📦 Retornando família do cache para:', userId);
         return cached.family;
       }
 
       const auth = firebaseAuth() as any;
       if (!auth || !auth.currentUser) {
-        console.log('⚠️ getUserFamily: sem usuário autenticado no Firebase, retornando null');
         return null;
       }
 
@@ -257,8 +254,6 @@ class LocalFamilyService {
       const memberSnap = await getDocs(membersQuery);
 
       if (memberSnap.empty) {
-        console.log('⚠️ Nenhuma família encontrada por userId, tentando buscar por email...');
-        
         const userEmail = auth.currentUser.email;
         if (userEmail) {
           const emailQuery = query(
@@ -269,7 +264,6 @@ class LocalFamilyService {
           const emailSnap = await getDocs(emailQuery);
           
           if (!emailSnap.empty) {
-            console.log('✅ Família encontrada pelo email:', userEmail);
             const memberDoc = emailSnap.docs[0];
             const memberData = memberDoc.data() as { familyId: string };
             const familyId = memberData.familyId;
@@ -280,7 +274,6 @@ class LocalFamilyService {
           }
         }
         
-        console.log('❌ Usuário não pertence a nenhuma família');
         this.userFamilyCache.set(userId, { family: null, timestamp: Date.now() });
         return null;
       }
@@ -290,7 +283,6 @@ class LocalFamilyService {
 
       const familyId = memberData.familyId;
 
-      console.log('✅ Família do usuário encontrada:', familyId);
       const family = await this.getFamilyById(familyId);
       
       this.userFamilyCache.set(userId, { family, timestamp: Date.now() });
@@ -357,7 +349,7 @@ class LocalFamilyService {
           createdAt: Timestamp.fromDate(now),
           expiry: Timestamp.fromDate(finalExpiry)
         });
-        console.log('✅ [ensureInviteCodeMapping] Mapeamento criado para código:', code);
+        
       } else {
         const data = inviteMapSnap.data() as any;
         // Corrigir inconsistências (familyId diferente ou expirado): atualizar
@@ -369,7 +361,7 @@ class LocalFamilyService {
             createdAt: Timestamp.fromDate(now),
             expiry: Timestamp.fromDate(finalExpiry)
           });
-          console.log('🔄 [ensureInviteCodeMapping] Mapeamento atualizado para código:', code);
+          
         }
       }
     } catch (error) {
@@ -395,7 +387,7 @@ class LocalFamilyService {
       }
       const inviteData = inviteSnap.data() as { familyId: string; expiry?: any };
       const familyId = inviteData.familyId;
-      console.log('✅ Código aponta para família:', familyId);
+      
 
       // Verificar expiração no mapeamento
       if (inviteData.expiry) {
@@ -412,12 +404,12 @@ class LocalFamilyService {
       const existingMemberSnap = await getDoc(existingMemberRef);
 
       if (existingMemberSnap.exists()) {
-        console.log('ℹ️ Usuário já é membro desta família');
+        
         return this.getFamilyById(familyId) as Promise<Family>;
       }
 
       // Adicionar membro na subcoleção
-      console.log('➕ Adicionando usuário como membro...');
+      
       const memberRef = doc(db, 'families', familyId, 'members', user.id);
       await setDoc(memberRef, {
         ...user,
@@ -428,7 +420,7 @@ class LocalFamilyService {
         inviteCode: searchCode
       });
 
-      console.log('✅ Usuário adicionado à família:', familyId);
+      
       return this.getFamilyById(familyId) as Promise<Family>;
     } catch (error) {
       console.error('❌ Erro ao entrar na família:', error);
@@ -505,7 +497,7 @@ class LocalFamilyService {
       const taskData = this.deepSanitize(rawData);
 
       await setDoc(taskRef, taskData);
-      console.log('✅ Tarefa salva com sucesso:', taskId);
+      
 
       return {
         ...taskData,
@@ -569,17 +561,10 @@ class LocalFamilyService {
       let tasks = snapshots.flatMap(processSnap);
       
       // ⚠️ Filtrar tarefas excluídas (soft-delete) - IMPORTANTE para evitar que tarefas voltem após exclusão
-      const beforeFilter = tasks.length;
       tasks = tasks.filter(t => {
         const isDeleted = (t as any).deleted === true || t.status === 'excluida';
-        if (isDeleted) {
-          console.log(`🗑️ [getFamilyTasks] Tarefa excluída filtrada: ${t.id} - ${t.title}`);
-        }
         return !isDeleted;
       });
-      if (tasks.length !== beforeFilter) {
-        console.log(`🗑️ [getFamilyTasks] ${beforeFilter - tasks.length} tarefas excluídas filtradas`);
-      }
 
       // Remover duplicatas caso uma tarefa seja acidentalmente marcada de forma inconsistente
       const uniqueTasks = Array.from(new Map(tasks.map(t => [t.id, t])).values());
@@ -595,7 +580,6 @@ class LocalFamilyService {
         return dateB - dateA;
       });
 
-      console.log('✅ Tarefas encontradas:', uniqueTasks.length);
       return uniqueTasks;
     } catch (error) {
       console.error('❌ Erro ao buscar tarefas:', error);
@@ -633,7 +617,6 @@ class LocalFamilyService {
         items = items.slice(0, limit);
       }
 
-      console.log('✅ Itens de histórico encontrados:', items.length);
       return items;
     } catch (error) {
       console.error('❌ Erro ao buscar histórico:', error);
@@ -673,7 +656,7 @@ class LocalFamilyService {
       } as any;
 
       await setDoc(docRef, historyItem);
-      console.log('✅ Item adicionado ao histórico');
+      
 
       return {
         ...historyItem,
@@ -701,11 +684,11 @@ class LocalFamilyService {
           edit: true,
           delete: true
         };
-        console.log('✅ Concedendo todas as permissões ao novo admin:', memberId);
+        
       } else if (newRole === 'dependente') {
         // Quando rebaixado a dependente: limpar permissões (admin vai conceder explicitamente se quiser)
         updatePayload.permissions = {};
-        console.log('✅ Limpando permissões ao rebaixar para dependente:', memberId);
+        
       }
 
       await updateDoc(memberRef, updatePayload);
@@ -719,9 +702,9 @@ class LocalFamilyService {
             const currentAdminId = (famSnap.data() as any).adminId;
             if (!currentAdminId) {
               await updateDoc(familyRef, { adminId: memberId });
-              console.log('👑 adminId principal definido para:', memberId);
+              
             } else {
-              console.log('ℹ️ Mantendo adminId principal existente:', currentAdminId);
+              
             }
           }
         } catch (e) {
@@ -729,7 +712,7 @@ class LocalFamilyService {
         }
       }
 
-      console.log('✅ Role atualizada com sucesso');
+      
       const updated = await this.getFamilyById(familyId);
       if (!updated) throw new Error('Família não encontrada após atualizar role');
       return updated;
@@ -755,7 +738,7 @@ class LocalFamilyService {
         payload.permissions = {}; // representará sem permissões
       }
       await updateDoc(memberRef, payload);
-      console.log('✅ Permissões atualizadas');
+      
     } catch (error) {
       console.error('❌ Erro ao atualizar permissões:', error);
       throw new Error('Não foi possível atualizar as permissões do membro.');
@@ -776,11 +759,11 @@ class LocalFamilyService {
       if (data.name !== undefined) payload.name = data.name;
       if (data.picture !== undefined) payload.picture = data.picture;
       if (Object.keys(payload).length === 0) {
-        console.log('ℹ️ Nada para atualizar no perfil do membro.');
+        
         return;
       }
       await updateDoc(memberRef, payload);
-      console.log('✅ Perfil do membro atualizado com sucesso');
+      
     } catch (error) {
       console.error('❌ Erro ao atualizar perfil do membro:', error);
       throw new Error('Não foi possível atualizar o perfil do membro.');
@@ -793,7 +776,7 @@ class LocalFamilyService {
       const db = this.getFirestore();
       const familyRef = doc(db, 'families', familyId);
       await updateDoc(familyRef, { name: newName });
-      console.log('✅ Nome da família atualizado');
+      
     } catch (error) {
       console.error('❌ Erro ao atualizar nome da família:', error);
       throw new Error('Não foi possível atualizar o nome da família.');
@@ -810,7 +793,7 @@ class LocalFamilyService {
       const db = this.getFirestore();
       const memberRef = doc(db, 'families', familyId, 'members', memberId);
       await deleteDoc(memberRef);
-      console.log('✅ Membro removido com sucesso');
+      
     } catch (error) {
       console.error('❌ Erro ao remover membro:', error);
       throw new Error('Não foi possível remover o membro da família.');
@@ -879,7 +862,7 @@ class LocalFamilyService {
       const db = this.getFirestore();
       const taskRef = doc(db, 'tasks', taskId);
       await deleteDoc(taskRef);
-      console.log('✅ Tarefa deletada com sucesso');
+      
     } catch (error) {
       console.error('❌ Erro ao deletar tarefa:', error);
       throw new Error('Não foi possível deletar a tarefa.');
@@ -888,7 +871,7 @@ class LocalFamilyService {
 
   async saveApproval(approval: any): Promise<any> {
     try {
-      console.log('💾 Salvando aprovação no Firebase');
+      
       const db = this.getFirestore();
       const approvalsRef = collection(db, 'approvals');
 
@@ -905,7 +888,7 @@ class LocalFamilyService {
       };
 
       await setDoc(approvalRef, approvalData);
-      console.log('✅ Aprovação salva com sucesso');
+      
 
       return {
         ...approvalData,
@@ -919,7 +902,7 @@ class LocalFamilyService {
 
   async getApprovalsForFamily(familyId: string): Promise<any[]> {
     try {
-      console.log('🔍 Buscando aprovações da família:', familyId);
+      
       const db = this.getFirestore();
       const approvalsRef = collection(db, 'approvals');
       const q = query(approvalsRef, where('familyId', '==', familyId));
@@ -931,7 +914,7 @@ class LocalFamilyService {
         createdAt: doc.data().createdAt?.toDate?.() || new Date(doc.data().createdAt)
       }));
 
-      console.log('✅ Aprovações encontradas:', approvals.length);
+      
       return approvals;
     } catch (error) {
       console.error('❌ Erro ao buscar aprovações:', error);
@@ -943,7 +926,7 @@ class LocalFamilyService {
 
   async saveFamilyCategories(familyId: string, categories: any[]): Promise<void> {
     try {
-      console.log('💾 Salvando categorias da família:', familyId);
+      
       const db = this.getFirestore();
       const familyRef = doc(db, 'families', familyId);
 
@@ -957,7 +940,7 @@ class LocalFamilyService {
         categories: categoriesToSave
       });
 
-      console.log('✅ Categorias salvas com sucesso');
+      
     } catch (error) {
       console.error('❌ Erro ao salvar categorias:', error);
       throw new Error('Não foi possível salvar as categorias.');
@@ -966,13 +949,13 @@ class LocalFamilyService {
 
   async getFamilyCategories(familyId: string): Promise<any[]> {
     try {
-      console.log('🔍 Buscando categorias da família:', familyId);
+      
       const db = this.getFirestore();
       const familyRef = doc(db, 'families', familyId);
       const familySnap = await getDoc(familyRef);
 
       if (!familySnap.exists()) {
-        console.log('⚠️ Família não encontrada');
+        
         return [];
       }
 
@@ -985,7 +968,7 @@ class LocalFamilyService {
         createdAt: cat.createdAt?.toDate?.() || new Date(cat.createdAt || Date.now())
       }));
 
-      console.log('✅ Categorias encontradas:', convertedCategories.length);
+      
       return convertedCategories;
     } catch (error) {
       console.error('❌ Erro ao buscar categorias:', error);
@@ -995,7 +978,7 @@ class LocalFamilyService {
 
   subscribeToFamilyCategories(familyId: string, callback: (categories: any[]) => void) {
     try {
-      console.log('👂 Inscrevendo-se em atualizações de categorias da família:', familyId);
+      
       const db = this.getFirestore();
       const familyRef = doc(db, 'families', familyId);
 
@@ -1012,7 +995,7 @@ class LocalFamilyService {
             createdAt: cat.createdAt?.toDate?.() || new Date(cat.createdAt || Date.now())
           }));
 
-          console.log('🔔 Categorias atualizadas:', convertedCategories.length);
+          
           callback(convertedCategories);
         } else {
           callback([]);

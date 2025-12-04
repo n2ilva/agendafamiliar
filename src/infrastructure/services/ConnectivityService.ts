@@ -31,7 +31,7 @@ export class ConnectivityService {
       NetInfo.addEventListener(this.handleConnectivityChange);
       
       this.isInitialized = true;
-      console.log('ConnectivityService inicializado');
+      
     } catch (error) {
       console.error('Erro ao inicializar ConnectivityService:', error);
       
@@ -53,7 +53,7 @@ export class ConnectivityService {
       window.addEventListener('offline', this.handleWebOffline);
       
       this.isInitialized = true;
-      console.log('ConnectivityService inicializado para web');
+      
     }
   }
 
@@ -110,7 +110,7 @@ export class ConnectivityService {
   }
 
   private static onBackOnline(): void {
-    console.log('🌐 Internet restaurada - iniciando sincronização');
+    
   }
 
   static addConnectivityListener(callback: ConnectivityCallback): () => void {
@@ -175,11 +175,11 @@ export class ConnectivityService {
     
     this.listeners = [];
     this.isInitialized = false;
-    console.log('ConnectivityService limpo');
+    
   }
 
   static simulateOffline(): void {
-    console.log('🔴 Simulando modo offline');
+    
     const offlineState: ConnectivityState = {
       isConnected: false,
       isInternetReachable: false,
@@ -189,7 +189,7 @@ export class ConnectivityService {
   }
 
   static simulateOnline(): void {
-    console.log('🟢 Simulando modo online');
+    
     const onlineState: ConnectivityState = {
       isConnected: true,
       isInternetReachable: true,

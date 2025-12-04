@@ -69,18 +69,18 @@ function getFirebaseAuth() {
           // Se não conseguir carregar a persistência RN, recorre ao getAuth simples
           _auth = getAuth(app);
         }
-        console.log('✅ Firebase Auth inicializado com persistência React Native');
+        
       } catch (error: any) {
         if (error?.code === 'auth/already-initialized') {
           _auth = getAuth(app);
-          console.log('ℹ️ Firebase Auth já estava inicializado');
+          
         } else {
           throw error;
         }
       }
     } else {
       _auth = getAuth(app);
-      console.log('✅ Firebase Auth inicializado para web');
+      
     }
   } catch (e) {
     console.warn('getAuth falhou durante inicialização (ambiente de teste?). Retornando stub.');
@@ -100,7 +100,7 @@ function getFirestoreInstance() {
         // Ignorar erros de múltiplas abas: o app continua funcionando sem persistência
         // @ts-ignore
         enableIndexedDbPersistence(_db).then(() => {
-          console.log('✅ Firestore persistence (IndexedDB) habilitada no web');
+          habilitada no web');
         }).catch((e: any) => {
           console.warn('ℹ️ Firestore persistence não habilitada (provável múltiplas abas):', e?.code || e);
         });

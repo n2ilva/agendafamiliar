@@ -793,8 +793,6 @@ class SyncService {
   // Baixar dados da família
   private static async downloadFamilyData(familyId: string): Promise<void> {
     try {
-      console.log('👨‍👩‍👧‍👦 Baixando dados da família:', familyId);
-
       // Baixar família usando o familyService
       const familyData = await familyService.getFamilyById(familyId);
       if (familyData) {
@@ -804,8 +802,6 @@ class SyncService {
         for (const member of familyData.members) {
           await LocalStorageService.saveUser(member);
         }
-
-        console.log(`👥 ${familyData.members.length} membros da família salvos no cache`);
       }
 
       // Baixar tarefas da família usando o familyService (incluir tarefas privadas do usuário se possível)
@@ -815,8 +811,6 @@ class SyncService {
       for (const task of familyTasks) {
         await LocalStorageService.saveTask(task);
       }
-
-      console.log(`📋 ${familyTasks.length} tarefas da família (incluindo privadas do usuário) baixadas e salvas no cache`);
 
       // Baixar aprovações da família (remoto se online, senão cache existente)
       let approvals: TaskApproval[] = [];
@@ -907,8 +901,6 @@ class SyncService {
           approvals: approvalsMap,
           lastSync: Date.now()
         });
-
-        console.log(`✅ Cache local atualizado com os dados remotos para a família ${familyId}`);
       } catch (reconcErr) {
         console.warn('⚠️ Erro durante reconciliação de cache local:', reconcErr);
       }
@@ -923,7 +915,6 @@ class SyncService {
   private static setupRemoteListeners(): void {
     // Setup Firestore realtime listeners for user's tasks and family tasks when online
     if (!ConnectivityService.isConnected()) {
-      console.log('⚠️ setupRemoteListeners skipped - offline');
       return;
     }
 
@@ -1002,7 +993,6 @@ class SyncService {
         });
 
         this.remoteListeners.push(unsubUser);
-        console.log('✅ Listeners remotos configurados para tarefas do usuário/família');
 
         // Listener de approvals da família (apenas se houver família)
         if (familyId) {
@@ -1019,7 +1009,6 @@ class SyncService {
               }
             });
             this.remoteListeners.push(unsubApprovals);
-            console.log('✅ Listener remoto configurado para approvals da família');
           } catch (e) {
             console.warn('Falha ao configurar listener de approvals:', e);
           }
@@ -1040,7 +1029,6 @@ class SyncService {
     } finally {
       this.remoteListeners = [];
     }
-    console.log('🛑 Listeners remotos cancelados');
   }
 
   // Small sleep helper for backoff
@@ -1152,18 +1140,15 @@ class SyncService {
   static async forceFullSync(): Promise<void> {
     // Se já existe uma sincronização em andamento, aguardar ela terminar
     if (this.syncPromise) {
-      console.log('⏭️ Sincronização já em andamento, aguardando conclusão...');
       return this.syncPromise;
     }
 
     if (this.isSyncing) {
-      console.log('🔄 Sincronização já em andamento');
       return;
     }
 
     // Criar promise de sincronização
     this.syncPromise = (async () => {
-      console.log('🔄 Iniciando sincronização completa...');
       this.updateSyncStatus({ isSyncing: true, hasError: false });
 
       try {
@@ -1180,8 +1165,6 @@ class SyncService {
           lastSync: Date.now(),
           isSyncing: false
         });
-
-        console.log('✅ Sincronização completa finalizada');
       } catch (error) {
         console.error('❌ Erro na sincronização completa:', {
           message: error instanceof Error ? error.message : String(error),
@@ -1204,22 +1187,18 @@ class SyncService {
   static async forcSync(): Promise<void> {
     if (ConnectivityService.isConnected()) {
       await this.syncWithRemote();
-    } else {
-      console.log('📴 Sem conexão - sincronização adiada');
     }
   }
 
   // Pausar sincronização periódica (economiza bateria)
   static pausePeriodicSync(): void {
     this.stopPeriodicSync();
-    console.log('⏸️ Sincronização periódica pausada');
   }
 
   // Retomar sincronização periódica
   static resumePeriodicSync(): void {
     if (ConnectivityService.isConnected()) {
       this.startPeriodicSync();
-      console.log('▶️ Sincronização periódica retomada');
     }
   }
 
@@ -1239,7 +1218,6 @@ class SyncService {
       hasError: false,
       errorMessage: undefined
     });
-    console.log('🔄 SyncService resetado');
   }
 
   // Cleanup
@@ -1248,7 +1226,6 @@ class SyncService {
     ConnectivityService.cleanup();
     this.listeners = [];
     this.isInitialized = false;
-    console.log('SyncService limpo');
   }
 
   /**
@@ -1265,12 +1242,10 @@ class SyncService {
    */
   static async performBackgroundSync(): Promise<boolean> {
     if (this.isSyncing || !this.isNetworkAvailable()) {
-      console.log('🔄 [BG] Sincronização em background pulada (em andamento ou offline).');
       return false;
     }
 
     this.isSyncing = true;
-    console.log('🔄 [BG] Iniciando sincronização em background...');
 
     try {
       // 1. Processar operações pendentes
@@ -1287,14 +1262,12 @@ class SyncService {
           for (const task of familyTasks) {
             await LocalStorageService.saveTask(task);
           }
-          console.log(`🔄 [BG] ${familyTasks.length} tarefas atualizadas.`);
         }
       }
 
       // 3. Atualizar timestamp da última sincronização
       await LocalStorageService.updateLastSync();
 
-      console.log('✅ [BG] Sincronização em background concluída com sucesso.');
       this.isSyncing = false;
       return true;
 
