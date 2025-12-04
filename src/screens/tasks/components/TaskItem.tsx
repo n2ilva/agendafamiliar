@@ -36,9 +36,22 @@ const getRepeatText = (repeatConfig: RepeatConfig): string => {
             return 'Quinzenal';
         case RepeatType.INTERVAL: {
             const interval = repeatConfig.intervalDays || 1;
-            if (interval === 7) return 'Semanal';
-            if (interval === 14) return 'Quinzenal';
-            return `${interval} em ${interval} dias`;
+            // Verificar se é múltiplo de semanas
+            if (interval % 7 === 0) {
+                const weeks = interval / 7;
+                if (weeks === 1) return 'Semanal';
+                if (weeks === 2) return 'Quinzenal';
+                return `A cada ${weeks} semanas`;
+            }
+            // Verificar se é múltiplo de 30 (aproximação de mês)
+            if (interval % 30 === 0) {
+                const months = interval / 30;
+                if (months === 1) return 'Mensal';
+                return `A cada ${months} meses`;
+            }
+            // Dias específicos
+            if (interval === 1) return 'Diário';
+            return `A cada ${interval} dias`;
         }
         default:
             return 'Recorrente';

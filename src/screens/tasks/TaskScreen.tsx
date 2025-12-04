@@ -2356,11 +2356,31 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
         return 'Diário';
       case RepeatType.MONTHLY:
         return 'Mensal';
+      case RepeatType.YEARLY:
+        return 'Anual';
+      case RepeatType.BIWEEKLY:
+        return 'Quinzenal';
       case RepeatType.WEEKENDS:
         return 'Fins de semana';
       case RepeatType.CUSTOM:
         const dayNames = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
         return repeat.days?.map(d => dayNames[d]).join(', ') || 'Semanal';
+      case RepeatType.INTERVAL: {
+        const interval = repeat.intervalDays || 1;
+        if (interval % 7 === 0) {
+          const weeks = interval / 7;
+          if (weeks === 1) return 'Semanal';
+          if (weeks === 2) return 'Quinzenal';
+          return `A cada ${weeks} semanas`;
+        }
+        if (interval % 30 === 0) {
+          const months = interval / 30;
+          if (months === 1) return 'Mensal';
+          return `A cada ${months} meses`;
+        }
+        if (interval === 1) return 'Diário';
+        return `A cada ${interval} dias`;
+      }
       default:
         return '';
     }
