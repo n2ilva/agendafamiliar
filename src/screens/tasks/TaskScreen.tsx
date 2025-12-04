@@ -2320,9 +2320,10 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
     return categories.find(cat => cat.id === categoryId) || categories[1];
   };
 
-  const formatDate = (date?: Date): string => {
-    if (!date || !(date instanceof Date) || isNaN(date.getTime())) return '';
-    return date.toLocaleDateString('pt-BR', {
+  const formatDate = (date?: Date | any): string => {
+    const safeDate = safeToDate(date);
+    if (!safeDate) return '';
+    return safeDate.toLocaleDateString('pt-BR', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric'

@@ -10,6 +10,7 @@ import {
     MemberPermissions,
 } from '../../../types/family.types';
 import { getRepeat } from '../../../utils/validators/task.utils';
+import { safeToDate } from '../../../utils/date/date.utils';
 import { APP_COLORS, CATEGORY_COLORS } from '../../../constants/colors';
 
 const WEEKDAY_LABELS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -121,14 +122,15 @@ const TaskItemComponent: React.FC<TaskItemProps> = ({
     const repeatConfig = useMemo(() => getRepeat(item), [item]);
     const repeatInfo = useMemo(() => getRepeatIcon(repeatConfig), [repeatConfig]);
 
-    // Verificar se a tarefa está vencida
+    // Verificar se a tarefa está vencida - usando safeToDate para converter corretamente
     const isOverdue = useMemo(() => {
         if (item.completed) return false;
-        if (!item.dueDate) return false;
+        const dueDate = safeToDate(item.dueDate);
+        if (!dueDate) return false;
         const now = new Date();
-        const due = new Date(item.dueDate);
-        if (item.dueTime) {
-            const dueTime = new Date(item.dueTime);
+        const due = new Date(dueDate);
+        const dueTime = safeToDate(item.dueTime);
+        if (dueTime) {
             due.setHours(dueTime.getHours(), dueTime.getMinutes(), dueTime.getSeconds());
         } else {
             due.setHours(23, 59, 59, 999);
@@ -194,32 +196,39 @@ const sanitizedEditedByName = useMemo(() => {
             bgColor: CATEGORY_COLORS.trabalho.bgColor,
             isDefault: true,
         };
-    }, [item.category]);// Funções de formatação
+    }, [item.category]);
+
+// Funções de formatação com conversão segura de datas
 const formatDate = (date: Date | string | undefined): string => {
-    if (!date) return '';
-    const d = new Date(date);
+    const d = safeToDate(date);
+    if (!d) return '';
     const day = String(d.getDate()).padStart(2, '0');
     const month = String(d.getMonth() + 1).padStart(2, '0');
     return `${day}/${month}`;
 };
 
 const formatTime = (time: Date | string | undefined): string => {
-    if (!time) return '';
-    const t = new Date(time);
+    const t = safeToDate(time);
+    if (!t) return '';
     const hours = String(t.getHours()).padStart(2, '0');
     const minutes = String(t.getMinutes()).padStart(2, '0');
     return `${hours}:${minutes}`;
 };
 
 const formatDateTime = (dateTime: Date | string | undefined): string => {
-    if (!dateTime) return '';
-    const dt = new Date(dateTime);
+    const dt = safeToDate(dateTime);
+    if (!dt) return '';
     const day = String(dt.getDate()).padStart(2, '0');
     const month = String(dt.getMonth() + 1).padStart(2, '0');
     const hours = String(dt.getHours()).padStart(2, '0');
     const minutes = String(dt.getMinutes()).padStart(2, '0');
     return `${day}/${month} ${hours}:${minutes}`;
 };
+
+// Valores de data/hora pré-processados para garantir que existam
+const dueDateFormatted = formatDate(item.dueDate);
+const dueTimeFormatted = formatTime(item.dueTime);
+const hasDueInfo = dueDateFormatted || dueTimeFormatted;
 
 return (
     <View style={[
@@ -336,7 +345,7 @@ return (
 
         {/* Informações de Agendamento */}
         <View style={styles.scheduleInfo}>
-            {(item.dueTime || item.dueDate) && (
+            {hasDueInfo && (
                 <View style={styles.scheduleItem}>
                     <Ionicons
                         name="time-outline"
@@ -344,7 +353,7 @@ return (
                         color={isOverdue ? APP_COLORS.status.error : APP_COLORS.text.secondary}
                     />
                     <Text style={[styles.scheduleText, isOverdue && styles.overdueText]}>
-                        {item.dueDate ? `${formatDate(item.dueDate)} ` : ''}{formatTime(item.dueTime)}
+                        {dueDateFormatted ? `${dueDateFormatted} ` : ''}{dueTimeFormatted}
                     </Text>
                 </View>
             )}
