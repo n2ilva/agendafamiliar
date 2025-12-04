@@ -7,14 +7,8 @@ import {
   Pressable,
   TextInput,
 } from 'react-native';
-import { APP_COLORS } from '../../constants/colors';
+import { APP_COLORS, THEMES } from '../../constants/colors';
 import { RepeatType } from '../../types/family.types';
-
-const THEME = {
-  primary: APP_COLORS.primary.main,
-  textPrimary: APP_COLORS.text.primary,
-  textSecondary: APP_COLORS.text.secondary,
-};
 
 interface RepeatConfigModalProps {
   visible: boolean;
@@ -59,6 +53,21 @@ export const RepeatConfigModal: React.FC<RepeatConfigModalProps> = ({
   setTempMonthsCount,
   activeTheme,
 }) => {
+  // Cores dinâmicas baseadas no tema
+  const isDark = activeTheme === 'dark';
+  const theme = isDark ? THEMES.dark.colors : THEMES.light.colors;
+  
+  const colors = {
+    background: theme.card,
+    text: theme.text,
+    textSecondary: theme.textSecondary,
+    border: theme.border,
+    surface: theme.surface,
+    primary: theme.primary,
+    inputBg: isDark ? '#3C3C3C' : APP_COLORS.background.lightGray,
+    buttonBg: isDark ? '#3C3C3C' : APP_COLORS.background.lightGray,
+  };
+
   // Tipo de intervalo: 'days' | 'weeks' | 'months'
   const intervalMode = tempMonthly ? 'months' : (tempWeekly ? 'weeks' : 'days');
   
@@ -93,9 +102,12 @@ export const RepeatConfigModal: React.FC<RepeatConfigModalProps> = ({
         style={styles.smallModalBackdrop}
         onPress={onClose}
       >
-        <Pressable style={styles.smallModalContent} onPress={(e) => e.stopPropagation()}>
-          <Text style={styles.smallModalTitle}>
-            {repeatType === RepeatType.CUSTOM ? 'Repetir semanalmente' : 'Sistema de Repetição'}
+        <Pressable 
+          style={[styles.smallModalContent, { backgroundColor: colors.background }]} 
+          onPress={(e) => e.stopPropagation()}
+        >
+          <Text style={[styles.smallModalTitle, { color: colors.text }]}>
+            {repeatType === RepeatType.CUSTOM ? 'Repetir semanalmente' : 'Repetir por Intervalo'}
           </Text>
           
           {repeatType === RepeatType.CUSTOM && (
@@ -105,12 +117,14 @@ export const RepeatConfigModal: React.FC<RepeatConfigModalProps> = ({
                   key={index}
                   style={[
                     styles.dayButton,
+                    { backgroundColor: colors.buttonBg, borderColor: colors.border },
                     tempCustomDays.includes(index) && styles.dayButtonActive
                   ]}
                   onPress={() => onToggleDay(index)}
                 >
                   <Text style={[
                     styles.dayButtonText,
+                    { color: colors.textSecondary },
                     tempCustomDays.includes(index) && styles.dayButtonTextActive
                   ]}>
                     {day}
@@ -122,48 +136,84 @@ export const RepeatConfigModal: React.FC<RepeatConfigModalProps> = ({
           
           {repeatType === RepeatType.INTERVAL && (
             <View style={{ gap: 12 }}>
-              <Text style={styles.customDaysLabel}>Repetir a cada:</Text>
+              <Text style={[styles.customDaysLabel, { color: colors.textSecondary }]}>Repetir a cada:</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                 <Pressable
-                  style={[styles.toggleButton, intervalMode === 'days' && styles.toggleButtonActive]}
+                  style={[
+                    styles.toggleButton, 
+                    { backgroundColor: colors.buttonBg, borderColor: colors.border },
+                    intervalMode === 'days' && styles.toggleButtonActive
+                  ]}
                   onPress={() => setIntervalMode('days')}
                 >
-                  <Text style={[styles.toggleButtonText, intervalMode === 'days' && styles.toggleButtonTextActive]}>Dias</Text>
+                  <Text style={[
+                    styles.toggleButtonText, 
+                    { color: colors.textSecondary },
+                    intervalMode === 'days' && styles.toggleButtonTextActive
+                  ]}>Dias</Text>
                 </Pressable>
                 <Pressable
-                  style={[styles.toggleButton, intervalMode === 'weeks' && styles.toggleButtonActive]}
+                  style={[
+                    styles.toggleButton, 
+                    { backgroundColor: colors.buttonBg, borderColor: colors.border },
+                    intervalMode === 'weeks' && styles.toggleButtonActive
+                  ]}
                   onPress={() => setIntervalMode('weeks')}
                 >
-                  <Text style={[styles.toggleButtonText, intervalMode === 'weeks' && styles.toggleButtonTextActive]}>Semanas</Text>
+                  <Text style={[
+                    styles.toggleButtonText, 
+                    { color: colors.textSecondary },
+                    intervalMode === 'weeks' && styles.toggleButtonTextActive
+                  ]}>Semanas</Text>
                 </Pressable>
                 <Pressable
-                  style={[styles.toggleButton, intervalMode === 'months' && styles.toggleButtonActive]}
+                  style={[
+                    styles.toggleButton, 
+                    { backgroundColor: colors.buttonBg, borderColor: colors.border },
+                    intervalMode === 'months' && styles.toggleButtonActive
+                  ]}
                   onPress={() => setIntervalMode('months')}
                 >
-                  <Text style={[styles.toggleButtonText, intervalMode === 'months' && styles.toggleButtonTextActive]}>Meses</Text>
+                  <Text style={[
+                    styles.toggleButtonText, 
+                    { color: colors.textSecondary },
+                    intervalMode === 'months' && styles.toggleButtonTextActive
+                  ]}>Meses</Text>
                 </Pressable>
               </View>
               
               {intervalMode === 'days' && (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Text style={[styles.customDaysLabel, { flex: 0, minWidth: 60 }]}>A cada</Text>
+                  <Text style={[styles.customDaysLabel, { flex: 0, minWidth: 60, color: colors.textSecondary }]}>A cada</Text>
                   <TextInput
-                    style={[styles.input, { width: 80, textAlign: 'center' }]}
+                    style={[styles.input, { 
+                      width: 80, 
+                      textAlign: 'center',
+                      backgroundColor: colors.inputBg,
+                      borderColor: colors.border,
+                      color: colors.text
+                    }]}
                     keyboardType="number-pad"
                     value={String(tempIntervalDays || '')}
                     onChangeText={(v) => setTempIntervalDays(Math.max(1, parseInt(v || '0', 10) || 0))}
                     placeholder="dias"
-                    placeholderTextColor={activeTheme === 'dark' ? '#888' : '#999'}
+                    placeholderTextColor={isDark ? '#888' : '#999'}
                   />
-                  <Text style={styles.customDaysLabel}>dia(s)</Text>
+                  <Text style={[styles.customDaysLabel, { color: colors.textSecondary }]}>dia(s)</Text>
                 </View>
               )}
               
               {intervalMode === 'weeks' && (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Text style={[styles.customDaysLabel, { flex: 0, minWidth: 60 }]}>A cada</Text>
+                  <Text style={[styles.customDaysLabel, { flex: 0, minWidth: 60, color: colors.textSecondary }]}>A cada</Text>
                   <TextInput
-                    style={[styles.input, { width: 80, textAlign: 'center' }]}
+                    style={[styles.input, { 
+                      width: 80, 
+                      textAlign: 'center',
+                      backgroundColor: colors.inputBg,
+                      borderColor: colors.border,
+                      color: colors.text
+                    }]}
                     keyboardType="number-pad"
                     value={String(tempWeeksCount || '')}
                     onChangeText={(v) => {
@@ -172,17 +222,23 @@ export const RepeatConfigModal: React.FC<RepeatConfigModalProps> = ({
                       setTempIntervalDays(w * 7);
                     }}
                     placeholder="semanas"
-                    placeholderTextColor={activeTheme === 'dark' ? '#888' : '#999'}
+                    placeholderTextColor={isDark ? '#888' : '#999'}
                   />
-                  <Text style={styles.customDaysLabel}>semana(s)</Text>
+                  <Text style={[styles.customDaysLabel, { color: colors.textSecondary }]}>semana(s)</Text>
                 </View>
               )}
 
               {intervalMode === 'months' && (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Text style={[styles.customDaysLabel, { flex: 0, minWidth: 60 }]}>A cada</Text>
+                  <Text style={[styles.customDaysLabel, { flex: 0, minWidth: 60, color: colors.textSecondary }]}>A cada</Text>
                   <TextInput
-                    style={[styles.input, { width: 80, textAlign: 'center' }]}
+                    style={[styles.input, { 
+                      width: 80, 
+                      textAlign: 'center',
+                      backgroundColor: colors.inputBg,
+                      borderColor: colors.border,
+                      color: colors.text
+                    }]}
                     keyboardType="number-pad"
                     value={String(tempMonthsCount || '')}
                     onChangeText={(v) => {
@@ -191,33 +247,39 @@ export const RepeatConfigModal: React.FC<RepeatConfigModalProps> = ({
                       setTempIntervalDays(m * 30);
                     }}
                     placeholder="meses"
-                    placeholderTextColor={activeTheme === 'dark' ? '#888' : '#999'}
+                    placeholderTextColor={isDark ? '#888' : '#999'}
                   />
-                  <Text style={styles.customDaysLabel}>mês(es)</Text>
+                  <Text style={[styles.customDaysLabel, { color: colors.textSecondary }]}>mês(es)</Text>
                 </View>
               )}
               
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 }}>
-                <Text style={[styles.customDaysLabel, { flex: 0, minWidth: 60 }]}>Duração</Text>
+                <Text style={[styles.customDaysLabel, { flex: 0, minWidth: 60, color: colors.textSecondary }]}>Duração</Text>
                 <TextInput
-                  style={[styles.input, { width: 80, textAlign: 'center' }]}
+                  style={[styles.input, { 
+                    width: 80, 
+                    textAlign: 'center',
+                    backgroundColor: colors.inputBg,
+                    borderColor: colors.border,
+                    color: colors.text
+                  }]}
                   keyboardType="number-pad"
                   value={String(tempDurationMonths || '')}
                   onChangeText={(v) => setTempDurationMonths(Math.max(0, parseInt(v || '0', 10) || 0))}
                   placeholder="∞"
-                  placeholderTextColor={activeTheme === 'dark' ? '#888' : '#999'}
+                  placeholderTextColor={isDark ? '#888' : '#999'}
                 />
-                <Text style={styles.customDaysLabel}>mês(es) (0 = sem fim)</Text>
+                <Text style={[styles.customDaysLabel, { color: colors.textSecondary }]}>mês(es) (0 = sem fim)</Text>
               </View>
             </View>
           )}
           
           <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 12, marginTop: 16 }}>
             <Pressable 
-              style={[styles.button, styles.cancelButton]} 
+              style={[styles.button, { backgroundColor: colors.buttonBg }]} 
               onPress={onClose}
             >
-              <Text style={styles.cancelButtonText}>Cancelar</Text>
+              <Text style={[styles.cancelButtonText, { color: colors.textSecondary }]}>Cancelar</Text>
             </Pressable>
             <Pressable
               style={[styles.button, styles.saveButton]}
@@ -240,12 +302,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   smallModalContent: {
-    backgroundColor: APP_COLORS.background.white,
     borderRadius: 12,
     padding: 20,
     width: '90%',
     maxWidth: 400,
-    shadowColor: APP_COLORS.shadow.dark,
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
@@ -255,7 +316,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     marginBottom: 16,
-    color: APP_COLORS.text.primary,
   },
   customDaysSelector: {
     flexDirection: 'row',
@@ -267,11 +327,9 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 21,
-    backgroundColor: APP_COLORS.background.lightGray,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: APP_COLORS.border.light,
   },
   dayButtonActive: {
     backgroundColor: APP_COLORS.primary.main,
@@ -280,7 +338,6 @@ const styles = StyleSheet.create({
   dayButtonText: {
     fontSize: 12,
     fontWeight: '600',
-    color: APP_COLORS.text.secondary,
   },
   dayButtonTextActive: {
     color: APP_COLORS.text.white,
@@ -288,11 +345,9 @@ const styles = StyleSheet.create({
   toggleButton: {
     flex: 1,
     paddingVertical: 10,
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     borderRadius: 8,
-    backgroundColor: APP_COLORS.background.lightGray,
     borderWidth: 1,
-    borderColor: APP_COLORS.border.light,
     alignItems: 'center',
   },
   toggleButtonActive: {
@@ -300,24 +355,20 @@ const styles = StyleSheet.create({
     borderColor: APP_COLORS.primary.dark,
   },
   toggleButtonText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
-    color: APP_COLORS.text.secondary,
   },
   toggleButtonTextActive: {
     color: APP_COLORS.text.white,
   },
   customDaysLabel: {
     fontSize: 14,
-    color: APP_COLORS.text.secondary,
   },
   input: {
     borderWidth: 1,
-    borderColor: APP_COLORS.border.light,
     borderRadius: 8,
     padding: 10,
     fontSize: 14,
-    backgroundColor: APP_COLORS.background.lightGray,
   },
   button: {
     paddingVertical: 12,
@@ -326,11 +377,7 @@ const styles = StyleSheet.create({
     minWidth: 80,
     alignItems: 'center',
   },
-  cancelButton: {
-    backgroundColor: APP_COLORS.background.lightGray,
-  },
   cancelButtonText: {
-    color: APP_COLORS.text.secondary,
     fontSize: 14,
     fontWeight: '600',
   },
