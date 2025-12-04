@@ -19,14 +19,14 @@ const getRepeatText = (repeatConfig: RepeatConfig): string => {
         case RepeatType.NONE:
             return '';
         case RepeatType.DAILY:
-            return 'Todos os dias';
+            return 'Diário';
         case RepeatType.WEEKENDS:
             return 'Fins de semana';
         case RepeatType.CUSTOM: {
             const days = repeatConfig.days?.slice().sort((a, b) => a - b) || [];
-            if (!days.length) return 'Recorrente';
+            if (!days.length) return 'Semanal';
             const labels = days.map(dayIndex => WEEKDAY_LABELS[dayIndex % 7]);
-            return `Dias: ${labels.join(', ')}`;
+            return labels.join(', ');
         }
         case RepeatType.MONTHLY:
             return 'Mensal';
@@ -36,7 +36,9 @@ const getRepeatText = (repeatConfig: RepeatConfig): string => {
             return 'Quinzenal';
         case RepeatType.INTERVAL: {
             const interval = repeatConfig.intervalDays || 1;
-            return `A cada ${interval} dia${interval > 1 ? 's' : ''}`;
+            if (interval === 7) return 'Semanal';
+            if (interval === 14) return 'Quinzenal';
+            return `${interval} em ${interval} dias`;
         }
         default:
             return 'Recorrente';
@@ -226,16 +228,6 @@ return (
                 <Text style={[styles.categoryHeaderText, { color: categoryConfig.color }]}>
                     {categoryConfig.name}
                 </Text>
-                {repeatConfig.type !== RepeatType.NONE && (
-                    <View style={styles.repeatBadge}>
-                        <Ionicons
-                            name={repeatInfo.icon as any}
-                            size={10}
-                            color={APP_COLORS.text.white}
-                        />
-                        <Text style={styles.repeatBadgeText}>{repeatInfo.label}</Text>
-                    </View>
-                )}
             </View>
             {/* Lado direito do header: cadeado (se privado) + botão de expandir */}
             <View style={styles.categoryHeaderRight}>

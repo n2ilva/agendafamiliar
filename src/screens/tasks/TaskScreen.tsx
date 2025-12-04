@@ -2353,14 +2353,14 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
   const getRepeatText = (repeat: RepeatConfig): string => {
     switch (repeat.type) {
       case RepeatType.DAILY:
-        return 'Todos os dias';
+        return 'Diário';
       case RepeatType.MONTHLY:
-        return 'A cada mês';
+        return 'Mensal';
       case RepeatType.WEEKENDS:
         return 'Fins de semana';
       case RepeatType.CUSTOM:
         const dayNames = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-        return repeat.days?.map(d => dayNames[d]).join(', ') || '';
+        return repeat.days?.map(d => dayNames[d]).join(', ') || 'Semanal';
       default:
         return '';
     }
@@ -3420,31 +3420,6 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
             <Text style={[styles.categoryHeaderText, { color: categoryConfig.color }]}>
               {categoryConfig.name}
             </Text>
-            {/* Badge de tarefa recorrente */}
-            {isRecurring && (
-              <View style={styles.repeatBadge}>
-                <Ionicons
-                  name={
-                    repeatConfig.type === RepeatType.DAILY ? 'today' :
-                      repeatConfig.type === RepeatType.MONTHLY ? 'calendar-outline' :
-                        repeatConfig.type === RepeatType.YEARLY ? 'gift' :
-                          repeatConfig.type === RepeatType.BIWEEKLY ? 'repeat' :
-                            repeatConfig.type === RepeatType.INTERVAL ? 'time' :
-                              'calendar'
-                  }
-                  size={10}
-                  color={APP_COLORS.text.white}
-                />
-                <Text style={styles.repeatBadgeText}>
-                  {repeatConfig.type === RepeatType.DAILY ? 'Diário' :
-                    repeatConfig.type === RepeatType.MONTHLY ? 'Mensal' :
-                      repeatConfig.type === RepeatType.YEARLY ? 'Anual' :
-                        repeatConfig.type === RepeatType.BIWEEKLY ? 'Quinzenal' :
-                          repeatConfig.type === RepeatType.INTERVAL ? 'Intervalo' :
-                            'Semanal'}
-                </Text>
-              </View>
-            )}
           </View>
           {/* Lado direito do header: cadeado (se privado) + botão de expandir */}
           <View style={styles.categoryHeaderRight}>
