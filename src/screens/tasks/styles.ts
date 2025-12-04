@@ -560,6 +560,24 @@ export const getStyles = (colors: any, activeTheme: any) => StyleSheet.create({
   toggleButtonTextActive: {
     color: '#fff',
   },
+  // Banner de sincronização abaixo do header
+  syncBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: APP_COLORS.primary.main,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    gap: 8,
+  },
+  syncBannerPending: {
+    backgroundColor: '#f59e0b',
+  },
+  syncBannerText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '500',
+  },
   summaryContainer: {
     marginBottom: 16, // Reduzir margem
   },

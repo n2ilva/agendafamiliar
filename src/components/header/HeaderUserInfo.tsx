@@ -55,24 +55,6 @@ export const HeaderUserInfo: React.FC<HeaderUserInfoProps> = ({
               <Text style={styles.syncPillText}>Sincronizando permissões…</Text>
             </View>
           ) : null}
-          {syncStatus?.isSyncing || (syncStatus?.pendingOperations ?? 0) > 0 ? (
-            <View 
-              style={[styles.syncPill, { backgroundColor: syncStatus?.isSyncing ? APP_COLORS.primary.main : '#f59e0b' }]} 
-              accessibilityLabel={syncStatus?.isSyncing ? "Sincronizando alterações" : `${syncStatus?.pendingOperations} alterações pendentes`}
-            >
-              {syncStatus?.isSyncing ? (
-                <>
-                  <ActivityIndicator size="small" color="#fff" style={{ marginRight: 6 }} />
-                  <Text style={styles.syncPillText}>Sincronizando…</Text>
-                </>
-              ) : (
-                <>
-                  <Ionicons name="cloud-upload-outline" size={14} color="#fff" style={{ marginRight: 6 }} />
-                  <Text style={styles.syncPillText}>{syncStatus?.pendingOperations} pendente{(syncStatus?.pendingOperations ?? 0) !== 1 ? 's' : ''}</Text>
-                </>
-              )}
-            </View>
-          ) : null}
         </View>
       ) : (
         <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Família não configurada</Text>

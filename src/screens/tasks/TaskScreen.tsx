@@ -3888,6 +3888,22 @@ export const TaskScreen: React.FC<TaskScreenProps> = ({
           }}
         />
 
+        {/* Banner de sincronização abaixo do header */}
+        {(syncStatus.isSyncing || (syncStatus.pendingOperations ?? 0) > 0) && (
+          <View style={[
+            styles.syncBanner,
+            !syncStatus.isSyncing && (syncStatus.pendingOperations ?? 0) > 0 && styles.syncBannerPending
+          ]}>
+            <ActivityIndicator size="small" color="#fff" />
+            <Text style={styles.syncBannerText}>
+              {syncStatus.isSyncing 
+                ? 'Sincronizando…' 
+                : `${syncStatus.pendingOperations} alteração${(syncStatus.pendingOperations ?? 0) !== 1 ? 'ões' : ''} pendente${(syncStatus.pendingOperations ?? 0) !== 1 ? 's' : ''}`
+              }
+            </Text>
+          </View>
+        )}
+
         {/* Árvore de Natal decorativa no background - ocupa tela toda */}
         {/* Wrapper centralizado (apenas Web aplica largura 70%) */}
         <View style={[styles.pageContainer, Platform.OS === 'web' && styles.pageContainerWeb]}>
